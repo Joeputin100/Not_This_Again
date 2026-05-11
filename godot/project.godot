@@ -28,10 +28,14 @@ driver/output_latency=15
 
 window/size/viewport_width=1080
 window/size/viewport_height=1920
-window/handheld/orientation=0
+; window/handheld/orientation values (Godot 4.6 ScreenOrientation enum):
+;   0 = LANDSCAPE        1 = PORTRAIT         2 = REVERSE_LANDSCAPE
+;   3 = REVERSE_PORTRAIT 4 = SENSOR_LANDSCAPE 5 = SENSOR_PORTRAIT
+;   6 = SENSOR (follow device, all 4 orientations)
+; We want portrait-primary with landscape letterboxed when device is rotated.
+window/handheld/orientation=6
 window/stretch/mode="canvas_items"
 window/stretch/aspect="keep"
-window/handheld/sensor=true
 window/per_pixel_transparency/allowed=false
 
 [rendering]
