@@ -10,9 +10,16 @@ const GateHelper = preload("res://scripts/gate_helper.gd")
 const LevelProgressScript = preload("res://scripts/level_progress.gd")
 const ScreenShakeScript = preload("res://scripts/screen_shake.gd")
 const CombosCounterScript = preload("res://scripts/combos_counter.gd")
+const Collision2D = preload("res://scripts/collision_2d.gd")
+const BulletScene = preload("res://scenes/bullet.tscn")
+const BulletScript = preload("res://scripts/bullet.gd")
+const BarrelScript = preload("res://scripts/barrel.gd")
 
 const FOLLOW_SPEED: float = 12.0
 const STARTING_POSSE: int = 5
+
+# Bullets spawn this far above the cowboy each shot.
+const BULLET_SPAWN_Y_OFFSET: float = -120.0
 
 @onready var cowboy: Node2D = $Cowboy
 @onready var camera: Camera2D = $Camera
@@ -29,6 +36,13 @@ var _input_event_count: int = 0
 var _process_run_count: int = 0
 var _last_input_type: String = "(none yet)"
 var _last_event_class: String = "(none)"
+
+# Auto-fire mechanic. Posse rate of fire = 1 / fire_interval per second.
+# fire_interval will be mutated by power-up pickups (faster fire).
+var fire_interval: float = 0.18
+var _fire_timer: float = 0.0
+var _bullets_fired: int = 0
+var _barrels_destroyed: int = 0
 
 # Run-local state. Resets each level.
 var posse_count: int = STARTING_POSSE:
@@ -83,14 +97,51 @@ func _process(delta: float) -> void:
 	# Drive screen shake. CanvasLayer-rooted UI is unaffected; only
 	# world-space nodes (background, lane guides, gates, cowboy) shake.
 	camera.offset = shake.tick(delta)
+
+	# Auto-fire bullets at fire_interval cadence.
+	_fire_timer += delta
+	while _fire_timer >= fire_interval:
+		_fire_timer -= fire_interval
+		_spawn_bullet()
+
+	# Bullet ↔ barrel collision pass. O(bullets × barrels) per frame —
+	# trivial at our scale (<15 bullets active, <3 barrels).
+	_resolve_bullet_barrel_collisions()
+
 	# Diagnostic — fallback to get_node in case @onready ref is stale.
-	# This SHOULD always update if _process is firing.
 	var dbg := debug_label if debug_label != null else get_node_or_null("UI/DebugInfo") as Label
 	if dbg:
-		dbg.text = "proc:%d input:%d type:%s class:%s\ntarget_x:%.0f cowboy_x:%.0f" % [
-			_process_run_count, _input_event_count, _last_input_type, _last_event_class,
+		dbg.text = "proc:%d input:%d type:%s\ntarget_x:%.0f cowboy_x:%.0f bullets_fired:%d barrels_dead:%d" % [
+			_process_run_count, _input_event_count, _last_input_type,
 			target_x, cowboy.position.x,
+			_bullets_fired, _barrels_destroyed,
 		]
+
+func _spawn_bullet() -> void:
+	var bullet := BulletScene.instantiate()
+	bullet.position = cowboy.position + Vector2(0, BULLET_SPAWN_Y_OFFSET)
+	add_child(bullet)
+	_bullets_fired += 1
+
+func _resolve_bullet_barrel_collisions() -> void:
+	var bullets := get_tree().get_nodes_in_group("bullets")
+	var barrels := get_tree().get_nodes_in_group("barrels")
+	if bullets.is_empty() or barrels.is_empty():
+		return
+	for bullet in bullets:
+		for barrel in barrels:
+			if Collision2D.rects_overlap(
+					bullet.position, BulletScript.SIZE,
+					barrel.position, BarrelScript.SIZE):
+				var was_destroyed: bool = barrel.take_damage(1)
+				if was_destroyed:
+					_barrels_destroyed += 1
+					shake.add_trauma(0.4)
+				# Bullet is consumed on hit. Remove from group so the
+				# next iteration of this pass doesn't see it again.
+				bullet.remove_from_group("bullets")
+				bullet.queue_free()
+				break  # this bullet is done; move to next bullet
 
 func _input(event: InputEvent) -> void:
 	# Track ALL inputs to verify _input is being called at all, not just

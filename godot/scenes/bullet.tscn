@@ -1,0 +1,14 @@
+[gd_scene load_steps=2 format=3 uid="uid://b0nttg_bullet_001"]
+
+[ext_resource type="Script" path="res://scripts/bullet.gd" id="1_bullet"]
+
+[node name="Bullet" type="Node2D"]
+script = ExtResource("1_bullet")
+
+[node name="Body" type="ColorRect" parent="."]
+offset_left = -5.0
+offset_top = -14.0
+offset_right = 5.0
+offset_bottom = 14.0
+color = Color(1, 0.95, 0.5, 1)
+mouse_filter = 2
