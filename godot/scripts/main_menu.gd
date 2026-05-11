@@ -76,8 +76,16 @@ func _exit_tree() -> void:
 	_kill_idle_tweens()
 
 func _notification(what: int) -> void:
-	if what == NOTIFICATION_WM_GO_BACK_REQUEST or what == NOTIFICATION_WM_CLOSE_REQUEST:
+	if what == NOTIFICATION_WM_GO_BACK_REQUEST:
+		DebugLog.add("main_menu NOTIFICATION_WM_GO_BACK_REQUEST → quit")
 		get_tree().quit()
+	elif what == NOTIFICATION_WM_CLOSE_REQUEST:
+		DebugLog.add("main_menu NOTIFICATION_WM_CLOSE_REQUEST → quit")
+		get_tree().quit()
+
+func _on_back_requested_signal() -> void:
+	DebugLog.add("main_menu go_back_requested SIGNAL → quit")
+	get_tree().quit()
 
 func _on_play_pressed() -> void:
 	# Candy-Crush press feedback: tap SFX + squish + bounce back + scene change.
