@@ -54,6 +54,17 @@ Live tracker for engine / SDK / tooling pitfalls that could derail "Play Store f
 - **Scope**: Phase 4 (IAP) only.
 - **Mitigation**: Budget 2–3 days for IAP integration. `AndroidIAPP` plugin as fallback.
 
+### Typed `RefCounted` vars lose method awareness in Godot 4's parser → **RESOLVED 2026-05-11 via integration tests**
+- Symptom: `var combo := some_refcounted.step()` produces:
+  > Parse Error: Cannot infer the type of "combo" variable because the value doesn't have a set type.
+- Root cause: Godot 4 parser only knows the *static type* of the variable. When you type a variable as `RefCounted` (the base class), calls like `.step()` don't expose return types because `step()` isn't a method on `RefCounted` — it's on the concrete script extending it.
+- Mitigation patterns (any one):
+  1. Add `class_name` to the script so the variable can be typed concretely (`var combos: CombosCounter`). Risk: collides with autoload identifier if same name.
+  2. Drop the type annotation entirely: `var combos = ...` (untyped).
+  3. Use explicit type annotation on the inferred call result: `var combo: int = combos.step()`. **This is what we use** — minimal change, doesn't introduce class_name conflicts.
+- Why this bit us: the export step doesn't fail on script parse errors — Godot logs them and continues. APK builds successfully but with the broken script not attached at runtime. Symptoms manifest as `_ready`/`_process`/`_input` "nonexistent" on what should have been a scripted node.
+- Tripwire: `test/test_level_integration.gd` instantiates level.tscn in CI, which surfaces this class of failure before sideload.
+
 ## Resolved
 
 ### Phase 0 ships APK, not AAB → **RESOLVED 2026-05-11**
