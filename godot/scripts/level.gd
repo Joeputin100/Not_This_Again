@@ -58,6 +58,7 @@ func _notification(what: int) -> void:
 func _on_gate_triggered(gate_center_x: float) -> void:
 	var side := GateHelper.which_side(cowboy.position.x, gate_center_x)
 	posse_count = GateHelper.apply_effect(posse_count, side, gate.left_value, gate.right_value)
+	AudioBus.play_gate_pass()
 	_pulse_posse_label()
 
 func _refresh_posse_label() -> void:

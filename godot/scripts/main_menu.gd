@@ -43,7 +43,8 @@ func _notification(what: int) -> void:
 		get_tree().quit()
 
 func _on_play_pressed() -> void:
-	# Candy-Crush press feedback: squish, bounce back, then scene change.
+	# Candy-Crush press feedback: tap SFX + squish + bounce back + scene change.
+	AudioBus.play_tap()
 	play_button.disabled = true
 	_kill_idle_tweens()  # don't let fidget fight the press animation
 	var tween := create_tween()
