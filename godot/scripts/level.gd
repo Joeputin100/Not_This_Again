@@ -17,6 +17,7 @@ const STARTING_POSSE: int = 5
 @onready var cowboy: Node2D = $Cowboy
 @onready var camera: Camera2D = $Camera
 @onready var posse_label: Label = $UI/PosseCount
+@onready var debug_label: Label = $UI/DebugInfo
 @onready var win_overlay: CanvasLayer = $WinOverlay
 @onready var win_panel: Control = $WinOverlay/WinPanel
 @onready var win_subtitle: Label = $WinOverlay/WinPanel/WinSubtitle
@@ -24,6 +25,8 @@ const STARTING_POSSE: int = 5
 @onready var menu_button: Button = $WinOverlay/WinPanel/MenuButton
 
 var target_x: float
+var _input_event_count: int = 0
+var _last_input_type: String = "(none yet)"
 
 # Run-local state. Resets each level.
 var posse_count: int = STARTING_POSSE:
@@ -66,19 +69,34 @@ func _process(delta: float) -> void:
 	# Drive screen shake. CanvasLayer-rooted UI is unaffected; only
 	# world-space nodes (background, lane guides, gates, cowboy) shake.
 	camera.offset = shake.tick(delta)
+	# Temporary debug overlay so we can diagnose if input reaches us.
+	# REMOVE in a later commit once the cowboy-follow regression is solved.
+	if debug_label:
+		debug_label.text = "inputs:%d  last:%s\ntarget_x:%.0f  cowboy_x:%.0f" % [
+			_input_event_count, _last_input_type,
+			target_x, cowboy.position.x
+		]
 
 func _input(event: InputEvent) -> void:
 	var new_x := -1.0
 	if event is InputEventScreenDrag:
 		new_x = (event as InputEventScreenDrag).position.x
+		_last_input_type = "DRAG"
+		_input_event_count += 1
 	elif event is InputEventScreenTouch and (event as InputEventScreenTouch).pressed:
 		new_x = (event as InputEventScreenTouch).position.x
+		_last_input_type = "TOUCH"
+		_input_event_count += 1
 	elif event is InputEventMouseMotion and ((event as InputEventMouseMotion).button_mask & MOUSE_BUTTON_MASK_LEFT) != 0:
 		new_x = (event as InputEventMouseMotion).position.x
+		_last_input_type = "MOUSE_MOTION"
+		_input_event_count += 1
 	elif event is InputEventMouseButton:
 		var mb := event as InputEventMouseButton
 		if mb.button_index == MOUSE_BUTTON_LEFT and mb.pressed:
 			new_x = mb.position.x
+			_last_input_type = "MOUSE_BUTTON"
+			_input_event_count += 1
 	if new_x >= 0.0:
 		target_x = MovementBounds.clamp_x(new_x)
 

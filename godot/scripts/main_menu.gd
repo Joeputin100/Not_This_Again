@@ -10,9 +10,12 @@ extends Node2D
 # Tone (per design.md "Tone bible"): the narrator/UI voice is Murderbot
 # Diaries — dry, deadpan, mildly annoyed at having to explain anything.
 
+const BuildInfo = preload("res://scripts/build_info.gd")
+
 @onready var play_button: Button = $UI/PlayButton
 @onready var title_label: Label = $UI/Title
 @onready var subtitle_label: Label = $UI/Subtitle
+@onready var build_id_label: Label = $UI/BuildId
 
 # Captured after initial layout so idle_ended can restore exact positions.
 var _subtitle_base_y: float = 0.0
@@ -26,6 +29,9 @@ func _ready() -> void:
 	play_button.pressed.connect(_on_play_pressed)
 	IdleNudge.idle_started.connect(_on_idle_started)
 	IdleNudge.idle_ended.connect(_on_idle_ended)
+	# Build identifier in the bottom-right corner — proves which build is
+	# actually installed when sideloading repeatedly.
+	build_id_label.text = "build: %s  iter %s  %s" % [BuildInfo.SHA, BuildInfo.ITER, BuildInfo.SHORT_DATE]
 	# Defer pivot capture so Godot's layout pass has run and sizes are real.
 	call_deferred("_finalize_setup")
 
