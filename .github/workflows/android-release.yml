@@ -1,7 +1,7 @@
 name: Android Release Build
 
 # Tag-triggered. Pulls the release keystore from Google Secret Manager
-# via Workload Identity Federation, signs the .aab, uploads as artifact.
+# via Workload Identity Federation, signs the .apk, uploads as artifact.
 
 on:
   push:
@@ -14,7 +14,7 @@ permissions:
 
 jobs:
   build:
-    name: Build signed release .aab
+    name: Build signed release .apk
     runs-on: ubuntu-latest
     timeout-minutes: 30
 
@@ -71,14 +71,26 @@ jobs:
           KEY_ALIAS: not_this_again_release
           KEYSTORE_PASSWORD: ${{ steps.fetch_password.outputs.keystore_password }}
         run: |
+          # Substitute the empty release-keystore values committed in the
+          # preset file with real values from Secret Manager. The pattern
+          # is exact-match string replacement; no regex / shell expansion.
           python3 <<'PYEOF'
           import os
           path = 'godot/export_presets.cfg'
           with open(path, 'r') as f:
               data = f.read()
-          data = data.replace('__KEYSTORE_PATH__', os.environ['KEYSTORE_PATH'])
-          data = data.replace('__KEY_ALIAS__',     os.environ['KEY_ALIAS'])
-          data = data.replace('__KEY_PASSWORD__',  os.environ['KEYSTORE_PASSWORD'])
+          replacements = [
+              ('keystore/release=""',
+               f'keystore/release="{os.environ["KEYSTORE_PATH"]}"'),
+              ('keystore/release_user=""',
+               f'keystore/release_user="{os.environ["KEY_ALIAS"]}"'),
+              ('keystore/release_password=""',
+               f'keystore/release_password="{os.environ["KEYSTORE_PASSWORD"]}"'),
+          ]
+          for needle, replacement in replacements:
+              if needle not in data:
+                  raise SystemExit(f"FATAL: expected substring not found: {needle!r}")
+              data = data.replace(needle, replacement, 1)
           with open(path, 'w') as f:
               f.write(data)
           PYEOF
