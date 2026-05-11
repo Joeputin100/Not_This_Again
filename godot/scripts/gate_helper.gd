@@ -10,6 +10,16 @@ const SIDE_RIGHT: int = 1
 const TYPE_ADDITIVE: int = 0       # +N / -N display, posse += amount
 const TYPE_MULTIPLICATIVE: int = 1 # xN / xM display, posse *= amount
 
+# A gate is "growing" (= blue, helpful) if BOTH doors leave the posse
+# at-least-as-large as before. For additive gates, that means values
+# >= 0. For multiplicative gates, that means values >= 1.
+# Otherwise the gate is "shrinking" (= red, dangerous) and the bull
+# hazard (future) may take notice of it.
+static func gate_is_growing(left_value: int, right_value: int, gate_type: int) -> bool:
+	if gate_type == TYPE_ADDITIVE:
+		return left_value >= 0 and right_value >= 0
+	return left_value >= 1 and right_value >= 1
+
 # Given a cowboy's X position and the gate's center X, return which side
 # the cowboy is on. Ties (cowboy exactly on the divider) go right; the
 # game ships with X clamped to lane bounds so exact-tie is rare anyway.

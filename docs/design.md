@@ -130,17 +130,16 @@ Polish budget for this game is intentionally **higher than the gameplay budget**
 Captured here so they don't get lost. Each lands in a later phase when the baseline gameplay loop has been verified.
 
 #### Bull stampede hazard (random event tied to red gates)
-- **Trigger**: low-probability random event whenever a level contains a "red gate" (a special, possibly higher-stakes gate type — to be defined).
+- **Trigger**: low-probability random event whenever a *red gate* is on-screen. A gate is "red" when its current values would SHRINK the posse (see "Gate direction & color" below).
 - **Behavior**: bull with large horns enters from off-screen at very high speed, runs through, exits off-screen on the opposite side. Does NOT track or fight the player.
 - **Stats**: HP 500–1000 (effectively impossible to kill with normal bullet rate); high cowboy collision damage; will destroy any red gate it passes through.
-- **Implementation sketch**: new `bull.gd` joining a "bulls" group. Spawned by a `BullSpawner` that watches active red gates and rolls a probability check each frame they're on-screen. Bull movement uses a fixed direction (left→right or right→left), Vector2.RIGHT × speed × delta. Despawn when off-screen.
-- **Visual**: side-profile bull silhouette with prominent horns, dust trail behind it.
+- **Color-flip deflection**: if the red gate the bull is targeting flips to BLUE while the bull is still on-screen (because the player shot it enough to convert "-3" → "+1", etc.), the bull slows down, looks confused (visual animation), and walks off the LEFT or RIGHT side of the track instead of completing its line. The flip rewards aggressive shooting of dangerous gates.
+- **Implementation sketch**: new `bull.gd` joining a "bulls" group. Spawned by a `BullSpawner` that watches active "shrinking" gates and rolls a probability check each frame they're on-screen. Bull movement uses a fixed direction (left→right or right→left), Vector2.RIGHT × speed × delta. Each frame, bull checks if its target gate is still red — if it flipped to blue, switch to the "confused → veer off" state.
+- **Visual**: side-profile bull silhouette with prominent horns, dust trail behind it. When confused: head shake, slowdown, dust cloud, then exit.
 
-#### Red gate type
-- Special variant of the math gate (additive or multiplicative, TBD) with distinct red coloring.
-- Higher reward/penalty values than normal gates.
-- Triggers the bull stampede check (above) while present.
-- Implementation: new `gate_type` value or an `is_red` flag on the existing gate.
+#### Gate direction & color (SHIPPED in iter 19)
+- Already implemented (`GateHelper.gate_is_growing`): a gate is BLUE if both doors leave the posse at-least-as-large (additive ≥ 0, multiplicative ≥ 1); otherwise RED.
+- Color tweens on threshold cross when the player shoots additive gates enough to flip them. This is the trigger for the bull-deflection above when that future feature ships.
 
 #### Atmospheric weather effects
 - **Dust storm**: gusts reduce visibility (full-screen ColorRect with low alpha that pulses), cause light periodic damage to posse.

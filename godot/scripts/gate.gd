@@ -17,6 +17,14 @@ const GateHelper = preload("res://scripts/gate_helper.gd")
 # of the two doors (920 wide, 180 tall).
 const SIZE: Vector2 = Vector2(920, 180)
 
+# Door colors. Blue = growing (helpful), red = shrinking (dangerous).
+# Tweened between as the gate's effective direction flips (e.g. when
+# bullets bump a "-3" door past 0 to become "+1", the whole gate goes
+# from red to blue and a future bull hazard would visibly hesitate).
+const COLOR_GROWING: Color = Color(0.32, 0.55, 0.92, 0.94)
+const COLOR_SHRINKING: Color = Color(0.92, 0.32, 0.32, 0.94)
+const COLOR_TWEEN_DURATION: float = 0.22
+
 # 0 = additive (+N/-N), 1 = multiplicative (xN/xM). See gate_helper.gd.
 @export var gate_type: int = 0
 @export var left_value: int = -3
@@ -25,10 +33,16 @@ const SIZE: Vector2 = Vector2(920, 180)
 @export var fire_y: float = 1480.0  # gate fires when position.y crosses this
 
 var _fired: bool = false
+# Tracks whether the gate is currently rendering as "growing" (blue).
+# Compared each refresh to decide whether to snap-set the color or
+# tween it (so a threshold-crossing color flip gets a visible beat).
+var _is_growing: bool = true
 
 @onready var _left_label: Label = $LeftDoor/LeftLabel
 @onready var _right_label: Label = $RightDoor/RightLabel
 @onready var _sparkles: CPUParticles2D = $Sparkles
+@onready var _left_door: ColorRect = $LeftDoor
+@onready var _right_door: ColorRect = $RightDoor
 
 func _ready() -> void:
 	# Update labels to match the @export values. Lets one gate.tscn
@@ -38,6 +52,14 @@ func _ready() -> void:
 		_left_label.text = _format_left(left_value)
 	if _right_label:
 		_right_label.text = _format_right(right_value)
+	# Pick blue/red door tint based on the gate's current effective
+	# direction. Snap on init (no tween needed for first paint).
+	_is_growing = GateHelper.gate_is_growing(left_value, right_value, gate_type)
+	var color := COLOR_GROWING if _is_growing else COLOR_SHRINKING
+	if _left_door:
+		_left_door.color = color
+	if _right_door:
+		_right_door.color = color
 
 func _format_left(v: int) -> String:
 	if gate_type == GateHelper.TYPE_MULTIPLICATIVE:
@@ -67,7 +89,25 @@ func take_bullet_hit() -> bool:
 		if _right_label:
 			_right_label.text = _format_right(right_value)
 		_pulse_labels()
+		_refresh_color()
 	return true
+
+# Re-evaluate the gate's direction (growing or shrinking) and update the
+# door tint. When the threshold crosses (red → blue or blue → red),
+# tween the color so the moment is visible. When the direction is
+# unchanged, do nothing (color is already correct).
+func _refresh_color() -> void:
+	var now_growing := GateHelper.gate_is_growing(left_value, right_value, gate_type)
+	if now_growing == _is_growing:
+		return
+	_is_growing = now_growing
+	var target := COLOR_GROWING if now_growing else COLOR_SHRINKING
+	for door in [_left_door, _right_door]:
+		if door == null:
+			continue
+		var t := create_tween()
+		t.tween_property(door, "color", target, COLOR_TWEEN_DURATION) \
+			.set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN_OUT)
 
 func _pulse_labels() -> void:
 	for label in [_left_label, _right_label]:

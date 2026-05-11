@@ -60,3 +60,38 @@ func test_multiplicative_large_value():
 
 func test_multiplicative_one_leaves_unchanged():
 	assert_eq(GateHelper.apply_effect(7, GateHelper.SIDE_LEFT, 1, 2, GateHelper.TYPE_MULTIPLICATIVE), 7)
+
+# ---------- gate_is_growing: ADDITIVE ----------
+
+func test_additive_both_positive_growing():
+	assert_true(GateHelper.gate_is_growing(5, 3, GateHelper.TYPE_ADDITIVE))
+
+func test_additive_one_negative_shrinking():
+	assert_false(GateHelper.gate_is_growing(-3, 10, GateHelper.TYPE_ADDITIVE))
+
+func test_additive_other_negative_shrinking():
+	assert_false(GateHelper.gate_is_growing(5, -2, GateHelper.TYPE_ADDITIVE))
+
+func test_additive_both_zero_growing():
+	# Zero is neutral; treat as not-shrinking → growing (blue).
+	assert_true(GateHelper.gate_is_growing(0, 0, GateHelper.TYPE_ADDITIVE))
+
+func test_additive_negative_to_zero_crosses_threshold():
+	# Just barely flipped past zero.
+	assert_true(GateHelper.gate_is_growing(0, 10, GateHelper.TYPE_ADDITIVE))
+	assert_false(GateHelper.gate_is_growing(-1, 10, GateHelper.TYPE_ADDITIVE))
+
+# ---------- gate_is_growing: MULTIPLICATIVE ----------
+
+func test_multiplicative_both_greater_than_one_growing():
+	assert_true(GateHelper.gate_is_growing(2, 3, GateHelper.TYPE_MULTIPLICATIVE))
+
+func test_multiplicative_zero_shrinking():
+	assert_false(GateHelper.gate_is_growing(0, 3, GateHelper.TYPE_MULTIPLICATIVE))
+
+func test_multiplicative_one_is_neutral_growing():
+	# ×1 = no change; treat as not-shrinking → growing (blue).
+	assert_true(GateHelper.gate_is_growing(1, 2, GateHelper.TYPE_MULTIPLICATIVE))
+
+func test_multiplicative_both_one_growing():
+	assert_true(GateHelper.gate_is_growing(1, 1, GateHelper.TYPE_MULTIPLICATIVE))

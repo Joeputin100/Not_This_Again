@@ -109,3 +109,43 @@ func test_fired_gate_ignores_bullet():
 	var consumed: bool = gate.take_bullet_hit()
 	assert_false(consumed, "fired gate doesn't consume bullets")
 	assert_eq(gate.left_value, -3, "no value change after fire")
+
+# ---------- color reflects gate direction ----------
+
+func test_additive_with_negative_starts_shrinking():
+	gate = _instance_with_type(GateHelper.TYPE_ADDITIVE, -3, 10)
+	await get_tree().process_frame
+	assert_false(gate._is_growing,
+		"-3/+10 has a negative door → should be SHRINKING (red) at start")
+
+func test_additive_all_positive_starts_growing():
+	gate = _instance_with_type(GateHelper.TYPE_ADDITIVE, 5, 10)
+	await get_tree().process_frame
+	assert_true(gate._is_growing,
+		"+5/+10 → SHOULD be growing (blue) at start")
+
+func test_shooting_flips_red_to_blue():
+	# -3/+10 starts red. After 3 hits: 0/+13 → still growing (≥ 0 = growing).
+	# Wait, 0 counts as growing. So after 3 hits we flip to blue.
+	gate = _instance_with_type(GateHelper.TYPE_ADDITIVE, -3, 10)
+	await get_tree().process_frame
+	assert_false(gate._is_growing, "starts red")
+	gate.take_bullet_hit()  # -2 / 11
+	gate.take_bullet_hit()  # -1 / 12
+	assert_false(gate._is_growing, "still red after 2 hits")
+	gate.take_bullet_hit()  # 0 / 13 → blue
+	assert_true(gate._is_growing, "FLIPPED to blue after 3rd hit")
+
+func test_shooting_blue_gate_stays_blue():
+	gate = _instance_with_type(GateHelper.TYPE_ADDITIVE, 5, 10)
+	await get_tree().process_frame
+	assert_true(gate._is_growing)
+	gate.take_bullet_hit()
+	gate.take_bullet_hit()
+	assert_true(gate._is_growing, "stays blue when shot from positive baseline")
+
+func test_multiplicative_gate_with_zero_is_red():
+	gate = _instance_with_type(GateHelper.TYPE_MULTIPLICATIVE, 0, 3)
+	await get_tree().process_frame
+	assert_false(gate._is_growing,
+		"x0 zeroes the posse → SHRINKING (red)")
