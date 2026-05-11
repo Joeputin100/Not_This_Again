@@ -18,6 +18,25 @@ signal triggered(gate_center_x: float)
 
 var _fired: bool = false
 
+@onready var _left_label: Label = $LeftDoor/LeftLabel
+@onready var _right_label: Label = $RightDoor/RightLabel
+
+func _ready() -> void:
+	# Update labels to match the @export values. Lets one gate.tscn
+	# serve every variant — caller sets left_value/right_value and the
+	# UI follows.
+	if _left_label:
+		_left_label.text = _format_left(left_value)
+	if _right_label:
+		_right_label.text = _format_right(right_value)
+
+func _format_left(v: int) -> String:
+	# +N for adds, plain -N for subtracts (the - is already in the int)
+	return "+%d" % v if v >= 0 else str(v)
+
+func _format_right(v: int) -> String:
+	return "x%d" % v
+
 func _process(delta: float) -> void:
 	position.y += scroll_speed * delta
 	if not _fired and position.y >= fire_y:

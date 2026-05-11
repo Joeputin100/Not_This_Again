@@ -26,7 +26,20 @@ offset_right = 1004.0
 offset_bottom = 1920.0
 color = Color(0.4, 0.3, 0.15, 0.35)
 
-[node name="Gate" parent="." instance=ExtResource("3_gate")]
+[node name="Gate1" parent="." instance=ExtResource("3_gate")]
+position = Vector2(540, 200)
+left_value = 10
+right_value = 2
+
+[node name="Gate2" parent="." instance=ExtResource("3_gate")]
+position = Vector2(540, -200)
+left_value = -5
+right_value = 3
+
+[node name="Gate3" parent="." instance=ExtResource("3_gate")]
+position = Vector2(540, -600)
+left_value = 25
+right_value = 2
 
 [node name="Cowboy" type="Node2D" parent="."]
 position = Vector2(540, 1500)
@@ -93,3 +106,63 @@ theme_override_colors/font_color = Color(0.831, 0.659, 0.341, 0.55)
 theme_override_font_sizes/font_size = 32
 text = "drag to steer. back gesture exits."
 horizontal_alignment = 1
+
+[node name="WinOverlay" type="CanvasLayer" parent="."]
+layer = 10
+visible = false
+
+[node name="Dim" type="ColorRect" parent="WinOverlay"]
+offset_right = 1080.0
+offset_bottom = 1920.0
+color = Color(0, 0, 0, 0.55)
+
+[node name="WinPanel" type="Control" parent="WinOverlay"]
+anchors_preset = -1
+anchor_left = 0.5
+anchor_top = 0.5
+anchor_right = 0.5
+anchor_bottom = 0.5
+offset_left = -440.0
+offset_top = -360.0
+offset_right = 440.0
+offset_bottom = 200.0
+
+[node name="WinPanelBg" type="ColorRect" parent="WinOverlay/WinPanel"]
+offset_right = 880.0
+offset_bottom = 560.0
+color = Color(0.226, 0.157, 0.078, 0.95)
+
+[node name="WinTitle" type="Label" parent="WinOverlay/WinPanel"]
+anchor_right = 1.0
+offset_left = 20.0
+offset_top = 40.0
+offset_right = -20.0
+offset_bottom = 200.0
+theme = ExtResource("2_theme")
+theme_override_font_sizes/font_size = 128
+text = "BOUNTY!"
+horizontal_alignment = 1
+
+[node name="WinSubtitle" type="Label" parent="WinOverlay/WinPanel"]
+anchor_right = 1.0
+offset_left = 20.0
+offset_top = 220.0
+offset_right = -20.0
+offset_bottom = 380.0
+theme = ExtResource("2_theme")
+theme_override_colors/font_color = Color(0.831, 0.659, 0.341, 1)
+theme_override_font_sizes/font_size = 48
+text = "your posse made it out alive
+(barely)"
+horizontal_alignment = 1
+
+[node name="PlayAgainButton" type="Button" parent="WinOverlay/WinPanel"]
+anchor_left = 0.5
+anchor_right = 0.5
+offset_left = -240.0
+offset_top = 380.0
+offset_right = 240.0
+offset_bottom = 540.0
+theme = ExtResource("2_theme")
+theme_override_font_sizes/font_size = 64
+text = "AGAIN"

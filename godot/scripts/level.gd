@@ -1,35 +1,56 @@
 extends Node2D
 
-# Phase 1 level prototype: a draggable cowboy, one math gate scrolling
-# down at it, and a posse counter that updates when the gate fires.
-# Future commits add more gates, barricades, an outlaw boss, win/lose UI.
+# Phase 1 level: 3 math gates scroll toward the cowboy. Posse count
+# updates per gate. When all gates have fired, the WinOverlay slides in
+# with the final bounty, an AGAIN button replays the level. Back gesture
+# returns to menu mid-run or post-win.
 
 const MovementBounds = preload("res://scripts/movement_bounds.gd")
 const GateHelper = preload("res://scripts/gate_helper.gd")
+const LevelProgressScript = preload("res://scripts/level_progress.gd")
 
-# Lerp speed for follow-the-finger smoothing. Higher = snappier;
-# lower = laggier. ~12 feels responsive without jitter on 60Hz mid-range.
 const FOLLOW_SPEED: float = 12.0
-
 const STARTING_POSSE: int = 5
 
 @onready var cowboy: Node2D = $Cowboy
-@onready var gate: Node2D = $Gate
 @onready var posse_label: Label = $UI/PosseCount
+@onready var win_overlay: CanvasLayer = $WinOverlay
+@onready var win_panel: Control = $WinOverlay/WinPanel
+@onready var win_subtitle: Label = $WinOverlay/WinPanel/WinSubtitle
+@onready var again_button: Button = $WinOverlay/WinPanel/PlayAgainButton
 
-# Where the cowboy is being told to go; smoothed in _process().
 var target_x: float
 
-# Run-local state (NOT persisted in GameState — posse resets each run).
+# Run-local state. Resets each level.
 var posse_count: int = STARTING_POSSE:
 	set(value):
 		posse_count = maxi(1, value)
 		_refresh_posse_label()
 
+var progress: RefCounted
+
 func _ready() -> void:
 	target_x = cowboy.position.x
-	gate.triggered.connect(_on_gate_triggered)
+	progress = LevelProgressScript.new()
+
+	# Discover all gates by group instead of hand-listing — adding a 4th
+	# gate to the scene tree later won't require code changes here.
+	var gates := _gather_gates()
+	progress.reset(gates.size())
+	for gate in gates:
+		gate.triggered.connect(_on_gate_triggered.bind(gate))
+
+	again_button.pressed.connect(_on_again_pressed)
+	# Pivot for the win panel scale-in animation
+	win_panel.pivot_offset = Vector2(440, 280)
 	_refresh_posse_label()
+
+func _gather_gates() -> Array[Node]:
+	var gates: Array[Node] = []
+	for child in get_children():
+		if child.has_signal("triggered") and child.has_method("_format_left"):
+			gates.append(child)
+	return gates
 
 func _process(delta: float) -> void:
 	cowboy.position.x = lerpf(cowboy.position.x, target_x, FOLLOW_SPEED * delta)
@@ -55,18 +76,19 @@ func _notification(what: int) -> void:
 	elif what == NOTIFICATION_WM_CLOSE_REQUEST:
 		get_tree().quit()
 
-func _on_gate_triggered(gate_center_x: float) -> void:
+func _on_gate_triggered(gate_center_x: float, gate: Node) -> void:
 	var side := GateHelper.which_side(cowboy.position.x, gate_center_x)
 	posse_count = GateHelper.apply_effect(posse_count, side, gate.left_value, gate.right_value)
 	AudioBus.play_gate_pass()
 	_pulse_posse_label()
+	progress.record_pass()
+	if progress.is_complete():
+		_show_win()
 
 func _refresh_posse_label() -> void:
 	if posse_label:
 		posse_label.text = "POSSE: %d" % posse_count
 
-# Visual punch when the count changes: scale-pop animation on the label.
-# Without this the number just changes silently and the moment doesn't land.
 func _pulse_posse_label() -> void:
 	if not posse_label:
 		return
@@ -78,3 +100,31 @@ func _pulse_posse_label() -> void:
 	tween.tween_property(posse_label, "scale", Vector2.ONE, 0.18) \
 		.set_trans(Tween.TRANS_SINE) \
 		.set_ease(Tween.EASE_IN_OUT)
+
+# ---------- Win flow ----------
+
+func _show_win() -> void:
+	# Murderbot-flavored bounty copy. Phase 1+ may template this further.
+	win_subtitle.text = "%d posse members made it.
+whatever that's worth." % posse_count
+	# Wait a beat so the player notices the last gate fire before the
+	# overlay covers it.
+	await get_tree().create_timer(0.55).timeout
+	win_overlay.visible = true
+	win_panel.scale = Vector2(0.55, 0.55)
+	var tween := create_tween().set_parallel(true)
+	tween.tween_property(win_panel, "scale", Vector2.ONE, 0.32) \
+		.set_trans(Tween.TRANS_BACK) \
+		.set_ease(Tween.EASE_OUT)
+
+func _on_again_pressed() -> void:
+	AudioBus.play_tap()
+	# Squish-and-bounce on the button before reloading the level.
+	again_button.disabled = true
+	var t := create_tween()
+	t.tween_property(again_button, "scale", Vector2(0.92, 0.92), 0.06)
+	t.tween_property(again_button, "scale", Vector2.ONE, 0.16) \
+		.set_trans(Tween.TRANS_BACK) \
+		.set_ease(Tween.EASE_OUT)
+	await t.finished
+	get_tree().reload_current_scene()
