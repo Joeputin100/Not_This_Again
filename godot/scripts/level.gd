@@ -122,6 +122,9 @@ func _process(delta: float) -> void:
 	# Bullet ↔ barrel collision pass. O(bullets × barrels) per frame —
 	# trivial at our scale (<15 bullets active, <3 barrels).
 	_resolve_bullet_barrel_collisions()
+	# Bullet ↔ gate collision: additive gates get value-bumped, mult
+	# gates just absorb the bullet.
+	_resolve_bullet_gate_collisions()
 	# Barrel ↔ cowboy collision pass. If a barrel reaches the cowboy
 	# alive, it damages the posse.
 	_resolve_barrel_cowboy_collisions()
@@ -162,6 +165,28 @@ func _resolve_bullet_barrel_collisions() -> void:
 				bullet.remove_from_group("bullets")
 				bullet.queue_free()
 				break  # this bullet is done; move to next bullet
+
+func _resolve_bullet_gate_collisions() -> void:
+	# Discover gates via _gather_gates (same duck-type check used in
+	# _ready). Then for each unfired gate, check overlap with each
+	# bullet — additive gates bump their values, mult gates just
+	# absorb. Either way the bullet is consumed.
+	var bullets := get_tree().get_nodes_in_group("bullets")
+	if bullets.is_empty():
+		return
+	var gates := _gather_gates()
+	if gates.is_empty():
+		return
+	for bullet in bullets:
+		for gate in gates:
+			if Collision2D.rects_overlap(
+					bullet.position, BulletScript.SIZE,
+					gate.position, gate.SIZE):
+				var consumed: bool = gate.take_bullet_hit()
+				if consumed:
+					bullet.remove_from_group("bullets")
+					bullet.queue_free()
+					break
 
 func _resolve_barrel_cowboy_collisions() -> void:
 	# If a barrel reaches the cowboy intact, it slams into the posse:
@@ -248,7 +273,7 @@ func _on_gate_triggered(gate_center_x: float, gate: Node) -> void:
 		sparkles.amount = int(28.0 * mult)
 
 	var side := GateHelper.which_side(cowboy.position.x, gate_center_x)
-	posse_count = GateHelper.apply_effect(posse_count, side, gate.left_value, gate.right_value)
+	posse_count = GateHelper.apply_effect(posse_count, side, gate.left_value, gate.right_value, gate.gate_type)
 	AudioBus.play_gate_pass()
 	shake.add_trauma(CombosCounterScript.trauma_for(combo))
 	_pulse_posse_label()

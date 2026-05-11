@@ -20,27 +20,43 @@ func test_exact_divider_treated_as_right():
 func test_just_above_divider_is_right():
 	assert_eq(GateHelper.which_side(540.01, 540.0), GateHelper.SIDE_RIGHT)
 
-# ---------- apply_effect ----------
+# ---------- apply_effect: ADDITIVE ----------
 
-func test_left_door_adds():
-	# 5 posse, +10 gate → 15
-	assert_eq(GateHelper.apply_effect(5, GateHelper.SIDE_LEFT, 10, 2), 15)
+func test_additive_left_door_adds():
+	# 5 posse + 10 → 15
+	assert_eq(GateHelper.apply_effect(5, GateHelper.SIDE_LEFT, 10, 2, GateHelper.TYPE_ADDITIVE), 15)
 
-func test_right_door_multiplies():
-	# 5 posse, ×2 gate → 10
-	assert_eq(GateHelper.apply_effect(5, GateHelper.SIDE_RIGHT, 10, 2), 10)
+func test_additive_right_door_adds():
+	# 5 posse + 2 → 7
+	assert_eq(GateHelper.apply_effect(5, GateHelper.SIDE_RIGHT, 10, 2, GateHelper.TYPE_ADDITIVE), 7)
 
-func test_negative_addition_clamped_to_one():
-	# 5 posse, -10 gate → -5 → clamped to 1
-	assert_eq(GateHelper.apply_effect(5, GateHelper.SIDE_LEFT, -10, 2), 1)
+func test_additive_negative_value_subtracts():
+	# 5 posse + (-3) → 2
+	assert_eq(GateHelper.apply_effect(5, GateHelper.SIDE_LEFT, -3, 10, GateHelper.TYPE_ADDITIVE), 2)
 
-func test_zero_multiplier_clamped_to_one():
-	# 5 posse, ×0 gate → 0 → clamped to 1
-	assert_eq(GateHelper.apply_effect(5, GateHelper.SIDE_RIGHT, 10, 0), 1)
+func test_additive_overflow_negative_clamped_to_one():
+	# 5 posse + (-99) → -94 → clamped to 1
+	assert_eq(GateHelper.apply_effect(5, GateHelper.SIDE_LEFT, -99, 10, GateHelper.TYPE_ADDITIVE), 1)
 
-func test_large_multiplier():
-	# Sanity: big numbers work
-	assert_eq(GateHelper.apply_effect(50, GateHelper.SIDE_RIGHT, 0, 10), 500)
+func test_additive_starting_from_one():
+	assert_eq(GateHelper.apply_effect(1, GateHelper.SIDE_LEFT, 4, 2, GateHelper.TYPE_ADDITIVE), 5)
 
-func test_addition_starting_from_one():
-	assert_eq(GateHelper.apply_effect(1, GateHelper.SIDE_LEFT, 4, 2), 5)
+# ---------- apply_effect: MULTIPLICATIVE ----------
+
+func test_multiplicative_left_door_multiplies():
+	# 5 posse * 2 → 10
+	assert_eq(GateHelper.apply_effect(5, GateHelper.SIDE_LEFT, 2, 3, GateHelper.TYPE_MULTIPLICATIVE), 10)
+
+func test_multiplicative_right_door_multiplies():
+	# 5 posse * 3 → 15
+	assert_eq(GateHelper.apply_effect(5, GateHelper.SIDE_RIGHT, 2, 3, GateHelper.TYPE_MULTIPLICATIVE), 15)
+
+func test_multiplicative_zero_clamped_to_one():
+	# 5 posse * 0 → 0 → clamped to 1
+	assert_eq(GateHelper.apply_effect(5, GateHelper.SIDE_LEFT, 0, 3, GateHelper.TYPE_MULTIPLICATIVE), 1)
+
+func test_multiplicative_large_value():
+	assert_eq(GateHelper.apply_effect(50, GateHelper.SIDE_RIGHT, 1, 10, GateHelper.TYPE_MULTIPLICATIVE), 500)
+
+func test_multiplicative_one_leaves_unchanged():
+	assert_eq(GateHelper.apply_effect(7, GateHelper.SIDE_LEFT, 1, 2, GateHelper.TYPE_MULTIPLICATIVE), 7)
