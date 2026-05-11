@@ -1,6 +1,6 @@
 name: Android Debug Build
 
-# Runs on every push and PR. Produces a debug-signed .apk for sideloading.
+# Runs on every push and PR. Produces a debug-signed .aab for sideloading.
 # Debug builds use Godot's auto-generated debug keystore — no GCP auth needed.
 
 on:
@@ -15,9 +15,9 @@ permissions:
 
 jobs:
   build:
-    name: Build debug .apk
+    name: Build debug .aab
     runs-on: ubuntu-latest
-    timeout-minutes: 25
+    timeout-minutes: 30
 
     steps:
       - name: Checkout
@@ -31,6 +31,23 @@ jobs:
 
       - name: Setup Android SDK
         uses: android-actions/setup-android@v3
+
+      - name: Install Godot Android build template into project
+        # The custom Android build template (gradle source) ships inside
+        # Godot's export templates archive as android_source.zip. Extract
+        # it into android/build/ so use_gradle_build=true can produce AAB
+        # without needing the Godot Editor's "Install Android Build
+        # Template" menu (which has no CLI equivalent in 4.6.1).
+        run: |
+          mkdir -p /tmp/godot-templates
+          cd /tmp/godot-templates
+          wget -nv https://github.com/godotengine/godot-builds/releases/download/4.6.1-stable/Godot_v4.6.1-stable_export_templates.tpz \
+            -O templates.tpz
+          unzip -j -o templates.tpz '*/android_source.zip' -d .
+          mkdir -p "$GITHUB_WORKSPACE/android/build"
+          unzip -o android_source.zip -d "$GITHUB_WORKSPACE/android/build/"
+          echo "Installed template files:"
+          ls "$GITHUB_WORKSPACE/android/build/" | head -20
 
       - name: Godot export (debug)
         uses: firebelley/godot-export@v7.0.0
@@ -48,7 +65,7 @@ jobs:
       - name: Upload debug artifact
         uses: actions/upload-artifact@v4
         with:
-          name: app-debug-apk
-          path: build/**/*.apk
+          name: app-debug-aab
+          path: build/**/*.aab
           retention-days: 14
           if-no-files-found: error

@@ -1,7 +1,7 @@
 name: Android Release Build
 
 # Tag-triggered. Pulls the release keystore from Google Secret Manager
-# via Workload Identity Federation, signs the .apk, uploads as artifact.
+# via Workload Identity Federation, signs the .aab, uploads as artifact.
 
 on:
   push:
@@ -14,9 +14,9 @@ permissions:
 
 jobs:
   build:
-    name: Build signed release .apk
+    name: Build signed release .aab
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 35
 
     steps:
       - name: Checkout
@@ -30,6 +30,19 @@ jobs:
 
       - name: Setup Android SDK
         uses: android-actions/setup-android@v3
+
+      - name: Install Godot Android build template into project
+        # See android-debug.yml for the rationale on this step.
+        run: |
+          mkdir -p /tmp/godot-templates
+          cd /tmp/godot-templates
+          wget -nv https://github.com/godotengine/godot-builds/releases/download/4.6.1-stable/Godot_v4.6.1-stable_export_templates.tpz \
+            -O templates.tpz
+          unzip -j -o templates.tpz '*/android_source.zip' -d .
+          mkdir -p "$GITHUB_WORKSPACE/android/build"
+          unzip -o android_source.zip -d "$GITHUB_WORKSPACE/android/build/"
+          echo "Installed template files:"
+          ls "$GITHUB_WORKSPACE/android/build/" | head -20
 
       - name: Authenticate to GCP (Workload Identity Federation)
         uses: google-github-actions/auth@v2
@@ -71,9 +84,6 @@ jobs:
           KEY_ALIAS: not_this_again_release
           KEYSTORE_PASSWORD: ${{ steps.fetch_password.outputs.keystore_password }}
         run: |
-          # Substitute the empty release-keystore values committed in the
-          # preset file with real values from Secret Manager. The pattern
-          # is exact-match string replacement; no regex / shell expansion.
           python3 <<'PYEOF'
           import os
           path = 'godot/export_presets.cfg'
@@ -117,7 +127,7 @@ jobs:
       - name: Upload release artifact
         uses: actions/upload-artifact@v4
         with:
-          name: app-release-apk
-          path: build/**/*.apk
+          name: app-release-aab
+          path: build/**/*.aab
           retention-days: 90
           if-no-files-found: error
