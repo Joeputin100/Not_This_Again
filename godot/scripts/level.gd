@@ -127,11 +127,18 @@ func _on_gate_triggered(gate_center_x: float, gate: Node) -> void:
 	# Combo escalates per consecutive gate. Particle amount and screen
 	# trauma both scale via CombosCounter's curves; over combo 3 we get
 	# the "MEGA!" floating banner (Candy-Crush-style escalation).
-	var combo := combos.step()
+	#
+	# Explicit `: int` annotation on the step() call result is REQUIRED:
+	# `combos` is typed as base RefCounted (since CombosCounter has no
+	# class_name), so the parser can't infer `combos.step()`'s return
+	# type. Without this annotation, the whole script fails to load at
+	# runtime — manifesting as level.gd not attached, _ready/_process/
+	# _input "nonexistent." Found via test_level_integration.gd in iter 14.
+	var combo: int = combos.step()
 
 	# Boost gate's particle amount BEFORE its _play_pass_animation runs.
 	# Signal emission is synchronous, so this lands before emitting=true.
-	var mult := CombosCounterScript.particle_multiplier(combo)
+	var mult: float = CombosCounterScript.particle_multiplier(combo)
 	if gate.has_node("Sparkles"):
 		var sparkles := gate.get_node("Sparkles") as CPUParticles2D
 		sparkles.amount = int(28.0 * mult)
