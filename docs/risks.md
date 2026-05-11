@@ -57,3 +57,18 @@ Live tracker for engine / SDK / tooling pitfalls that could derail "Play Store f
 ## Resolved
 
 _(none yet)_
+
+## Active deferrals
+
+### Phase 0 ships APK, not AAB (target: AAB by phase 3)
+- **Source**: Discovered 2026-05-11 on first CI run. Godot rejected AAB output because `gradle_build/use_gradle_build=false`. AAB requires the custom Android build template, which only the Godot Editor's "Project → Install Android Build Template" menu can install — there is no CLI flag in Godot 4.6.1.
+- **Current state**: `gradle_build/export_format=0` (APK), `use_gradle_build=false`. Godot ships its prebuilt APK template with `targetSdk=35`, `minSdk=21` defaults. We accept those for phase 0.
+- **What we lose in the interim**:
+  - APK instead of AAB (fine for sideloading; not acceptable for Play Store)
+  - `targetSdk=35` instead of 36 (fine for sideloading; will be Play-Store-blocking by 2026 cutoff)
+  - `minSdk=21` instead of 24 (devices we'd lose with 24 are already supported here; cosmetic)
+- **Path to AAB**:
+  - Commit a Godot 4.6.1 custom Android build template into `android/build/` — files come from Godot's editor binary at install-template time
+  - Flip `use_gradle_build=true`, `export_format=1`, restore min/target sdk overrides
+  - Re-run CI; verify AAB output
+- **Owner**: tracked as task #22 (added 2026-05-11)

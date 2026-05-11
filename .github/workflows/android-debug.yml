@@ -54,7 +54,7 @@ jobs:
       - name: Upload debug artifact
         uses: actions/upload-artifact@v4
         with:
-          name: app-debug-aab
-          path: build/*.aab
+          name: app-debug-apk
+          path: build/*.apk
           retention-days: 14
           if-no-files-found: error
