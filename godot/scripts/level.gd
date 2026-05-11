@@ -21,6 +21,9 @@ const STARTING_POSSE: int = 5
 # Bullets spawn this far above the cowboy each shot.
 const BULLET_SPAWN_Y_OFFSET: float = -120.0
 
+# Approximate cowboy hit box for barrel collision detection.
+const COWBOY_SIZE: Vector2 = Vector2(120, 200)
+
 @onready var cowboy: Node2D = $Cowboy
 @onready var camera: Camera2D = $Camera
 @onready var posse_label: Label = $UI/PosseCount
@@ -44,6 +47,11 @@ var _fire_timer: float = 0.0
 var _bullets_fired: int = 0
 var _barrels_destroyed: int = 0
 
+# When false, _spawn_bullet() is a no-op. Set to false on win so we don't
+# keep showering the (now-decorative) screen with bullets during the
+# victory overlay.
+var _shooting_active: bool = true
+
 # Run-local state. Resets each level.
 var posse_count: int = STARTING_POSSE:
 	set(value):
@@ -59,6 +67,13 @@ func _ready() -> void:
 	# Belt-and-suspenders: also disable quit-on-go-back at runtime in case
 	# the project.godot setting doesn't reach Android's Activity layer.
 	get_tree().set_quit_on_go_back(false)
+	# Third route: also connect to the Window's go_back_requested signal
+	# directly. Godot emits this in parallel with NOTIFICATION_WM_GO_BACK_
+	# REQUEST, so if one path is intercepted at the Java layer, the other
+	# might still fire. Each handler logs to DebugLog so the user's COPY
+	# button output reveals which (if either) actually ran.
+	get_window().go_back_requested.connect(_on_back_requested_signal)
+	DebugLog.add("level: quit_on_go_back=%s" % str(get_tree().is_quit_on_go_back()))
 	target_x = cowboy.position.x
 	progress = LevelProgressScript.new()
 	shake = ScreenShakeScript.new()
@@ -107,6 +122,9 @@ func _process(delta: float) -> void:
 	# Bullet ↔ barrel collision pass. O(bullets × barrels) per frame —
 	# trivial at our scale (<15 bullets active, <3 barrels).
 	_resolve_bullet_barrel_collisions()
+	# Barrel ↔ cowboy collision pass. If a barrel reaches the cowboy
+	# alive, it damages the posse.
+	_resolve_barrel_cowboy_collisions()
 
 	# Diagnostic — fallback to get_node in case @onready ref is stale.
 	var dbg := debug_label if debug_label != null else get_node_or_null("UI/DebugInfo") as Label
@@ -118,6 +136,8 @@ func _process(delta: float) -> void:
 		]
 
 func _spawn_bullet() -> void:
+	if not _shooting_active:
+		return
 	var bullet := BulletScene.instantiate()
 	bullet.position = cowboy.position + Vector2(0, BULLET_SPAWN_Y_OFFSET)
 	add_child(bullet)
@@ -142,6 +162,24 @@ func _resolve_bullet_barrel_collisions() -> void:
 				bullet.remove_from_group("bullets")
 				bullet.queue_free()
 				break  # this bullet is done; move to next bullet
+
+func _resolve_barrel_cowboy_collisions() -> void:
+	# If a barrel reaches the cowboy intact, it slams into the posse:
+	# damages posse_count by the barrel's remaining HP, destroys the barrel.
+	# The barrel's destroy animation is reused; no separate "explosion".
+	for barrel in get_tree().get_nodes_in_group("barrels"):
+		if barrel._destroyed:
+			continue
+		if Collision2D.rects_overlap(
+				barrel.position, BarrelScript.SIZE,
+				cowboy.position, COWBOY_SIZE):
+			var damage: int = barrel.hp
+			DebugLog.add("barrel hit cowboy at hp=%d → posse -%d" % [damage, damage])
+			posse_count = maxi(1, posse_count - damage)
+			_pulse_posse_label()
+			shake.add_trauma(0.65)
+			# Force-destroy the barrel (overkill so take_damage returns true).
+			barrel.take_damage(barrel.hp)
 
 func _input(event: InputEvent) -> void:
 	# Track ALL inputs to verify _input is being called at all, not just
@@ -171,11 +209,22 @@ func _input(event: InputEvent) -> void:
 
 func _notification(what: int) -> void:
 	if what == NOTIFICATION_WM_GO_BACK_REQUEST:
+		# Also handled via go_back_requested signal in _ready. Both can fire;
+		# we route the same way regardless of which arrived.
 		DebugLog.add("level NOTIFICATION_WM_GO_BACK_REQUEST → menu")
-		get_tree().change_scene_to_file("res://scenes/main_menu.tscn")
+		_go_back_to_menu()
 	elif what == NOTIFICATION_WM_CLOSE_REQUEST:
 		DebugLog.add("level NOTIFICATION_WM_CLOSE_REQUEST → quit")
 		get_tree().quit()
+
+func _on_back_requested_signal() -> void:
+	DebugLog.add("level go_back_requested SIGNAL → menu")
+	_go_back_to_menu()
+
+# Idempotent — calling twice from both routes is safe; change_scene_to_file
+# bails fast if scene is already changing.
+func _go_back_to_menu() -> void:
+	get_tree().change_scene_to_file("res://scenes/main_menu.tscn")
 
 func _on_gate_triggered(gate_center_x: float, gate: Node) -> void:
 	# Combo escalates per consecutive gate. Particle amount and screen
@@ -273,6 +322,11 @@ func _pulse_posse_label() -> void:
 # ---------- Win flow ----------
 
 func _show_win() -> void:
+	# Stop new bullets from spawning during/after the win overlay. Bullets
+	# already in flight continue until they exit the top of the screen
+	# (cleaner than a hard-cancel; no abrupt visual stop).
+	_shooting_active = false
+	DebugLog.add("WIN: bullets stopped, %d posse remaining" % posse_count)
 	# Murderbot-flavored bounty copy. Phase 1+ may template this further.
 	win_subtitle.text = "%d posse members made it.
 whatever that's worth." % posse_count

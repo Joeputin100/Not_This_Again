@@ -30,7 +30,14 @@ var _subtitle_idle_tween: Tween
 func _ready() -> void:
 	# Belt-and-suspenders runtime call; project.godot also sets this to false.
 	get_tree().set_quit_on_go_back(false)
-	DebugLog.add("main_menu _ready (build=%s)" % BuildInfo.SHA)
+	# Third route: hook the Window's signal directly in addition to the
+	# _notification path. From the main menu we still quit on back, but
+	# logging from both paths reveals which one actually fires on the
+	# user's Android 16.
+	get_window().go_back_requested.connect(_on_back_requested_signal)
+	DebugLog.add("main_menu _ready (build=%s) quit_on_go_back=%s" % [
+		BuildInfo.SHA, str(get_tree().is_quit_on_go_back()),
+	])
 	play_button.pressed.connect(_on_play_pressed)
 	IdleNudge.idle_started.connect(_on_idle_started)
 	IdleNudge.idle_ended.connect(_on_idle_ended)
