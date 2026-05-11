@@ -41,6 +41,9 @@ position = Vector2(540, -600)
 left_value = 25
 right_value = 2
 
+[node name="Camera" type="Camera2D" parent="."]
+position = Vector2(540, 960)
+
 [node name="Cowboy" type="Node2D" parent="."]
 position = Vector2(540, 1500)
 

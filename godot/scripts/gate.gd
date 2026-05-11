@@ -20,6 +20,7 @@ var _fired: bool = false
 
 @onready var _left_label: Label = $LeftDoor/LeftLabel
 @onready var _right_label: Label = $RightDoor/RightLabel
+@onready var _sparkles: CPUParticles2D = $Sparkles
 
 func _ready() -> void:
 	# Update labels to match the @export values. Lets one gate.tscn
@@ -45,11 +46,16 @@ func _process(delta: float) -> void:
 		_play_pass_animation()
 
 func _play_pass_animation() -> void:
-	# Subtle "gate consumed" feedback: fade out and shrink as it scrolls
-	# off the bottom. Real Candy-Crush polish (particle burst, screen
-	# shake) lands in a later commit.
+	# Doors fade + shrink. Particles fire independently so the burst
+	# doesn't get faded out along with the doors.
+	if _sparkles:
+		_sparkles.emitting = true
 	var tween := create_tween().set_parallel(true)
-	tween.tween_property(self, "modulate:a", 0.0, 0.4)
-	tween.tween_property(self, "scale", Vector2(0.85, 0.85), 0.4) \
+	tween.tween_property($LeftDoor, "modulate:a", 0.0, 0.35)
+	tween.tween_property($RightDoor, "modulate:a", 0.0, 0.35)
+	tween.tween_property($LeftDoor, "scale", Vector2(0.85, 0.85), 0.35) \
+		.set_trans(Tween.TRANS_BACK) \
+		.set_ease(Tween.EASE_IN)
+	tween.tween_property($RightDoor, "scale", Vector2(0.85, 0.85), 0.35) \
 		.set_trans(Tween.TRANS_BACK) \
 		.set_ease(Tween.EASE_IN)

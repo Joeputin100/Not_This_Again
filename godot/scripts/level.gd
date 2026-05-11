@@ -8,11 +8,13 @@ extends Node2D
 const MovementBounds = preload("res://scripts/movement_bounds.gd")
 const GateHelper = preload("res://scripts/gate_helper.gd")
 const LevelProgressScript = preload("res://scripts/level_progress.gd")
+const ScreenShakeScript = preload("res://scripts/screen_shake.gd")
 
 const FOLLOW_SPEED: float = 12.0
 const STARTING_POSSE: int = 5
 
 @onready var cowboy: Node2D = $Cowboy
+@onready var camera: Camera2D = $Camera
 @onready var posse_label: Label = $UI/PosseCount
 @onready var win_overlay: CanvasLayer = $WinOverlay
 @onready var win_panel: Control = $WinOverlay/WinPanel
@@ -28,10 +30,12 @@ var posse_count: int = STARTING_POSSE:
 		_refresh_posse_label()
 
 var progress: RefCounted
+var shake: RefCounted
 
 func _ready() -> void:
 	target_x = cowboy.position.x
 	progress = LevelProgressScript.new()
+	shake = ScreenShakeScript.new()
 
 	# Discover all gates by group instead of hand-listing — adding a 4th
 	# gate to the scene tree later won't require code changes here.
@@ -54,6 +58,9 @@ func _gather_gates() -> Array[Node]:
 
 func _process(delta: float) -> void:
 	cowboy.position.x = lerpf(cowboy.position.x, target_x, FOLLOW_SPEED * delta)
+	# Drive screen shake. CanvasLayer-rooted UI is unaffected; only
+	# world-space nodes (background, lane guides, gates, cowboy) shake.
+	camera.offset = shake.tick(delta)
 
 func _input(event: InputEvent) -> void:
 	var new_x := -1.0
@@ -80,6 +87,7 @@ func _on_gate_triggered(gate_center_x: float, gate: Node) -> void:
 	var side := GateHelper.which_side(cowboy.position.x, gate_center_x)
 	posse_count = GateHelper.apply_effect(posse_count, side, gate.left_value, gate.right_value)
 	AudioBus.play_gate_pass()
+	shake.add_trauma(0.5)
 	_pulse_posse_label()
 	progress.record_pass()
 	if progress.is_complete():
