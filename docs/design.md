@@ -125,6 +125,30 @@ The premise (bow-legged cowboys mathematically multiplying through saloon doors 
 
 Polish budget for this game is intentionally **higher than the gameplay budget** by a meaningful ratio. Mechanics ship in phase 1; polish is the entire point of phase 3 and is what makes the difference between a Play Store also-ran and a featured title.
 
+### Future hazards & content (deferred — not phase 1)
+
+Captured here so they don't get lost. Each lands in a later phase when the baseline gameplay loop has been verified.
+
+#### Bull stampede hazard (random event tied to red gates)
+- **Trigger**: low-probability random event whenever a level contains a "red gate" (a special, possibly higher-stakes gate type — to be defined).
+- **Behavior**: bull with large horns enters from off-screen at very high speed, runs through, exits off-screen on the opposite side. Does NOT track or fight the player.
+- **Stats**: HP 500–1000 (effectively impossible to kill with normal bullet rate); high cowboy collision damage; will destroy any red gate it passes through.
+- **Implementation sketch**: new `bull.gd` joining a "bulls" group. Spawned by a `BullSpawner` that watches active red gates and rolls a probability check each frame they're on-screen. Bull movement uses a fixed direction (left→right or right→left), Vector2.RIGHT × speed × delta. Despawn when off-screen.
+- **Visual**: side-profile bull silhouette with prominent horns, dust trail behind it.
+
+#### Red gate type
+- Special variant of the math gate (additive or multiplicative, TBD) with distinct red coloring.
+- Higher reward/penalty values than normal gates.
+- Triggers the bull stampede check (above) while present.
+- Implementation: new `gate_type` value or an `is_red` flag on the existing gate.
+
+#### Atmospheric weather effects
+- **Dust storm**: gusts reduce visibility (full-screen ColorRect with low alpha that pulses), cause light periodic damage to posse.
+- **Rain**: reduced visibility (full-screen overlay with falling line-particles), no damage.
+- **Wind storm**: directional gust forces nudge the cowboy off course (additive X velocity on top of touch input). Visible by tilted dust streaks moving sideways across the screen.
+- Implementation: each as an autoload-style "weather director" node added to the level scene that runs for a duration and affects both visuals (CanvasLayer overlay) and gameplay (input modifier or periodic damage).
+- These are level-wide modifiers, not per-obstacle, so they belong in the procgen segment-template system once that lands.
+
 ## B. Procedural generation
 
 Seed-based **segment template composition**, not raw procedural geometry (which produces unfair levels).
