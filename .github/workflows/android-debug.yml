@@ -35,9 +35,16 @@ jobs:
       - name: Install Godot Android build template into project
         # The custom Android build template (gradle source) ships inside
         # Godot's export templates archive as android_source.zip. Extract
-        # it into android/build/ so use_gradle_build=true can produce AAB
-        # without needing the Godot Editor's "Install Android Build
+        # it into godot/android/build/ so use_gradle_build=true can produce
+        # AAB without needing the Godot Editor's "Install Android Build
         # Template" menu (which has no CLI equivalent in 4.6.1).
+        #
+        # The Editor's install also writes two marker files in DIFFERENT
+        # directories (confirmed against Godot 4.6.1 source at
+        # editor/export/export_template_manager.cpp::install_android_template_from_file):
+        #   - .build_version goes in android/ (PARENT of build/, used for version check)
+        #   - .gdignore goes in android/build/ (INSIDE build/, prevents Godot's
+        #     resource scanner from importing gradle source as project assets)
         run: |
           mkdir -p /tmp/godot-templates
           cd /tmp/godot-templates
@@ -46,39 +53,9 @@ jobs:
           unzip -j -o templates.tpz '*/android_source.zip' -d .
           mkdir -p "$GITHUB_WORKSPACE/godot/android/build"
           unzip -o android_source.zip -d "$GITHUB_WORKSPACE/godot/android/build/"
-          # Mimic what the Editor's "Install Android Build Template" menu writes
-          # after extraction. The two marker files live in DIFFERENT directories
-          # (confirmed against Godot 4.6.1 source at
-          # editor/export/export_template_manager.cpp install_android_template_from_file):
-          #   - .build_version goes in android/   (PARENT of build/, used for version check)
-          #   - .gdignore     goes in android/build/  (INSIDE build/, prevents Godot's
-          #                                            resource scanner from importing
-          #                                            gradle source as project assets)
           echo "4.6.1.stable" > "$GITHUB_WORKSPACE/godot/android/.build_version"
           touch "$GITHUB_WORKSPACE/godot/android/build/.gdignore"
-          echo "Installed template files (godot/android/):"
           ls -la "$GITHUB_WORKSPACE/godot/android/" | head -10
-          # Patch the extracted AndroidManifest.xml to enable predictive back
-          # gesture (required for targetSdk 33+ predictive animations on
-          # Android 14+). Godot's runtime already bridges OnBackInvokedCallback
-          # to NOTIFICATION_WM_GO_BACK_REQUEST internally.
-          python3 <<'PYEOF'
-          import os
-          path = os.path.join(os.environ["GITHUB_WORKSPACE"], "godot/android/build/src/main/AndroidManifest.xml")
-          with open(path) as f:
-              data = f.read()
-          NEEDLE = 'tools:ignore="GoogleAppIndexingWarning"'
-          NEW = 'android:enableOnBackInvokedCallback="true"\n        tools:ignore="GoogleAppIndexingWarning"'
-          if "android:enableOnBackInvokedCallback" not in data:
-              if NEEDLE not in data:
-                  raise SystemExit("FATAL: anchor 'tools:ignore' not found in manifest")
-              data = data.replace(NEEDLE, NEW, 1)
-              with open(path, "w") as f:
-                  f.write(data)
-              print("Patched manifest: added android:enableOnBackInvokedCallback")
-          else:
-              print("Manifest already has enableOnBackInvokedCallback (unexpected for fresh extract)")
-          PYEOF
 
       - name: Godot export (debug)
         uses: firebelley/godot-export@v7.0.0

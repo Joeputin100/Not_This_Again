@@ -122,6 +122,7 @@ func _spawn_combo_banner(text: String) -> void:
 	var ui := $UI as CanvasLayer
 	var label := Label.new()
 	label.text = text
+	label.mouse_filter = Control.MOUSE_FILTER_IGNORE  # don't block touch input
 	label.theme = preload("res://assets/theme.tres")
 	label.add_theme_font_size_override("font_size", 156)
 	label.add_theme_color_override("font_color", Color(1.0, 0.95, 0.5, 1))
