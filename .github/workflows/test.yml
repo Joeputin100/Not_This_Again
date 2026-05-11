@@ -1,0 +1,70 @@
+name: GUT Tests
+
+# Runs Godot Unit Test (GUT) framework on every push and PR.
+# Tests live in godot/test/. Test runner: addons/gut/gut_cmdln.gd
+
+on:
+  push:
+    branches: ['**']
+  pull_request:
+    branches: ['**']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    name: Run GUT tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Cache Godot binary
+        id: cache-godot
+        uses: actions/cache@v4
+        with:
+          path: /tmp/godot
+          key: godot-headless-4.6.1-linux
+
+      - name: Download Godot 4.6.1 headless (if not cached)
+        if: steps.cache-godot.outputs.cache-hit != 'true'
+        run: |
+          mkdir -p /tmp/godot
+          cd /tmp/godot
+          wget -q https://github.com/godotengine/godot-builds/releases/download/4.6.1-stable/Godot_v4.6.1-stable_linux.x86_64.zip
+          unzip -q Godot_v4.6.1-stable_linux.x86_64.zip
+          chmod +x Godot_v4.6.1-stable_linux.x86_64
+          ls -la
+
+      - name: Import project (warm .godot/ cache)
+        run: |
+          # Headless import scans the project and creates the .godot/ cache.
+          # Required before running tests so GUT can load classes via res://.
+          # The import command always exits with 0 even on warnings; that's fine.
+          /tmp/godot/Godot_v4.6.1-stable_linux.x86_64 \
+            --headless --import --path godot \
+            2>&1 | tail -30
+          echo "Import complete."
+
+      - name: Run GUT tests
+        run: |
+          # GUT runs inside Godot via -s (script). Config lives in .gutconfig.json.
+          # GUT exits non-zero if any test fails or if no tests are found.
+          /tmp/godot/Godot_v4.6.1-stable_linux.x86_64 \
+            --headless \
+            --path godot \
+            -s res://addons/gut/gut_cmdln.gd \
+            -gconfig=res://.gutconfig.json
+
+      - name: Upload test results (JUnit XML)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: gut-test-results
+          path: godot/test-results.xml
+          retention-days: 14
+          if-no-files-found: warn

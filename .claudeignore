@@ -7,6 +7,9 @@
 keystore*
 my-release-key*
 
+# Third-party addons — vendored but not authored here, no need to read
+godot/addons/
+
 # Built artifacts — Claude should regenerate, not read
 .godot/
 .import/
