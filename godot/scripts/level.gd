@@ -9,6 +9,7 @@ const MovementBounds = preload("res://scripts/movement_bounds.gd")
 const GateHelper = preload("res://scripts/gate_helper.gd")
 const LevelProgressScript = preload("res://scripts/level_progress.gd")
 const ScreenShakeScript = preload("res://scripts/screen_shake.gd")
+const CombosCounterScript = preload("res://scripts/combos_counter.gd")
 
 const FOLLOW_SPEED: float = 12.0
 const STARTING_POSSE: int = 5
@@ -32,11 +33,13 @@ var posse_count: int = STARTING_POSSE:
 
 var progress: RefCounted
 var shake: RefCounted
+var combos: RefCounted
 
 func _ready() -> void:
 	target_x = cowboy.position.x
 	progress = LevelProgressScript.new()
 	shake = ScreenShakeScript.new()
+	combos = CombosCounterScript.new()
 
 	# Discover all gates by group instead of hand-listing — adding a 4th
 	# gate to the scene tree later won't require code changes here.
@@ -86,14 +89,72 @@ func _notification(what: int) -> void:
 		get_tree().quit()
 
 func _on_gate_triggered(gate_center_x: float, gate: Node) -> void:
+	# Combo escalates per consecutive gate. Particle amount and screen
+	# trauma both scale via CombosCounter's curves; over combo 3 we get
+	# the "MEGA!" floating banner (Candy-Crush-style escalation).
+	var combo := combos.step()
+
+	# Boost gate's particle amount BEFORE its _play_pass_animation runs.
+	# Signal emission is synchronous, so this lands before emitting=true.
+	var mult := CombosCounterScript.particle_multiplier(combo)
+	if gate.has_node("Sparkles"):
+		var sparkles := gate.get_node("Sparkles") as CPUParticles2D
+		sparkles.amount = int(28.0 * mult)
+
 	var side := GateHelper.which_side(cowboy.position.x, gate_center_x)
 	posse_count = GateHelper.apply_effect(posse_count, side, gate.left_value, gate.right_value)
 	AudioBus.play_gate_pass()
-	shake.add_trauma(0.5)
+	shake.add_trauma(CombosCounterScript.trauma_for(combo))
 	_pulse_posse_label()
+
+	var combo_label := CombosCounterScript.label_for(combo)
+	if combo_label != "":
+		_spawn_combo_banner(combo_label)
+
 	progress.record_pass()
 	if progress.is_complete():
 		_show_win()
+
+# Floating combo banner ("DOUBLE!" / "MEGA!") added to the UI canvas
+# layer so screen shake doesn't jitter it. Scales in with a bounce,
+# floats upward, fades out, queue_frees.
+func _spawn_combo_banner(text: String) -> void:
+	var ui := $UI as CanvasLayer
+	var label := Label.new()
+	label.text = text
+	label.theme = preload("res://assets/theme.tres")
+	label.add_theme_font_size_override("font_size", 156)
+	label.add_theme_color_override("font_color", Color(1.0, 0.95, 0.5, 1))
+	label.add_theme_color_override("font_outline_color", Color(0.18, 0.1, 0.03, 1))
+	label.add_theme_constant_override("outline_size", 14)
+	label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	label.size_flags_horizontal = Control.SIZE_FILL
+	label.anchor_left = 0.0
+	label.anchor_right = 1.0
+	label.anchor_top = 0.5
+	label.anchor_bottom = 0.5
+	label.offset_left = 0.0
+	label.offset_right = 0.0
+	label.offset_top = -90.0
+	label.offset_bottom = 90.0
+	ui.add_child(label)
+	label.pivot_offset = Vector2(540.0, 90.0)
+	label.scale = Vector2(0.4, 0.4)
+	label.modulate.a = 0.0
+
+	var pop := create_tween().set_parallel(true)
+	pop.tween_property(label, "scale", Vector2.ONE, 0.22) \
+		.set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
+	pop.tween_property(label, "modulate:a", 1.0, 0.12)
+	pop.tween_property(label, "offset_top", -290.0, 0.9) \
+		.set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
+	pop.tween_property(label, "offset_bottom", -110.0, 0.9) \
+		.set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
+	await get_tree().create_timer(0.55).timeout
+	var fade := create_tween()
+	fade.tween_property(label, "modulate:a", 0.0, 0.35)
+	await fade.finished
+	label.queue_free()
 
 func _refresh_posse_label() -> void:
 	if posse_label:
