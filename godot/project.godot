@@ -23,6 +23,7 @@ run/main_scene="res://scenes/main_menu.tscn"
 [autoload]
 
 GameState="*res://scripts/game_state.gd"
+IdleNudge="*res://scripts/idle_nudge.gd"
 
 [audio]
 
