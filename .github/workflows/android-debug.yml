@@ -46,8 +46,13 @@ jobs:
           unzip -j -o templates.tpz '*/android_source.zip' -d .
           mkdir -p "$GITHUB_WORKSPACE/godot/android/build"
           unzip -o android_source.zip -d "$GITHUB_WORKSPACE/godot/android/build/"
+          # Mimic what the Editor's "Install Android Build Template" menu writes
+          # after extraction. Without these two markers, Godot rejects the
+          # template at export time ("no version info for it exists").
+          echo "4.6.1.stable.official" > "$GITHUB_WORKSPACE/godot/android/build/.build_version"
+          touch "$GITHUB_WORKSPACE/godot/android/build/.gdignore"
           echo "Installed template files:"
-          ls "$GITHUB_WORKSPACE/godot/android/build/" | head -20
+          ls -la "$GITHUB_WORKSPACE/godot/android/build/" | head -25
 
       - name: Godot export (debug)
         uses: firebelley/godot-export@v7.0.0
