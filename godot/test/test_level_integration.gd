@@ -57,16 +57,18 @@ func test_target_x_initialized_in_ready():
 func test_process_runs_and_updates_debug_label():
 	# Manually call _process() with a sample delta. Should increment counter
 	# and update the debug label.
+	# IMPORTANT: Godot's own process loop ticks _process during the await
+	# get_tree().process_frame calls in before_each, so we count from a
+	# captured baseline instead of asserting exact equality from zero.
 	var dbg: Label = level.get_node("UI/DebugInfo")
-	var text_before_process := dbg.text
+	var baseline_count: int = level._process_run_count
 	level._process(0.016)
 	level._process(0.016)
 	level._process(0.016)
-	# After calling _process directly, the label should be the formatted
-	# "proc:N input:M..." string, not the post-_ready "READY OK" string.
 	assert_true("proc:" in dbg.text,
 		"_process did not update label to 'proc:N ...' format. Got: %s" % dbg.text)
-	assert_eq(level._process_run_count, 3, "_process_run_count after 3 direct calls")
+	assert_eq(level._process_run_count, baseline_count + 3,
+		"_process_run_count should be baseline (%d) + 3 after 3 direct calls" % baseline_count)
 
 # ---------- _input() ----------
 
