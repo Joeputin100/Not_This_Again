@@ -45,11 +45,11 @@ left_value = 25
 right_value = 2
 
 [node name="Barrel1" parent="." instance=ExtResource("4_barrel")]
-position = Vector2(360, -900)
+position = Vector2(360, 400)
 max_hp = 4
 
 [node name="Barrel2" parent="." instance=ExtResource("4_barrel")]
-position = Vector2(720, -1200)
+position = Vector2(720, -100)
 max_hp = 6
 
 [node name="Camera" type="Camera2D" parent="."]
