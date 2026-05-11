@@ -20,6 +20,10 @@ config/features=PackedStringArray("4.6", "Mobile")
 config/icon="res://icon.svg"
 run/main_scene="res://scenes/main_menu.tscn"
 
+[autoload]
+
+GameState="*res://scripts/game_state.gd"
+
 [audio]
 
 driver/output_latency=15
