@@ -1,0 +1,29 @@
+[gd_scene format=3 uid="uid://b0nttg0sccfg0"]
+
+[node name="MainMenu" type="Node2D"]
+
+[node name="Background" type="ColorRect" parent="."]
+offset_right = 1080.0
+offset_bottom = 1920.0
+color = Color(0.226, 0.157, 0.078, 1)
+
+[node name="Title" type="Label" parent="."]
+offset_left = 60.0
+offset_top = 480.0
+offset_right = 1020.0
+offset_bottom = 720.0
+theme_override_colors/font_color = Color(0.831, 0.659, 0.341, 1)
+theme_override_font_sizes/font_size = 128
+text = "NOT THIS
+   AGAIN"
+horizontal_alignment = 1
+
+[node name="Subtitle" type="Label" parent="."]
+offset_left = 60.0
+offset_top = 780.0
+offset_right = 1020.0
+offset_bottom = 900.0
+theme_override_colors/font_color = Color(0.831, 0.659, 0.341, 0.7)
+theme_override_font_sizes/font_size = 36
+text = "(phase 0: nothing works yet)"
+horizontal_alignment = 1

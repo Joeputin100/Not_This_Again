@@ -1,0 +1,59 @@
+# Android signing keystores — these MUST NEVER be committed.
+# Source of truth: Google Secret Manager + Proton Pass.
+*.p12
+*.pfx
+*.jks
+*.keystore
+keystore*
+my-release-key*
+
+# Godot
+.godot/
+.import/
+export.cfg
+export_credentials.cfg
+*.tmp
+*.translation
+*.gdc
+*.gdnlib_disabled
+mono_crash.*.json
+
+# Godot Android plugin builds
+android/build/
+android/plugins/
+android/src/main/assets/.import/
+
+# Godot exports
+build/
+dist/
+exports/
+*.apk
+*.aab
+*.exe
+*.x86_64
+*.dmg
+
+# Android Studio / Gradle (in case anyone tries to build locally)
+.gradle/
+local.properties
+.idea/
+*.iml
+captures/
+.cxx/
+
+# OS junk
+.DS_Store
+Thumbs.db
+*.swp
+*~
+
+# Environment / secrets
+.env
+.env.local
+.env.*.local
+*.secret
+google-services.json
+
+# Logs
+*.log
+logs/

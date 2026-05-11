@@ -1,0 +1,117 @@
+name: Android Release Build
+
+# Tag-triggered. Pulls the release keystore from Google Secret Manager
+# via Workload Identity Federation, signs the .aab, uploads as artifact.
+
+on:
+  push:
+    tags: ['v*.*.*']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  id-token: write   # required for WIF OIDC token exchange
+
+jobs:
+  build:
+    name: Build signed release .aab
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Java 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '17'
+
+      - name: Setup Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Authenticate to GCP (Workload Identity Federation)
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ secrets.GCP_WIF_PROVIDER }}
+          service_account: ${{ secrets.GCP_SERVICE_ACCOUNT }}
+
+      - name: Setup gcloud
+        uses: google-github-actions/setup-gcloud@v2
+
+      - name: Fetch release keystore from Secret Manager (binary-safe)
+        # gcloud's stdout corrupts binary via Python's text-mode encoder
+        # (every non-UTF-8 byte becomes EF BF BD). Use the JSON payload
+        # path with URL-safe base64 decode instead. See docs/risks.md.
+        run: |
+          gcloud secrets versions access latest \
+            --secret=android-release-keystore \
+            --format='get(payload.data)' \
+            | tr -d '\n' \
+            | tr -- '-_' '+/' \
+            | base64 -d > "$RUNNER_TEMP/release.p12"
+          MAGIC=$(head -c 2 "$RUNNER_TEMP/release.p12" | od -An -tx1 | tr -d ' ')
+          if [ "$MAGIC" != "3082" ]; then
+            echo "::error::Keystore magic bytes wrong (got $MAGIC, expected 3082). Binary corruption?"
+            exit 1
+          fi
+          echo "Keystore size: $(stat -c '%s' "$RUNNER_TEMP/release.p12") bytes"
+
+      - name: Fetch keystore password from Secret Manager
+        id: fetch_password
+        run: |
+          PW=$(gcloud secrets versions access latest --secret=android-keystore-password)
+          echo "::add-mask::$PW"
+          echo "keystore_password=$PW" >> "$GITHUB_OUTPUT"
+
+      - name: Inject keystore values into export_presets.cfg
+        env:
+          KEYSTORE_PATH: ${{ runner.temp }}/release.p12
+          KEY_ALIAS: not_this_again_release
+          KEYSTORE_PASSWORD: ${{ steps.fetch_password.outputs.keystore_password }}
+        run: |
+          python3 <<'PYEOF'
+          import os
+          path = 'godot/export_presets.cfg'
+          with open(path, 'r') as f:
+              data = f.read()
+          data = data.replace('__KEYSTORE_PATH__', os.environ['KEYSTORE_PATH'])
+          data = data.replace('__KEY_ALIAS__',     os.environ['KEY_ALIAS'])
+          data = data.replace('__KEY_PASSWORD__',  os.environ['KEYSTORE_PASSWORD'])
+          with open(path, 'w') as f:
+              f.write(data)
+          PYEOF
+
+      - name: Cache Godot binary + templates
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.local/share/godot
+            ~/.config/godot
+          key: godot-4.6.1-${{ runner.os }}
+
+      - name: Godot export (release)
+        uses: firebelley/godot-export@v7.0.0
+        with:
+          godot_executable_download_url: https://github.com/godotengine/godot-builds/releases/download/4.6.1-stable/Godot_v4.6.1-stable_linux.x86_64.zip
+          godot_export_templates_download_url: https://github.com/godotengine/godot-builds/releases/download/4.6.1-stable/Godot_v4.6.1-stable_export_templates.tpz
+          relative_project_path: ./godot
+          archive_output: false
+          presets_to_export: |
+            Android
+          export_debug: false
+
+      - name: Wipe credentials from workspace
+        if: always()
+        run: |
+          rm -f "$RUNNER_TEMP/release.p12"
+          git checkout -- godot/export_presets.cfg 2>/dev/null || true
+
+      - name: Upload release artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: app-release-aab
+          path: build/*.aab
+          retention-days: 90
+          if-no-files-found: error

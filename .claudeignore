@@ -1,0 +1,25 @@
+# Keep Claude away from any secret material we accidentally leave around.
+# (Source of truth for keystore is Google Secret Manager, not this directory.)
+*.p12
+*.pfx
+*.jks
+*.keystore
+keystore*
+my-release-key*
+
+# Built artifacts — Claude should regenerate, not read
+.godot/
+.import/
+build/
+dist/
+exports/
+*.apk
+*.aab
+
+# Generated / transient
+.gradle/
+.idea/
+*.log
+.env
+.env.*
+google-services.json

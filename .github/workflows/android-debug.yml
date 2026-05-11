@@ -1,0 +1,60 @@
+name: Android Debug Build
+
+# Runs on every push and PR. Produces a debug-signed .aab for sideloading.
+# Debug builds use Godot's auto-generated debug keystore — no GCP auth needed.
+
+on:
+  push:
+    branches: ['**']
+  pull_request:
+    branches: ['**']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: Build debug .aab
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Java 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '17'
+
+      - name: Setup Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Cache Godot binary + templates
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.local/share/godot
+            ~/.config/godot
+          key: godot-4.6.1-${{ runner.os }}
+
+      - name: Godot export (debug)
+        uses: firebelley/godot-export@v7.0.0
+        with:
+          godot_executable_download_url: https://github.com/godotengine/godot-builds/releases/download/4.6.1-stable/Godot_v4.6.1-stable_linux.x86_64.zip
+          godot_export_templates_download_url: https://github.com/godotengine/godot-builds/releases/download/4.6.1-stable/Godot_v4.6.1-stable_export_templates.tpz
+          relative_project_path: ./godot
+          archive_output: false
+          presets_to_export: |
+            Android
+          export_debug: true
+
+      - name: Upload debug artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: app-debug-aab
+          path: build/*.aab
+          retention-days: 14
+          if-no-files-found: error
