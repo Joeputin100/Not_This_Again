@@ -54,7 +54,7 @@ jobs:
           #   - .gdignore     goes in android/build/  (INSIDE build/, prevents Godot's
           #                                            resource scanner from importing
           #                                            gradle source as project assets)
-          echo "4.6.1.stable.official" > "$GITHUB_WORKSPACE/godot/android/.build_version"
+          echo "4.6.1.stable" > "$GITHUB_WORKSPACE/godot/android/.build_version"
           touch "$GITHUB_WORKSPACE/godot/android/build/.gdignore"
           echo "Installed template files (godot/android/):"
           ls -la "$GITHUB_WORKSPACE/godot/android/" | head -10
