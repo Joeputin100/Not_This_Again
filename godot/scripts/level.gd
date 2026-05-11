@@ -26,7 +26,9 @@ const STARTING_POSSE: int = 5
 
 var target_x: float
 var _input_event_count: int = 0
+var _process_run_count: int = 0
 var _last_input_type: String = "(none yet)"
+var _last_event_class: String = "(none)"
 
 # Run-local state. Resets each level.
 var posse_count: int = STARTING_POSSE:
@@ -39,6 +41,7 @@ var shake: RefCounted
 var combos: RefCounted
 
 func _ready() -> void:
+	print("[LEVEL] _ready start")
 	target_x = cowboy.position.x
 	progress = LevelProgressScript.new()
 	shake = ScreenShakeScript.new()
@@ -56,6 +59,12 @@ func _ready() -> void:
 	# Pivot for the win panel scale-in animation
 	win_panel.pivot_offset = Vector2(440, 280)
 	_refresh_posse_label()
+	# Diagnostic: mark that _ready completed end-to-end.
+	if debug_label:
+		debug_label.text = "READY OK (process not yet ticked)"
+	else:
+		print("[LEVEL] WARNING: debug_label is null at end of _ready")
+	print("[LEVEL] _ready end. cowboy=", cowboy, " camera=", camera, " debug_label=", debug_label)
 
 func _gather_gates() -> Array[Node]:
 	var gates: Array[Node] = []
@@ -65,19 +74,24 @@ func _gather_gates() -> Array[Node]:
 	return gates
 
 func _process(delta: float) -> void:
+	_process_run_count += 1
 	cowboy.position.x = lerpf(cowboy.position.x, target_x, FOLLOW_SPEED * delta)
 	# Drive screen shake. CanvasLayer-rooted UI is unaffected; only
 	# world-space nodes (background, lane guides, gates, cowboy) shake.
 	camera.offset = shake.tick(delta)
-	# Temporary debug overlay so we can diagnose if input reaches us.
-	# REMOVE in a later commit once the cowboy-follow regression is solved.
-	if debug_label:
-		debug_label.text = "inputs:%d  last:%s\ntarget_x:%.0f  cowboy_x:%.0f" % [
-			_input_event_count, _last_input_type,
-			target_x, cowboy.position.x
+	# Diagnostic — fallback to get_node in case @onready ref is stale.
+	# This SHOULD always update if _process is firing.
+	var dbg := debug_label if debug_label != null else get_node_or_null("UI/DebugInfo") as Label
+	if dbg:
+		dbg.text = "proc:%d input:%d type:%s class:%s\ntarget_x:%.0f cowboy_x:%.0f" % [
+			_process_run_count, _input_event_count, _last_input_type, _last_event_class,
+			target_x, cowboy.position.x,
 		]
 
 func _input(event: InputEvent) -> void:
+	# Track ALL inputs to verify _input is being called at all, not just
+	# touch-flavored ones.
+	_last_event_class = event.get_class()
 	var new_x := -1.0
 	if event is InputEventScreenDrag:
 		new_x = (event as InputEventScreenDrag).position.x

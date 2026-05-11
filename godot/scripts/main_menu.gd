@@ -16,6 +16,8 @@ const BuildInfo = preload("res://scripts/build_info.gd")
 @onready var title_label: Label = $UI/Title
 @onready var subtitle_label: Label = $UI/Subtitle
 @onready var build_id_label: Label = $UI/BuildId
+@onready var copy_button: Button = $UI/CopyButton
+@onready var copy_toast: Label = $UI/CopyToast
 
 # Captured after initial layout so idle_ended can restore exact positions.
 var _subtitle_base_y: float = 0.0
@@ -29,11 +31,23 @@ func _ready() -> void:
 	play_button.pressed.connect(_on_play_pressed)
 	IdleNudge.idle_started.connect(_on_idle_started)
 	IdleNudge.idle_ended.connect(_on_idle_ended)
+	copy_button.pressed.connect(_on_copy_pressed)
 	# Build identifier in the bottom-right corner — proves which build is
 	# actually installed when sideloading repeatedly.
-	build_id_label.text = "build: %s  iter %s  %s" % [BuildInfo.SHA, BuildInfo.ITER, BuildInfo.SHORT_DATE]
+	build_id_label.text = "%s  %s  iter %s" % [BuildInfo.SHA, BuildInfo.SHORT_DATE, BuildInfo.ITER]
 	# Defer pivot capture so Godot's layout pass has run and sizes are real.
 	call_deferred("_finalize_setup")
+
+func _on_copy_pressed() -> void:
+	AudioBus.play_tap()
+	var text := build_id_label.text
+	DisplayServer.clipboard_set(text)
+	# Visual feedback — fade the COPIED toast in then out.
+	copy_toast.modulate.a = 0.0
+	var tween := create_tween()
+	tween.tween_property(copy_toast, "modulate:a", 1.0, 0.15)
+	tween.tween_interval(0.9)
+	tween.tween_property(copy_toast, "modulate:a", 0.0, 0.35)
 
 func _finalize_setup() -> void:
 	play_button.pivot_offset = play_button.size / 2.0
