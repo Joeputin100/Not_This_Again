@@ -1,0 +1,88 @@
+[gd_scene load_steps=3 format=3 uid="uid://b0nttg_cactus_001"]
+
+[ext_resource type="Script" path="res://scripts/cactus.gd" id="1_cactus"]
+[ext_resource type="Theme" path="res://assets/theme.tres" id="2_theme"]
+
+[node name="Cactus" type="Node2D"]
+position = Vector2(540, -200)
+script = ExtResource("1_cactus")
+
+[node name="Trunk" type="ColorRect" parent="."]
+offset_left = -25.0
+offset_top = -110.0
+offset_right = 25.0
+offset_bottom = 110.0
+color = Color(0.22, 0.42, 0.18, 1)
+mouse_filter = 2
+
+[node name="LeftArm" type="ColorRect" parent="."]
+offset_left = -55.0
+offset_top = -60.0
+offset_right = -25.0
+offset_bottom = 10.0
+color = Color(0.22, 0.42, 0.18, 1)
+mouse_filter = 2
+
+[node name="LeftArmTop" type="ColorRect" parent="."]
+offset_left = -55.0
+offset_top = -90.0
+offset_right = -25.0
+offset_bottom = -60.0
+color = Color(0.22, 0.42, 0.18, 1)
+mouse_filter = 2
+
+[node name="RightArm" type="ColorRect" parent="."]
+offset_left = 25.0
+offset_top = -80.0
+offset_right = 55.0
+offset_bottom = -10.0
+color = Color(0.22, 0.42, 0.18, 1)
+mouse_filter = 2
+
+[node name="RightArmTop" type="ColorRect" parent="."]
+offset_left = 25.0
+offset_top = -110.0
+offset_right = 55.0
+offset_bottom = -80.0
+color = Color(0.22, 0.42, 0.18, 1)
+mouse_filter = 2
+
+[node name="TrunkShade" type="ColorRect" parent="."]
+offset_left = 12.0
+offset_top = -110.0
+offset_right = 25.0
+offset_bottom = 110.0
+color = Color(0.14, 0.3, 0.1, 1)
+mouse_filter = 2
+
+[node name="HpLabel" type="Label" parent="."]
+offset_left = -50.0
+offset_top = -160.0
+offset_right = 50.0
+offset_bottom = -110.0
+theme = ExtResource("2_theme")
+theme_override_colors/font_color = Color(1, 0.95, 0.7, 1)
+theme_override_colors/font_outline_color = Color(0.05, 0.15, 0.04, 1)
+theme_override_constants/outline_size = 6
+theme_override_font_sizes/font_size = 36
+text = "36"
+horizontal_alignment = 1
+vertical_alignment = 1
+mouse_filter = 2
+
+[node name="Splinters" type="CPUParticles2D" parent="."]
+emitting = false
+amount = 8
+one_shot = true
+explosiveness = 0.85
+lifetime = 0.4
+emission_shape = 1
+emission_sphere_radius = 30.0
+direction = Vector2(0, -1)
+spread = 180.0
+initial_velocity_min = 90.0
+initial_velocity_max = 220.0
+gravity = Vector2(0, 320)
+scale_amount_min = 2.0
+scale_amount_max = 4.0
+color = Color(0.38, 0.6, 0.25, 1)

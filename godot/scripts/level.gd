@@ -14,6 +14,9 @@ const Collision2D = preload("res://scripts/collision_2d.gd")
 const BulletScene = preload("res://scenes/bullet.tscn")
 const BulletScript = preload("res://scripts/bullet.gd")
 const BarrelScript = preload("res://scripts/barrel.gd")
+const TumbleweedScript = preload("res://scripts/tumbleweed.gd")
+const CactusScript = preload("res://scripts/cactus.gd")
+const BarricadeScript = preload("res://scripts/barricade.gd")
 
 const FOLLOW_SPEED: float = 12.0
 const STARTING_POSSE: int = 5
@@ -119,15 +122,18 @@ func _process(delta: float) -> void:
 		_fire_timer -= fire_interval
 		_spawn_bullet()
 
-	# Bullet ↔ barrel collision pass. O(bullets × barrels) per frame —
-	# trivial at our scale (<15 bullets active, <3 barrels).
+	# Bullet ↔ obstacle / gate collision passes. O(bullets × obstacles)
+	# per frame, trivial at this scale.
 	_resolve_bullet_barrel_collisions()
-	# Bullet ↔ gate collision: additive gates get value-bumped, mult
-	# gates just absorb the bullet.
 	_resolve_bullet_gate_collisions()
-	# Barrel ↔ cowboy collision pass. If a barrel reaches the cowboy
-	# alive, it damages the posse.
+	_resolve_bullet_obstacle_collisions("tumbleweeds", TumbleweedScript.SIZE)
+	_resolve_bullet_obstacle_collisions("cacti", CactusScript.SIZE)
+	_resolve_bullet_obstacle_collisions("barricades", BarricadeScript.SIZE)
+	# Cowboy ↔ obstacle collision passes (posse damage).
 	_resolve_barrel_cowboy_collisions()
+	_resolve_obstacle_cowboy_collisions("tumbleweeds", TumbleweedScript.SIZE)
+	_resolve_obstacle_cowboy_collisions("cacti", CactusScript.SIZE)
+	_resolve_obstacle_cowboy_collisions("barricades", BarricadeScript.SIZE)
 
 	# Diagnostic — fallback to get_node in case @onready ref is stale.
 	var dbg := debug_label if debug_label != null else get_node_or_null("UI/DebugInfo") as Label
@@ -187,6 +193,51 @@ func _resolve_bullet_gate_collisions() -> void:
 					bullet.remove_from_group("bullets")
 					bullet.queue_free()
 					break
+
+func _resolve_bullet_obstacle_collisions(group_name: String, obstacle_size: Vector2) -> void:
+	# Generic bullet-vs-group collision pass. Each obstacle (tumbleweed,
+	# cactus, barricade) defines take_bullet_hit() returning whether the
+	# bullet is consumed. We call it on overlap and free the bullet.
+	var bullets := get_tree().get_nodes_in_group("bullets")
+	if bullets.is_empty():
+		return
+	var obstacles := get_tree().get_nodes_in_group(group_name)
+	if obstacles.is_empty():
+		return
+	for bullet in bullets:
+		for obstacle in obstacles:
+			if Collision2D.rects_overlap(
+					bullet.position, BulletScript.SIZE,
+					obstacle.position, obstacle_size):
+				var consumed: bool = obstacle.take_bullet_hit()
+				if consumed:
+					bullet.remove_from_group("bullets")
+					bullet.queue_free()
+					break  # this bullet is done
+
+func _resolve_obstacle_cowboy_collisions(group_name: String, obstacle_size: Vector2) -> void:
+	# Cowboy-vs-group collision pass. On contact: posse takes the
+	# obstacle's declared damage, obstacle is destroyed (if destructible)
+	# or just persists (barricade) — we free non-destructible ones too
+	# so they don't keep colliding frame after frame.
+	for obstacle in get_tree().get_nodes_in_group(group_name):
+		if obstacle.get("_destroyed") == true:
+			continue
+		if not Collision2D.rects_overlap(
+				obstacle.position, obstacle_size,
+				cowboy.position, COWBOY_SIZE):
+			continue
+		var damage: int = obstacle.get_cowboy_damage()
+		DebugLog.add("%s hit cowboy → posse -%d" % [group_name, damage])
+		posse_count = maxi(1, posse_count - damage)
+		_pulse_posse_label()
+		shake.add_trauma(minf(0.4 + damage * 0.05, 0.95))
+		# Destroy destructibles via take_damage if available, otherwise
+		# queue_free directly (barricades don't have take_damage).
+		if obstacle.has_method("take_damage"):
+			obstacle.take_damage(99999)  # overkill
+		else:
+			obstacle.queue_free()
 
 func _resolve_barrel_cowboy_collisions() -> void:
 	# If a barrel reaches the cowboy intact, it slams into the posse:
