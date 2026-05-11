@@ -146,11 +146,7 @@ Captured here so they don't get lost. Each lands in a later phase when the basel
 - **Death payload**: when destroyed, spawns a *cloud* of 6–10 chickens at the coop's position. Each chicken has 1–3 HP (randomized per spawn).
 - **Chicken behavior**: chaotic. Pick a random heading every ~0.8s, move at moderate speed, flap-and-flail animation (sprite swap or rapid scale/rotation oscillation). Visible bedlam.
 - **Lifespan**: chickens despawn when shot, when they exit the screen, or after ~5s timeout (whichever first).
-- **Gameplay effect on collision/destruction**: ⚠ **NEEDS DESIGN CLARIFICATION** — possibilities:
-  1. *Posse bonus pickup*: each chicken caught (cowboy contact) or shot = +1 posse member. Makes coops rewarding loot.
-  2. *Pure visual chaos*: chickens are decorative, do nothing to posse. Comedy value only.
-  3. *Nuisance*: contact with cowboy slightly damages posse (chickens peck).
-  4. *Vision blocker*: chickens visually clutter the screen, briefly making gates/obstacles harder to see.
+- **Gameplay effect (resolved)**: **vision blocker + visual chaos, NO posse damage**. Chickens fill the screen with flapping bodies, briefly making it harder to read gates/obstacles. Cowboy contact is harmless. Bullets still kill chickens on contact. Pure disruption — the player's strategy choice is "shoot the coop and accept the chaos" vs "shoot around it / avoid it."
 - **Visual**: small white squarish bodies with red comb dots, flappy wing motion. Splinter-style particle on death (feathers).
 
 #### Atmospheric weather effects

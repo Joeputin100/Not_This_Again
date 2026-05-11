@@ -1,0 +1,76 @@
+[gd_scene load_steps=3 format=3 uid="uid://b0nttg_chickencoop_001"]
+
+[ext_resource type="Script" path="res://scripts/chicken_coop.gd" id="1_coop"]
+[ext_resource type="Theme" path="res://assets/theme.tres" id="2_theme"]
+
+[node name="ChickenCoop" type="Node2D"]
+position = Vector2(540, -400)
+script = ExtResource("1_coop")
+
+[node name="Body" type="ColorRect" parent="."]
+offset_left = -70.0
+offset_top = -50.0
+offset_right = 70.0
+offset_bottom = 65.0
+color = Color(0.46, 0.28, 0.13, 1)
+mouse_filter = 2
+
+[node name="Roof" type="Polygon2D" parent="."]
+color = Color(0.32, 0.18, 0.08, 1)
+polygon = PackedVector2Array(-80, -50, 80, -50, 60, -75, -60, -75)
+
+[node name="Window" type="ColorRect" parent="."]
+offset_left = -22.0
+offset_top = -20.0
+offset_right = 22.0
+offset_bottom = 14.0
+color = Color(0.15, 0.1, 0.05, 1)
+mouse_filter = 2
+
+[node name="WindowBarV" type="ColorRect" parent="."]
+offset_left = -2.0
+offset_top = -20.0
+offset_right = 2.0
+offset_bottom = 14.0
+color = Color(0.78, 0.56, 0.25, 1)
+mouse_filter = 2
+
+[node name="WindowBarH" type="ColorRect" parent="."]
+offset_left = -22.0
+offset_top = -5.0
+offset_right = 22.0
+offset_bottom = -1.0
+color = Color(0.78, 0.56, 0.25, 1)
+mouse_filter = 2
+
+[node name="HpLabel" type="Label" parent="."]
+offset_left = -50.0
+offset_top = 25.0
+offset_right = 50.0
+offset_bottom = 65.0
+theme = ExtResource("2_theme")
+theme_override_colors/font_color = Color(1, 0.95, 0.7, 1)
+theme_override_colors/font_outline_color = Color(0.1, 0.05, 0.02, 1)
+theme_override_constants/outline_size = 5
+theme_override_font_sizes/font_size = 28
+text = "10"
+horizontal_alignment = 1
+vertical_alignment = 1
+mouse_filter = 2
+
+[node name="Splinters" type="CPUParticles2D" parent="."]
+emitting = false
+amount = 10
+one_shot = true
+explosiveness = 0.9
+lifetime = 0.5
+emission_shape = 1
+emission_sphere_radius = 50.0
+direction = Vector2(0, -1)
+spread = 180.0
+initial_velocity_min = 100.0
+initial_velocity_max = 260.0
+gravity = Vector2(0, 280)
+scale_amount_min = 3.0
+scale_amount_max = 6.0
+color = Color(0.7, 0.5, 0.25, 1)

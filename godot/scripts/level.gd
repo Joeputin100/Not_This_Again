@@ -17,6 +17,8 @@ const BarrelScript = preload("res://scripts/barrel.gd")
 const TumbleweedScript = preload("res://scripts/tumbleweed.gd")
 const CactusScript = preload("res://scripts/cactus.gd")
 const BarricadeScript = preload("res://scripts/barricade.gd")
+const ChickenCoopScript = preload("res://scripts/chicken_coop.gd")
+const ChickenScript = preload("res://scripts/chicken.gd")
 
 const FOLLOW_SPEED: float = 12.0
 const STARTING_POSSE: int = 5
@@ -129,11 +131,15 @@ func _process(delta: float) -> void:
 	_resolve_bullet_obstacle_collisions("tumbleweeds", TumbleweedScript.SIZE)
 	_resolve_bullet_obstacle_collisions("cacti", CactusScript.SIZE)
 	_resolve_bullet_obstacle_collisions("barricades", BarricadeScript.SIZE)
+	_resolve_bullet_obstacle_collisions("chicken_coops", ChickenCoopScript.SIZE)
+	_resolve_bullet_obstacle_collisions("chickens", ChickenScript.SIZE)
 	# Cowboy ↔ obstacle collision passes (posse damage).
 	_resolve_barrel_cowboy_collisions()
 	_resolve_obstacle_cowboy_collisions("tumbleweeds", TumbleweedScript.SIZE)
 	_resolve_obstacle_cowboy_collisions("cacti", CactusScript.SIZE)
 	_resolve_obstacle_cowboy_collisions("barricades", BarricadeScript.SIZE)
+	# chicken_coops and chickens have get_cowboy_damage() == 0, so we
+	# skip them in the cowboy-collision pass (no point processing).
 
 	# Diagnostic — fallback to get_node in case @onready ref is stale.
 	var dbg := debug_label if debug_label != null else get_node_or_null("UI/DebugInfo") as Label

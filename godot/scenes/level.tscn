@@ -7,6 +7,7 @@
 [ext_resource type="PackedScene" path="res://scenes/tumbleweed.tscn" id="5_tw"]
 [ext_resource type="PackedScene" path="res://scenes/cactus.tscn" id="6_cactus"]
 [ext_resource type="PackedScene" path="res://scenes/barricade.tscn" id="7_barricade"]
+[ext_resource type="PackedScene" path="res://scenes/chicken_coop.tscn" id="8_coop"]
 
 [node name="Level" type="Node2D"]
 script = ExtResource("1_level")
@@ -62,6 +63,9 @@ position = Vector2(280, -400)
 
 [node name="Barricade1" parent="." instance=ExtResource("7_barricade")]
 position = Vector2(820, -800)
+
+[node name="ChickenCoop1" parent="." instance=ExtResource("8_coop")]
+position = Vector2(540, -1100)
 
 [node name="Barrel2" parent="." instance=ExtResource("4_barrel")]
 position = Vector2(720, -100)

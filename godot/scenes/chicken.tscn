@@ -1,0 +1,39 @@
+[gd_scene load_steps=2 format=3 uid="uid://b0nttg_chicken_001"]
+
+[ext_resource type="Script" path="res://scripts/chicken.gd" id="1_chicken"]
+
+[node name="Chicken" type="Node2D"]
+script = ExtResource("1_chicken")
+
+[node name="Body" type="Polygon2D" parent="."]
+color = Color(1, 0.95, 0.92, 1)
+polygon = PackedVector2Array(-18, -10, 18, -10, 22, 4, 18, 20, -18, 20, -22, 4)
+
+[node name="Comb" type="Polygon2D" parent="."]
+color = Color(0.85, 0.18, 0.14, 1)
+polygon = PackedVector2Array(-8, -20, 8, -20, 6, -10, -6, -10)
+
+[node name="Beak" type="Polygon2D" parent="."]
+color = Color(0.95, 0.62, 0.18, 1)
+polygon = PackedVector2Array(18, -2, 28, 2, 18, 6)
+
+[node name="EyeL" type="Polygon2D" parent="."]
+color = Color(0.1, 0.05, 0.02, 1)
+polygon = PackedVector2Array(7, -7, 11, -7, 11, -3, 7, -3)
+
+[node name="Feathers" type="CPUParticles2D" parent="."]
+emitting = false
+amount = 14
+one_shot = true
+explosiveness = 0.95
+lifetime = 0.6
+emission_shape = 1
+emission_sphere_radius = 18.0
+direction = Vector2(0, -1)
+spread = 180.0
+initial_velocity_min = 80.0
+initial_velocity_max = 200.0
+gravity = Vector2(0, 180)
+scale_amount_min = 2.5
+scale_amount_max = 5.0
+color = Color(1, 0.95, 0.92, 1)
