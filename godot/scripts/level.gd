@@ -42,6 +42,9 @@ var combos: RefCounted
 
 func _ready() -> void:
 	print("[LEVEL] _ready start")
+	# Belt-and-suspenders: also disable quit-on-go-back at runtime in case
+	# the project.godot setting doesn't reach Android's Activity layer.
+	get_tree().set_quit_on_go_back(false)
 	target_x = cowboy.position.x
 	progress = LevelProgressScript.new()
 	shake = ScreenShakeScript.new()

@@ -28,6 +28,8 @@ var _title_idle_tween: Tween
 var _subtitle_idle_tween: Tween
 
 func _ready() -> void:
+	# Belt-and-suspenders runtime call; project.godot also sets this to false.
+	get_tree().set_quit_on_go_back(false)
 	play_button.pressed.connect(_on_play_pressed)
 	IdleNudge.idle_started.connect(_on_idle_started)
 	IdleNudge.idle_ended.connect(_on_idle_ended)
