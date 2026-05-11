@@ -95,14 +95,6 @@ jobs:
               f.write(data)
           PYEOF
 
-      - name: Cache Godot binary + templates
-        uses: actions/cache@v4
-        with:
-          path: |
-            ~/.local/share/godot
-            ~/.config/godot
-          key: godot-4.6.1-${{ runner.os }}
-
       - name: Godot export (release)
         uses: firebelley/godot-export@v7.0.0
         with:
@@ -113,6 +105,8 @@ jobs:
           presets_to_export: |
             Android
           export_debug: false
+          cache: true
+          use_preset_export_path: true
 
       - name: Wipe credentials from workspace
         if: always()
@@ -124,6 +118,6 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: app-release-apk
-          path: /home/runner/.local/share/godot/builds/Android/*.apk
+          path: build/*.apk
           retention-days: 90
           if-no-files-found: error

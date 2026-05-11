@@ -1,6 +1,6 @@
 name: Android Debug Build
 
-# Runs on every push and PR. Produces a debug-signed .aab for sideloading.
+# Runs on every push and PR. Produces a debug-signed .apk for sideloading.
 # Debug builds use Godot's auto-generated debug keystore — no GCP auth needed.
 
 on:
@@ -15,7 +15,7 @@ permissions:
 
 jobs:
   build:
-    name: Build debug .aab
+    name: Build debug .apk
     runs-on: ubuntu-latest
     timeout-minutes: 25
 
@@ -32,14 +32,6 @@ jobs:
       - name: Setup Android SDK
         uses: android-actions/setup-android@v3
 
-      - name: Cache Godot binary + templates
-        uses: actions/cache@v4
-        with:
-          path: |
-            ~/.local/share/godot
-            ~/.config/godot
-          key: godot-4.6.1-${{ runner.os }}
-
       - name: Godot export (debug)
         uses: firebelley/godot-export@v7.0.0
         with:
@@ -50,11 +42,13 @@ jobs:
           presets_to_export: |
             Android
           export_debug: true
+          cache: true
+          use_preset_export_path: true
 
       - name: Upload debug artifact
         uses: actions/upload-artifact@v4
         with:
           name: app-debug-apk
-          path: /home/runner/.local/share/godot/builds/Android/*.apk
+          path: build/*.apk
           retention-days: 14
           if-no-files-found: error
