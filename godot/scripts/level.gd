@@ -20,6 +20,7 @@ const STARTING_POSSE: int = 5
 @onready var win_panel: Control = $WinOverlay/WinPanel
 @onready var win_subtitle: Label = $WinOverlay/WinPanel/WinSubtitle
 @onready var again_button: Button = $WinOverlay/WinPanel/PlayAgainButton
+@onready var menu_button: Button = $WinOverlay/WinPanel/MenuButton
 
 var target_x: float
 
@@ -45,6 +46,7 @@ func _ready() -> void:
 		gate.triggered.connect(_on_gate_triggered.bind(gate))
 
 	again_button.pressed.connect(_on_again_pressed)
+	menu_button.pressed.connect(_on_menu_pressed)
 	# Pivot for the win panel scale-in animation
 	win_panel.pivot_offset = Vector2(440, 280)
 	_refresh_posse_label()
@@ -127,8 +129,8 @@ whatever that's worth." % posse_count
 
 func _on_again_pressed() -> void:
 	AudioBus.play_tap()
-	# Squish-and-bounce on the button before reloading the level.
 	again_button.disabled = true
+	menu_button.disabled = true
 	var t := create_tween()
 	t.tween_property(again_button, "scale", Vector2(0.92, 0.92), 0.06)
 	t.tween_property(again_button, "scale", Vector2.ONE, 0.16) \
@@ -136,3 +138,15 @@ func _on_again_pressed() -> void:
 		.set_ease(Tween.EASE_OUT)
 	await t.finished
 	get_tree().reload_current_scene()
+
+func _on_menu_pressed() -> void:
+	AudioBus.play_tap()
+	again_button.disabled = true
+	menu_button.disabled = true
+	var t := create_tween()
+	t.tween_property(menu_button, "scale", Vector2(0.92, 0.92), 0.06)
+	t.tween_property(menu_button, "scale", Vector2.ONE, 0.16) \
+		.set_trans(Tween.TRANS_BACK) \
+		.set_ease(Tween.EASE_OUT)
+	await t.finished
+	get_tree().change_scene_to_file("res://scenes/main_menu.tscn")

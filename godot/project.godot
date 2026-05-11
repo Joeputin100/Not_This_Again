@@ -18,6 +18,7 @@ config/description="A snarky Western-themed crowd-runner. Bow-legged cowboys, sa
 config/version="0.0.1"
 config/features=PackedStringArray("4.6", "Mobile")
 config/icon="res://icon.svg"
+config/quit_on_go_back=false
 run/main_scene="res://scenes/main_menu.tscn"
 
 [autoload]

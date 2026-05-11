@@ -23,6 +23,10 @@ func _make_player(stream: AudioStream) -> AudioStreamPlayer:
 	var p := AudioStreamPlayer.new()
 	p.stream = stream
 	p.bus = "Master"
+	# +6dB headroom because phone speakers + casual play environments
+	# tend to swallow short SFX. Source files are already near peak
+	# amplitude; this is a safety margin, not a substitute for content.
+	p.volume_db = 6.0
 	add_child(p)
 	return p
 
