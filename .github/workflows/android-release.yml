@@ -53,8 +53,27 @@ jobs:
           touch "$GITHUB_WORKSPACE/godot/android/build/.gdignore"
           echo "Installed template files (godot/android/):"
           ls -la "$GITHUB_WORKSPACE/godot/android/" | head -10
-          echo "Build template files (godot/android/build/):"
-          ls -la "$GITHUB_WORKSPACE/godot/android/build/" | head -25
+          # Patch the extracted AndroidManifest.xml to enable predictive back
+          # gesture (required for targetSdk 33+ predictive animations on
+          # Android 14+). Godot's runtime already bridges OnBackInvokedCallback
+          # to NOTIFICATION_WM_GO_BACK_REQUEST internally.
+          python3 <<'PYEOF'
+          import os
+          path = os.path.join(os.environ["GITHUB_WORKSPACE"], "godot/android/build/app/src/main/AndroidManifest.xml")
+          with open(path) as f:
+              data = f.read()
+          NEEDLE = 'tools:ignore="GoogleAppIndexingWarning"'
+          NEW = 'android:enableOnBackInvokedCallback="true"\n        tools:ignore="GoogleAppIndexingWarning"'
+          if "android:enableOnBackInvokedCallback" not in data:
+              if NEEDLE not in data:
+                  raise SystemExit("FATAL: anchor 'tools:ignore' not found in manifest")
+              data = data.replace(NEEDLE, NEW, 1)
+              with open(path, "w") as f:
+                  f.write(data)
+              print("Patched manifest: added android:enableOnBackInvokedCallback")
+          else:
+              print("Manifest already has enableOnBackInvokedCallback (unexpected for fresh extract)")
+          PYEOF
 
       - name: Authenticate to GCP (Workload Identity Federation)
         uses: google-github-actions/auth@v2
