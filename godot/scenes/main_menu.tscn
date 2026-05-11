@@ -1,6 +1,7 @@
-[gd_scene load_steps=2 format=3 uid="uid://b0nttg0sccfg0"]
+[gd_scene load_steps=4 format=3 uid="uid://b0nttg0sccfg0"]
 
 [ext_resource type="Script" path="res://scripts/main_menu.gd" id="1_main"]
+[ext_resource type="Theme" path="res://assets/theme.tres" id="2_theme"]
 
 [node name="MainMenu" type="Node2D"]
 script = ExtResource("1_main")
@@ -10,23 +11,60 @@ offset_right = 1080.0
 offset_bottom = 1920.0
 color = Color(0.226, 0.157, 0.078, 1)
 
-[node name="Title" type="Label" parent="."]
+[node name="UI" type="CanvasLayer" parent="."]
+
+[node name="Title" type="Label" parent="UI"]
+anchors_preset = -1
+anchor_right = 1.0
 offset_left = 60.0
-offset_top = 480.0
-offset_right = 1020.0
-offset_bottom = 720.0
-theme_override_colors/font_color = Color(0.831, 0.659, 0.341, 1)
-theme_override_font_sizes/font_size = 128
-text = "NOT THIS
-   AGAIN"
+offset_top = 320.0
+offset_right = -60.0
+offset_bottom = 600.0
+theme = ExtResource("2_theme")
+theme_override_font_sizes/font_size = 144
+text = "NOT
+THIS
+AGAIN"
 horizontal_alignment = 1
 
-[node name="Subtitle" type="Label" parent="."]
+[node name="Subtitle" type="Label" parent="UI"]
+anchors_preset = -1
+anchor_right = 1.0
 offset_left = 60.0
-offset_top = 780.0
-offset_right = 1020.0
-offset_bottom = 900.0
-theme_override_colors/font_color = Color(0.831, 0.659, 0.341, 0.7)
+offset_top = 940.0
+offset_right = -60.0
+offset_bottom = 1020.0
+theme = ExtResource("2_theme")
+theme_override_colors/font_color = Color(0.831, 0.659, 0.341, 0.65)
 theme_override_font_sizes/font_size = 36
-text = "(phase 0: nothing works yet)"
+text = "the minigame they kept lying about"
+horizontal_alignment = 1
+
+[node name="PlayButton" type="Button" parent="UI"]
+anchors_preset = -1
+anchor_left = 0.5
+anchor_right = 0.5
+anchor_top = 1.0
+anchor_bottom = 1.0
+offset_left = -260.0
+offset_top = -540.0
+offset_right = 260.0
+offset_bottom = -340.0
+pivot_offset = Vector2(260, 100)
+theme = ExtResource("2_theme")
+text = "PLAY"
+
+[node name="Footer" type="Label" parent="UI"]
+anchors_preset = -1
+anchor_right = 1.0
+anchor_top = 1.0
+anchor_bottom = 1.0
+offset_left = 60.0
+offset_top = -120.0
+offset_right = -60.0
+offset_bottom = -60.0
+theme = ExtResource("2_theme")
+theme_override_colors/font_color = Color(0.831, 0.659, 0.341, 0.4)
+theme_override_font_sizes/font_size = 28
+text = "no ads.  no city building.  no pay-to-win."
 horizontal_alignment = 1
