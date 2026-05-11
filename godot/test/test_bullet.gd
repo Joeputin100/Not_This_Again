@@ -7,7 +7,13 @@ var bullet: Node2D
 func before_each():
 	bullet = BulletScene.instantiate()
 	add_child_autofree(bullet)
-	await get_tree().process_frame
+	# NOTE: deliberately do NOT await process_frame here. The bullet
+	# auto-despawns when y < DESPAWN_Y (-80), and its default position
+	# from the .tscn is (0, 0) which is already past that threshold.
+	# Awaiting would tick _process once with the default position →
+	# bullet queue_frees itself before the test body even runs.
+	# Tests that need _process can call bullet._process(delta) manually
+	# after setting a non-despawning position.
 
 func test_added_to_bullets_group():
 	assert_true(bullet.is_in_group("bullets"),
