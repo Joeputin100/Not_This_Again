@@ -18,10 +18,8 @@ export_credentials.cfg
 *.gdnlib_disabled
 mono_crash.*.json
 
-# Godot Android plugin builds (inside the godot/ project dir — Godot's convention)
-godot/android/build/
-godot/android/plugins/
-godot/android/src/main/assets/.import/
+# Godot Android build template (CI-installed every run, never committed)
+godot/android/
 # Legacy entries (kept in case we ever change layout back)
 android/build/
 android/plugins/

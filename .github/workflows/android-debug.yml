@@ -47,11 +47,18 @@ jobs:
           mkdir -p "$GITHUB_WORKSPACE/godot/android/build"
           unzip -o android_source.zip -d "$GITHUB_WORKSPACE/godot/android/build/"
           # Mimic what the Editor's "Install Android Build Template" menu writes
-          # after extraction. Without these two markers, Godot rejects the
-          # template at export time ("no version info for it exists").
-          echo "4.6.1.stable.official" > "$GITHUB_WORKSPACE/godot/android/build/.build_version"
+          # after extraction. The two marker files live in DIFFERENT directories
+          # (confirmed against Godot 4.6.1 source at
+          # editor/export/export_template_manager.cpp install_android_template_from_file):
+          #   - .build_version goes in android/   (PARENT of build/, used for version check)
+          #   - .gdignore     goes in android/build/  (INSIDE build/, prevents Godot's
+          #                                            resource scanner from importing
+          #                                            gradle source as project assets)
+          echo "4.6.1.stable.official" > "$GITHUB_WORKSPACE/godot/android/.build_version"
           touch "$GITHUB_WORKSPACE/godot/android/build/.gdignore"
-          echo "Installed template files:"
+          echo "Installed template files (godot/android/):"
+          ls -la "$GITHUB_WORKSPACE/godot/android/" | head -10
+          echo "Build template files (godot/android/build/):"
           ls -la "$GITHUB_WORKSPACE/godot/android/build/" | head -25
 
       - name: Godot export (debug)
