@@ -94,6 +94,25 @@ The voice splits across two characters: a **deadpan narrator** and **histrionic 
 
 - **Achievement names — dry, faintly insulting**: *"Statistical Improbability," "Adequate Posse Leader," "Concerning Body Count," "Reluctantly Competent," "Made It Out Alive (Barely)."*
 
+### Genre shape: arcade-primary with puzzle bonus rounds
+
+Candy Crush's main loop is **turn-based puzzle** with **occasional arcade bonus levels** (timed candy collect, jelly-fish bonus, etc.) as pacing variety. **We invert this**: our main loop is **arcade action** (the crowd runner), with **occasional turn-based puzzle bonus levels** as pacing variety.
+
+Cadence target: one puzzle bonus per ~5 arcade levels, OR anchored to milestones (e.g., every biome boss defeated unlocks one, every Sunday is a fresh daily puzzle).
+
+Western-themed puzzle archetypes that fit the bonus slot:
+
+| Puzzle | Mechanic | Theme hook |
+|---|---|---|
+| **Bank vault combination** | Sliding-tile or rotate-the-dial logic puzzle | "Crack open the safe" — earned after a successful train heist |
+| **Bounty board prioritization** | Resource management: pick which 3 outlaws to chase given travel cost + payout matrix | "Most wanted" — meta layer over arcade levels |
+| **Train heist routing** | Graph/maze puzzle: path through linked train cars to reach the loot | "Route through the train" |
+| **Showdown** | Chess-problem-style: position your guns to win in N moves | "High noon" — alternate final-boss flavor |
+| **Wanted poster match-3** | Three-in-a-row of outlaw faces | Direct homage to Candy Crush — the inversion winks at itself |
+| **Powder keg stacking** | Pack barrels into a cart, Tetris-style | Mining-town biome |
+
+Ships as a separate `puzzle.tscn` scene type sharing project-wide `GameState`, theme, and font. **Not phase 1 scope.** Added 2026-05-11 as future content direction; revisit when phase 1 arcade-primary is fun on its own.
+
 ### Polish bar
 
 The premise (bow-legged cowboys mathematically multiplying through saloon doors to outshoot a buffalo stampede) is **deliberately ridiculous**. The execution must be **reverent** — the Candy Crush move: take a silly mechanic seriously enough that the polish makes it feel premium.

@@ -1,0 +1,46 @@
+[gd_scene load_steps=3 format=3 uid="uid://b0nttg_gate_001"]
+
+[ext_resource type="Script" path="res://scripts/gate.gd" id="1_gate"]
+[ext_resource type="Theme" path="res://assets/theme.tres" id="2_theme"]
+
+[node name="Gate" type="Node2D"]
+position = Vector2(540, 200)
+script = ExtResource("1_gate")
+
+[node name="LeftDoor" type="ColorRect" parent="."]
+offset_left = -460.0
+offset_top = -90.0
+offset_right = -8.0
+offset_bottom = 90.0
+color = Color(0.4, 0.65, 0.35, 0.92)
+
+[node name="LeftLabel" type="Label" parent="LeftDoor"]
+anchor_right = 1.0
+anchor_bottom = 1.0
+theme = ExtResource("2_theme")
+theme_override_colors/font_color = Color(1, 1, 1, 1)
+theme_override_colors/font_outline_color = Color(0.08, 0.18, 0.05, 1)
+theme_override_constants/outline_size = 8
+theme_override_font_sizes/font_size = 96
+text = "+10"
+horizontal_alignment = 1
+vertical_alignment = 1
+
+[node name="RightDoor" type="ColorRect" parent="."]
+offset_left = 8.0
+offset_top = -90.0
+offset_right = 460.0
+offset_bottom = 90.0
+color = Color(0.85, 0.6, 0.25, 0.92)
+
+[node name="RightLabel" type="Label" parent="RightDoor"]
+anchor_right = 1.0
+anchor_bottom = 1.0
+theme = ExtResource("2_theme")
+theme_override_colors/font_color = Color(1, 1, 1, 1)
+theme_override_colors/font_outline_color = Color(0.18, 0.1, 0.03, 1)
+theme_override_constants/outline_size = 8
+theme_override_font_sizes/font_size = 96
+text = "x2"
+horizontal_alignment = 1
+vertical_alignment = 1
