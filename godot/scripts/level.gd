@@ -41,7 +41,7 @@ var shake: RefCounted
 var combos: RefCounted
 
 func _ready() -> void:
-	print("[LEVEL] _ready start")
+	DebugLog.add("level _ready start")
 	# Belt-and-suspenders: also disable quit-on-go-back at runtime in case
 	# the project.godot setting doesn't reach Android's Activity layer.
 	get_tree().set_quit_on_go_back(false)
@@ -65,9 +65,10 @@ func _ready() -> void:
 	# Diagnostic: mark that _ready completed end-to-end.
 	if debug_label:
 		debug_label.text = "READY OK (process not yet ticked)"
-	else:
-		print("[LEVEL] WARNING: debug_label is null at end of _ready")
-	print("[LEVEL] _ready end. cowboy=", cowboy, " camera=", camera, " debug_label=", debug_label)
+	DebugLog.add("level _ready end (gates=%d, cowboy=%s)" % [
+		_gather_gates().size(),
+		"ok" if cowboy != null else "NULL",
+	])
 
 func _gather_gates() -> Array[Node]:
 	var gates: Array[Node] = []
@@ -119,8 +120,10 @@ func _input(event: InputEvent) -> void:
 
 func _notification(what: int) -> void:
 	if what == NOTIFICATION_WM_GO_BACK_REQUEST:
+		DebugLog.add("level NOTIFICATION_WM_GO_BACK_REQUEST → menu")
 		get_tree().change_scene_to_file("res://scenes/main_menu.tscn")
 	elif what == NOTIFICATION_WM_CLOSE_REQUEST:
+		DebugLog.add("level NOTIFICATION_WM_CLOSE_REQUEST → quit")
 		get_tree().quit()
 
 func _on_gate_triggered(gate_center_x: float, gate: Node) -> void:
@@ -135,6 +138,7 @@ func _on_gate_triggered(gate_center_x: float, gate: Node) -> void:
 	# runtime — manifesting as level.gd not attached, _ready/_process/
 	# _input "nonexistent." Found via test_level_integration.gd in iter 14.
 	var combo: int = combos.step()
+	DebugLog.add("gate triggered combo=%d cowboy_x=%.0f" % [combo, cowboy.position.x])
 
 	# Boost gate's particle amount BEFORE its _play_pass_animation runs.
 	# Signal emission is synchronous, so this lands before emitting=true.

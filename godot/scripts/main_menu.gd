@@ -30,6 +30,7 @@ var _subtitle_idle_tween: Tween
 func _ready() -> void:
 	# Belt-and-suspenders runtime call; project.godot also sets this to false.
 	get_tree().set_quit_on_go_back(false)
+	DebugLog.add("main_menu _ready (build=%s)" % BuildInfo.SHA)
 	play_button.pressed.connect(_on_play_pressed)
 	IdleNudge.idle_started.connect(_on_idle_started)
 	IdleNudge.idle_ended.connect(_on_idle_ended)
@@ -42,8 +43,15 @@ func _ready() -> void:
 
 func _on_copy_pressed() -> void:
 	AudioBus.play_tap()
-	var text := build_id_label.text
+	# Bundle build identifier + recent debug log into the clipboard so a
+	# bug report includes both "what's running" and "what happened so far."
+	var text := "%s\n\n--- recent log (%d lines) ---\n%s" % [
+		build_id_label.text,
+		DebugLog.line_count(),
+		DebugLog.get_text(),
+	]
 	DisplayServer.clipboard_set(text)
+	DebugLog.add("clipboard: copied %d chars" % text.length())
 	# Visual feedback — fade the COPIED toast in then out.
 	copy_toast.modulate.a = 0.0
 	var tween := create_tween()
@@ -66,6 +74,7 @@ func _notification(what: int) -> void:
 
 func _on_play_pressed() -> void:
 	# Candy-Crush press feedback: tap SFX + squish + bounce back + scene change.
+	DebugLog.add("PLAY pressed → loading level scene")
 	AudioBus.play_tap()
 	play_button.disabled = true
 	_kill_idle_tweens()  # don't let fidget fight the press animation
