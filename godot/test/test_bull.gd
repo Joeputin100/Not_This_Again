@@ -55,7 +55,7 @@ func test_charging_damage_higher_than_other_obstacles():
 # ---------- take_bullet_hit ----------
 
 func test_take_bullet_hit_decrements_hp_by_one_default():
-	var before := bull.hp
+	var before: int = bull.hp
 	bull.take_bullet_hit()
 	assert_eq(bull.hp, before - 1)
 
@@ -65,7 +65,7 @@ func test_take_bullet_hit_always_returns_true():
 
 func test_take_bullet_hit_caliber_aware():
 	# A caliber-5 shot (e.g. shotgun) reduces HP by 5 in one hit.
-	var before := bull.hp
+	var before: int = bull.hp
 	bull.take_bullet_hit(5)
 	assert_eq(bull.hp, before - 5,
 		"take_bullet_hit(5) reduces HP by 5 — caliber-aware")
@@ -147,7 +147,7 @@ func test_confused_bull_uses_drift_velocity():
 
 func test_confused_timer_decrements():
 	bull.confuse()
-	var t0 := bull._confused_timer
+	var t0: float = bull._confused_timer
 	bull._process(0.5)
 	assert_lt(bull._confused_timer, t0,
 		"_confused_timer should tick down each process call")
