@@ -59,3 +59,8 @@ google-services.json
 # Logs
 *.log
 logs/
+
+# Claude Code agent worktrees (created automatically by Agent isolation;
+# they share .git with main, so git tries to track them as submodules.
+# Always ignored — never commit them.)
+.claude/
