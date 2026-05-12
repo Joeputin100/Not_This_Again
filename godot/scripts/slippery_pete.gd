@@ -31,6 +31,8 @@ const STREAM_SHOOT := preload("res://assets/videos/pete/shoots_at_player.ogv")
 const STREAM_HIT := preload("res://assets/videos/pete/hit_by_gunfire.ogv")
 const STREAM_DEATH := preload("res://assets/videos/pete/death.ogv")
 const STREAM_CELEBRATE := preload("res://assets/videos/pete/celebrate.ogv")
+const STREAM_SHOUTS := preload("res://assets/videos/pete/shouts.ogv")
+const STREAM_COMPLAINS := preload("res://assets/videos/pete/complains.ogv")
 
 const DeathPolish := preload("res://scripts/death_polish.gd")
 
@@ -64,7 +66,7 @@ const ON_SCREEN_Y: float = 0.0
 const SHOOT_OVERLAY_DURATION: float = 0.35
 const HIT_OVERLAY_DURATION: float = 0.45
 
-enum State { IDLE, FORWARD, STRAFE_LEFT, STRAFE_RIGHT, SHOOT, HIT, CELEBRATE }
+enum State { IDLE, FORWARD, STRAFE_LEFT, STRAFE_RIGHT, SHOOT, HIT, CELEBRATE, SHOUT, COMPLAIN }
 
 var hp: int = MAX_HP
 var _destroyed: bool = false
@@ -147,16 +149,17 @@ func _process(delta: float) -> void:
 		_spawn_dual_bullets()
 
 func _apply_base_state() -> void:
-	# IDLE while off-screen or close to cowboy (crawl phase). FORWARD
-	# while scrolling toward cowboy. Strafe state is currently unused
-	# — kept in the enum for iter 33 when sideways tracking velocity
-	# is high enough to read as "strafing."
+	# Off-screen: foot-tap IDLE (Pete is waiting his turn to enter).
+	# Approaching: FORWARD steps.
+	# Crawl phase (in the posse's face): SHOUT — Yosemite-Sam-style
+	# threats, picked over the silent foot-tap because once Pete is
+	# close enough to crowd the posse he should be VERY LOUD.
 	if position.y < ON_SCREEN_Y:
 		_switch_to(State.IDLE)
 	elif _cowboy and (_cowboy.position.y - position.y) > STAY_DISTANCE_Y:
 		_switch_to(State.FORWARD)
 	else:
-		_switch_to(State.IDLE)
+		_switch_to(State.SHOUT)
 
 func _switch_to(new_state: int) -> void:
 	if new_state == _state:
@@ -176,6 +179,8 @@ func _switch_to(new_state: int) -> void:
 		State.SHOOT: video.stream = STREAM_SHOOT
 		State.HIT: video.stream = STREAM_HIT
 		State.CELEBRATE: video.stream = STREAM_CELEBRATE
+		State.SHOUT: video.stream = STREAM_SHOUTS
+		State.COMPLAIN: video.stream = STREAM_COMPLAINS
 	video.play()
 
 func _spawn_dual_bullets() -> void:
@@ -209,7 +214,10 @@ func take_bullet_hit(damage: int = 1) -> bool:
 	_emit_splinter()
 	# Trigger HIT overlay. If currently in SHOOT, replace it — getting
 	# shot is the more immediate event for the player to feel.
-	_switch_to(State.HIT)
+	# Iter 36: 50/50 pick between physical-reaction HIT and verbal
+	# COMPLAIN. Player sees varied hit responses instead of always
+	# seeing the same flinch.
+	_switch_to(State.HIT if randf() < 0.5 else State.COMPLAIN)
 	_override_timer = HIT_OVERLAY_DURATION
 	if hp <= 0:
 		_destroyed = true

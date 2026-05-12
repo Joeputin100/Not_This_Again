@@ -1,55 +1,76 @@
 extends Node2D
 
-# Iter 31 rewrite: vagrant black-hat outlaw with tracking AI + aimed
-# fire + HP bar. Replaces the iter 29 "scroll down + fire straight
-# down" behavior with:
-#   - lerps horizontal position toward cowboy.x (imperfect tracking
-#     via TRACK_SPEED — the lag is intentional, gives the player a
-#     window to dodge sideways).
-#   - scrolls forward at SCROLL_SPEED only while > STAY_DISTANCE_Y px
-#     above the cowboy. Within that range, crawls at STAY_SCROLL_SPEED
-#     so the vagrant CROWDS the posse instead of passing by.
-#   - each fired OutlawBullet aims at cowboy.position via the bullet's
-#     velocity vector (iter 31 OutlawBullet.velocity).
-#   - spawns a small muzzle flash at the visible gun position.
-#   - floats an HpBar above the head, updated on every take_bullet_hit.
+# Vagrant outlaw — black-hat ranged enemy. Iter 36+: animated via
+# VideoStreamPlayer + chromakey shader using 7 Veo-rendered animations.
+# Tracks the posse + crowds (iter 31 AI) and now picks directional
+# shooting animations based on relative cowboy position.
+#
+# Animations (godot/assets/videos/vagrant/):
+#   idle_wobble    — drunk standing sway (loop)
+#   drunk_walk     — unsteady forward gait (loop, replaces FORWARD)
+#   strafe_left    — sideways shuffle (loop)
+#   strafe_right   — sideways shuffle (loop)
+#   shoot_left     — fires forward-left (one-shot overlay)
+#   shoot_right    — fires forward-right (one-shot overlay)
+#   shoot_down     — fires straight at camera (one-shot overlay)
+#
+# Death currently uses the iter 31 tween (user hasn't supplied a death
+# video for the vagrant yet) — plus the universal DeathPolish (freeze
+# + strobe).
 
 const OutlawBulletScene := preload("res://scenes/outlaw_bullet.tscn")
 const OutlawBulletScript := preload("res://scripts/outlaw_bullet.gd")
 const MuzzleFlashScene := preload("res://scenes/muzzle_flash.tscn")
 
+const STREAM_IDLE := preload("res://assets/videos/vagrant/idle_wobble.ogv")
+const STREAM_FORWARD := preload("res://assets/videos/vagrant/drunk_walk.ogv")
+const STREAM_STRAFE_LEFT := preload("res://assets/videos/vagrant/strafe_left.ogv")
+const STREAM_STRAFE_RIGHT := preload("res://assets/videos/vagrant/strafe_right.ogv")
+const STREAM_SHOOT_LEFT := preload("res://assets/videos/vagrant/shoot_left.ogv")
+const STREAM_SHOOT_RIGHT := preload("res://assets/videos/vagrant/shoot_right.ogv")
+const STREAM_SHOOT_DOWN := preload("res://assets/videos/vagrant/shoot_down.ogv")
+
+const DeathPolish := preload("res://scripts/death_polish.gd")
+
 signal destroyed(x: float)
 
 const MAX_HP: int = 10
 const SCROLL_SPEED: float = 240.0
-# Crawl speed once within STAY_DISTANCE_Y of the cowboy. Slow enough
-# that the vagrant doesn't run over the cowboy, fast enough to apply
-# pressure if the player ignores them.
 const STAY_SCROLL_SPEED: float = 25.0
-# Distance above cowboy.y at which the vagrant transitions to crawl.
-# 250 leaves the sprites ~100px apart visually — in-the-face but not
-# overlapping.
 const STAY_DISTANCE_Y: float = 250.0
-# Lerp rate for horizontal tracking. Lower = more imperfect (more lag).
-# 1.4 gives a ~700ms catch-up to a sudden cowboy lane change at 60fps.
 const TRACK_SPEED: float = 1.4
 const SIZE: Vector2 = Vector2(120, 200)
 const COWBOY_DAMAGE: int = 15
 const FIRE_INTERVAL: float = 1.2
-# Bullet spawns from the vagrant's gun hand. vagrant.png has the gun
-# raised at the cowboy's mid-right; tuned offset in node-local coords
-# after the 0.22 sprite scale.
+# Bullet spawns from the vagrant's gun-hand. The vagrant.png art has
+# the revolver raised; tuned offset for the 0.22 sprite scale era still
+# works for the 150×270 video display.
 const MUZZLE_OFFSET: Vector2 = Vector2(20, -20)
 const ON_SCREEN_Y: float = 0.0
+
+# Overlay durations. SHOOT animations are 4s clips but we cap the
+# overlay so the vagrant isn't stuck in the firing pose between bullets.
+const SHOOT_OVERLAY_DURATION: float = 0.35
+# Strafe detection: horizontal velocity threshold (px/frame at 60fps)
+# above which we switch to STRAFE_LEFT or STRAFE_RIGHT.
+const STRAFE_VELOCITY_THRESHOLD: float = 1.5
+# Horizontal distance (px) below which "shoot down" wins over
+# "shoot left/right" — when the cowboy is nearly directly below.
+const SHOOT_DOWN_BAND: float = 80.0
+
+enum State { IDLE, FORWARD, STRAFE_LEFT, STRAFE_RIGHT, SHOOT_LEFT, SHOOT_RIGHT, SHOOT_DOWN }
 
 var hp: int = MAX_HP
 var _destroyed: bool = false
 var _fire_timer: float = 0.0
 var _cowboy: Node2D = null
+var _state: int = State.IDLE
+var _override_timer: float = 0.0
 
 @onready var hp_label: Label = $HpLabel
 @onready var hp_bar: Control = $HpBar
 @onready var splinters: CPUParticles2D = $Splinters
+@onready var video: VideoStreamPlayer = $Video
 
 func _ready() -> void:
 	hp = MAX_HP
@@ -58,10 +79,9 @@ func _ready() -> void:
 		hp_bar.init(MAX_HP)
 	add_to_group("outlaws")
 	_cowboy = _find_cowboy()
+	_switch_to(State.IDLE)
 
 func _find_cowboy() -> Node2D:
-	# Cowboy is a fixed-name child of the level. Search the parent first
-	# (cheap & specific) before falling back to the broader scene tree.
 	var level := get_parent()
 	if level:
 		var c := level.get_node_or_null("Cowboy")
@@ -72,16 +92,23 @@ func _find_cowboy() -> Node2D:
 func _process(delta: float) -> void:
 	if _destroyed:
 		return
-	# Horizontal tracking — lerp toward cowboy.x. The lerp(a, b, t) flavor
-	# t = TRACK_SPEED * delta gives frame-rate-independent lag.
+	if _override_timer > 0.0:
+		_override_timer -= delta
+		if _override_timer <= 0.0:
+			_apply_base_state()
+	# Track + scroll
+	var x_before: float = position.x
 	if _cowboy:
 		position.x = lerpf(position.x, _cowboy.position.x, clampf(TRACK_SPEED * delta, 0.0, 1.0))
-	# Forward scroll, switching to crawl near the cowboy.
 	var dy: float = (_cowboy.position.y - position.y) if _cowboy else 1000.0
 	position.y += (SCROLL_SPEED if dy > STAY_DISTANCE_Y else STAY_SCROLL_SPEED) * delta
 	if position.y > 2200.0:
 		queue_free()
 		return
+	# Base state choice (skipped while overlay active).
+	if _override_timer <= 0.0:
+		var dx: float = position.x - x_before
+		_apply_base_state(dx, dy)
 	if position.y < ON_SCREEN_Y:
 		return
 	_fire_timer += delta
@@ -89,22 +116,60 @@ func _process(delta: float) -> void:
 		_fire_timer = 0.0
 		_spawn_bullet()
 
+func _apply_base_state(dx: float = 0.0, dy: float = 1000.0) -> void:
+	if position.y < ON_SCREEN_Y:
+		_switch_to(State.IDLE)
+		return
+	if dx < -STRAFE_VELOCITY_THRESHOLD:
+		_switch_to(State.STRAFE_LEFT)
+	elif dx > STRAFE_VELOCITY_THRESHOLD:
+		_switch_to(State.STRAFE_RIGHT)
+	elif dy > STAY_DISTANCE_Y:
+		_switch_to(State.FORWARD)
+	else:
+		_switch_to(State.IDLE)
+
+func _switch_to(new_state: int) -> void:
+	if new_state == _state:
+		return
+	_state = new_state
+	if video == null:
+		return
+	match new_state:
+		State.IDLE: video.stream = STREAM_IDLE
+		State.FORWARD: video.stream = STREAM_FORWARD
+		State.STRAFE_LEFT: video.stream = STREAM_STRAFE_LEFT
+		State.STRAFE_RIGHT: video.stream = STREAM_STRAFE_RIGHT
+		State.SHOOT_LEFT: video.stream = STREAM_SHOOT_LEFT
+		State.SHOOT_RIGHT: video.stream = STREAM_SHOOT_RIGHT
+		State.SHOOT_DOWN: video.stream = STREAM_SHOOT_DOWN
+	video.play()
+
 func _spawn_bullet() -> void:
 	var level := get_parent()
 	if not level:
 		return
+	# Pick the matching directional shoot animation based on where the
+	# cowboy is relative to this vagrant. SHOOT_DOWN when the cowboy is
+	# in a narrow vertical band; SHOOT_LEFT/RIGHT for offset targets.
+	var shoot_state: int = State.SHOOT_DOWN
+	if _cowboy:
+		var dx: float = _cowboy.position.x - position.x
+		if absf(dx) < SHOOT_DOWN_BAND:
+			shoot_state = State.SHOOT_DOWN
+		elif dx < 0:
+			shoot_state = State.SHOOT_LEFT
+		else:
+			shoot_state = State.SHOOT_RIGHT
+	_switch_to(shoot_state)
+	_override_timer = SHOOT_OVERLAY_DURATION
 	var bullet := OutlawBulletScene.instantiate()
 	var spawn_pos: Vector2 = position + MUZZLE_OFFSET
 	bullet.position = spawn_pos
-	# Aim at the cowboy. If no cowboy (shouldn't happen in normal play),
-	# fall back to straight down.
 	if _cowboy:
 		var dir: Vector2 = (_cowboy.position - spawn_pos).normalized()
 		bullet.velocity = dir * OutlawBulletScript.SPEED
 	level.add_child(bullet)
-	# Muzzle flash at the gun position, parented to the vagrant so it
-	# follows during the ~200ms animation. Scale of the flash is already
-	# 0.17 in muzzle_flash.tscn (iter 31's 1/3-size reduction).
 	var flash := MuzzleFlashScene.instantiate()
 	flash.position = MUZZLE_OFFSET
 	add_child(flash)
@@ -139,9 +204,12 @@ func _play_destroy_animation() -> void:
 	if splinters:
 		splinters.amount = 40
 		splinters.restart()
+	# No death video for vagrant (user hasn't provided one). Use the
+	# iter 31 tween — modulate fade + scale up — then universal polish.
 	var tween := create_tween().set_parallel(true)
 	tween.tween_property(self, "modulate:a", 0.0, 0.4)
 	tween.tween_property(self, "scale", Vector2(1.3, 1.3), 0.4) \
 		.set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
 	await tween.finished
+	await DeathPolish.play(self)
 	queue_free()
