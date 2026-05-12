@@ -1,0 +1,70 @@
+[gd_scene load_steps=3 format=3 uid="uid://b0nttg_bonus_001"]
+
+[ext_resource type="Script" path="res://scripts/bonus.gd" id="1_bonus"]
+[ext_resource type="Theme" path="res://assets/theme.tres" id="2_theme"]
+
+[node name="Bonus" type="Node2D"]
+script = ExtResource("1_bonus")
+
+[node name="Glow" type="ColorRect" parent="."]
+offset_left = -32.0
+offset_top = -32.0
+offset_right = 32.0
+offset_bottom = 32.0
+color = Color(1, 0.85, 0.3, 0.4)
+mouse_filter = 2
+
+[node name="Body" type="ColorRect" parent="."]
+offset_left = -25.0
+offset_top = -25.0
+offset_right = 25.0
+offset_bottom = 25.0
+color = Color(1, 0.92, 0.55, 1)
+mouse_filter = 2
+
+[node name="Border" type="ColorRect" parent="."]
+offset_left = -25.0
+offset_top = -25.0
+offset_right = 25.0
+offset_bottom = -21.0
+color = Color(0.35, 0.22, 0.08, 1)
+mouse_filter = 2
+
+[node name="BorderBottom" type="ColorRect" parent="."]
+offset_left = -25.0
+offset_top = 21.0
+offset_right = 25.0
+offset_bottom = 25.0
+color = Color(0.35, 0.22, 0.08, 1)
+mouse_filter = 2
+
+[node name="BorderLeft" type="ColorRect" parent="."]
+offset_left = -25.0
+offset_top = -25.0
+offset_right = -21.0
+offset_bottom = 25.0
+color = Color(0.35, 0.22, 0.08, 1)
+mouse_filter = 2
+
+[node name="BorderRight" type="ColorRect" parent="."]
+offset_left = 21.0
+offset_top = -25.0
+offset_right = 25.0
+offset_bottom = 25.0
+color = Color(0.35, 0.22, 0.08, 1)
+mouse_filter = 2
+
+[node name="Letter" type="Label" parent="."]
+offset_left = -25.0
+offset_top = -25.0
+offset_right = 25.0
+offset_bottom = 25.0
+theme = ExtResource("2_theme")
+theme_override_colors/font_color = Color(0.25, 0.13, 0.05, 1)
+theme_override_colors/font_outline_color = Color(1, 0.95, 0.7, 1)
+theme_override_constants/outline_size = 3
+theme_override_font_sizes/font_size = 32
+text = "?"
+horizontal_alignment = 1
+vertical_alignment = 1
+mouse_filter = 2

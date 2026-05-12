@@ -22,6 +22,7 @@ const ChickenScript = preload("res://scripts/chicken.gd")
 const GunScript = preload("res://scripts/gun.gd")
 const GunStateScript = preload("res://scripts/gun_state.gd")
 const PosseRendererScript = preload("res://scripts/posse_renderer.gd")
+const BonusScript = preload("res://scripts/bonus.gd")
 
 const FOLLOW_SPEED: float = 12.0
 const STARTING_POSSE: int = 5
@@ -169,6 +170,8 @@ func _process(delta: float) -> void:
 	_resolve_obstacle_cowboy_collisions("barricades", BarricadeScript.SIZE)
 	# chicken_coops and chickens have get_cowboy_damage() == 0, so we
 	# skip them in the cowboy-collision pass (no point processing).
+	# Bonuses are auto-equipped on cowboy contact (no tap-to-take prompt).
+	_resolve_bonus_cowboy_collisions()
 
 	_refresh_ammo_label()
 	# Diagnostic — fallback to get_node in case @onready ref is stale.
@@ -298,7 +301,72 @@ func _resolve_barrel_cowboy_collisions() -> void:
 			_pulse_posse_label()
 			shake.add_trauma(0.65)
 			# Force-destroy the barrel (overkill so take_damage returns true).
+			# Note: this still triggers the bonus-spawn path in barrel.gd, so
+			# the player can recover a power-up even if the barrel rams them.
 			barrel.take_damage(barrel.hp)
+
+func _resolve_bonus_cowboy_collisions() -> void:
+	# Bonuses auto-equip on cowboy contact — no tap-to-take prompt.
+	# Design intent: the choice was made when the player shot (or didn't
+	# shoot) the power-up barrel. Walking into the dropped icon is just
+	# the follow-through. Adding a confirm tap here would break pacing.
+	for bonus in get_tree().get_nodes_in_group("bonuses"):
+		if not Collision2D.rects_overlap(
+				bonus.position, BonusScript.SIZE,
+				cowboy.position, COWBOY_SIZE):
+			continue
+		# Wire up the signal just-in-time so the test suite can observe
+		# equipped() firing without the level having to pre-scan for
+		# every spawned bonus. bonus.equip() emits then queue_frees.
+		if not bonus.equipped.is_connected(_on_bonus_equipped):
+			bonus.equipped.connect(_on_bonus_equipped)
+		bonus.equip()
+
+func _on_bonus_equipped(type: String) -> void:
+	# Bridge from the bonus's signal to our actual stat-mutation logic.
+	# Keeping the dispatch in _equip_bonus means tests can call it
+	# directly without spinning up a Bonus node.
+	_equip_bonus(type)
+
+# Applies the effect of a bonus to the player's run. Each branch is a
+# permanent (run-local) change — no buff timers, no decay. The player
+# accepted these effects when they chose to shoot the power-up barrel.
+func _equip_bonus(type: String) -> void:
+	match type:
+		"fast_fire":
+			# 30% faster fire rate. Multiplicative so stacking pickups
+			# compound — but the gun resource is the SAME instance the
+			# GunState reads on every fire, so the change applies on the
+			# very next shot.
+			_gun.fire_interval *= 0.7
+			DebugLog.add("bonus equipped: fast_fire → fire_interval=%.3f" % _gun.fire_interval)
+		"extra_dude":
+			# +2 posse members. posse_count setter clamps to >= 1 and
+			# refreshes the on-screen label.
+			posse_count += 2
+			_pulse_posse_label()
+			DebugLog.add("bonus equipped: extra_dude → posse_count=%d" % posse_count)
+		"rifle":
+			# Tradeoff weapon: caliber 3 (triple damage), 900px range
+			# (50% longer), but only 4 rounds, 1.3s reload, 0.30s
+			# fire_interval (slower). Genuine player choice — not a
+			# strict upgrade. Construct in code; .tres-based gun library
+			# arrives in a later iter.
+			var rifle: Resource = GunScript.new()
+			rifle.display_name = "Rifle"
+			rifle.caliber = 3
+			rifle.range_px = 900.0
+			rifle.fire_interval = 0.30
+			rifle.clip_size = 4
+			rifle.reload_time = 1.3
+			_gun = rifle
+			# Reset gun state so the new clip is full immediately. The
+			# old state's cooldown/reload are intentionally discarded —
+			# picking up a rifle shouldn't carry over a half-reload.
+			_gun_state = GunStateScript.new(_gun)
+			DebugLog.add("bonus equipped: rifle → caliber=%d range=%.0f" % [_gun.caliber, _gun.range_px])
+		_:
+			DebugLog.add("bonus equipped: UNKNOWN type=%s" % type)
 
 func _input(event: InputEvent) -> void:
 	# Track ALL inputs to verify _input is being called at all, not just

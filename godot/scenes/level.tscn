@@ -55,15 +55,26 @@ right_value = -10
 [node name="Barrel1" parent="." instance=ExtResource("4_barrel")]
 position = Vector2(360, 400)
 max_hp = 4
+bonus_type = "fast_fire"
 
 [node name="Tumbleweed1" parent="." instance=ExtResource("5_tw")]
 position = Vector2(720, 0)
+
+[node name="BarrelRifle" parent="." instance=ExtResource("4_barrel")]
+position = Vector2(540, 100)
+max_hp = 5
+bonus_type = "rifle"
 
 [node name="Cactus1" parent="." instance=ExtResource("6_cactus")]
 position = Vector2(280, -400)
 
 [node name="Barricade1" parent="." instance=ExtResource("7_barricade")]
 position = Vector2(820, -800)
+
+[node name="BarrelExtraDude" parent="." instance=ExtResource("4_barrel")]
+position = Vector2(360, -950)
+max_hp = 4
+bonus_type = "extra_dude"
 
 [node name="ChickenCoop1" parent="." instance=ExtResource("8_coop")]
 position = Vector2(540, -1100)
