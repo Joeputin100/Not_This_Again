@@ -30,6 +30,7 @@ const STREAM_STRAFE := preload("res://assets/videos/pete/strafe_right_to_left.og
 const STREAM_SHOOT := preload("res://assets/videos/pete/shoots_at_player.ogv")
 const STREAM_HIT := preload("res://assets/videos/pete/hit_by_gunfire.ogv")
 const STREAM_DEATH := preload("res://assets/videos/pete/death.ogv")
+const STREAM_CELEBRATE := preload("res://assets/videos/pete/celebrate.ogv")
 
 const DeathPolish := preload("res://scripts/death_polish.gd")
 
@@ -37,6 +38,11 @@ const DeathPolish := preload("res://scripts/death_polish.gd")
 # animations — dramatic boss exit). Used to await the video's end
 # before applying the universal freeze-strobe polish.
 const DEATH_DURATION: float = 8.0
+# Celebrate is also 8s but we don't let it play full length — Pete
+# should mostly be aggressing, not gloating. Truncate via overlay timer
+# so the most expressive opening seconds of the animation play and then
+# we return to forward/shoot pressure.
+const CELEBRATE_OVERLAY_DURATION: float = 2.5
 
 signal destroyed(x: float)
 
@@ -58,7 +64,7 @@ const ON_SCREEN_Y: float = 0.0
 const SHOOT_OVERLAY_DURATION: float = 0.35
 const HIT_OVERLAY_DURATION: float = 0.45
 
-enum State { IDLE, FORWARD, STRAFE_LEFT, STRAFE_RIGHT, SHOOT, HIT }
+enum State { IDLE, FORWARD, STRAFE_LEFT, STRAFE_RIGHT, SHOOT, HIT, CELEBRATE }
 
 var hp: int = MAX_HP
 var _destroyed: bool = false
@@ -66,6 +72,11 @@ var _fire_timer: float = 0.0
 var _cowboy: Node2D = null
 var _state: int = State.IDLE
 var _override_timer: float = 0.0
+# Iter 34: Pete celebrates briefly each time the posse_count drops
+# (i.e., one of his shots — or another enemy's — killed a dude). Cache
+# the level's posse_count between frames so we can detect the drop.
+var _level: Node = null
+var _last_posse_count: int = -1
 
 @onready var hp_label: Label = $HpLabel
 @onready var hp_bar: Control = $HpBar
@@ -83,6 +94,9 @@ func _ready() -> void:
 	add_to_group("outlaws")
 	add_to_group("bosses")
 	_cowboy = _find_cowboy()
+	_level = get_parent()
+	if _level and "posse_count" in _level:
+		_last_posse_count = _level.posse_count
 	_switch_to(State.IDLE)
 
 func _find_cowboy() -> Node2D:
@@ -96,8 +110,20 @@ func _find_cowboy() -> Node2D:
 func _process(delta: float) -> void:
 	if _destroyed:
 		return
-	# Update overlay timer for momentary states (shoot/hit). When it
-	# runs out, revert to the base state determined by movement.
+	# Iter 34: detect posse_count drops and trigger CELEBRATE overlay.
+	# Only fires when not already in a higher-priority overlay (HIT) —
+	# getting shot still trumps gloating. SHOOT can be overridden.
+	if _level and "posse_count" in _level:
+		var pc: int = _level.posse_count
+		if _last_posse_count > 0 and pc < _last_posse_count:
+			if _state != State.HIT and _override_timer <= 0.5:
+				# Override even an in-progress SHOOT — landing a kill
+				# is more interesting than the firing animation tail.
+				_switch_to(State.CELEBRATE)
+				_override_timer = CELEBRATE_OVERLAY_DURATION
+		_last_posse_count = pc
+	# Update overlay timer for momentary states (shoot/hit/celebrate).
+	# When it runs out, revert to the base state determined by movement.
 	if _override_timer > 0.0:
 		_override_timer -= delta
 		if _override_timer <= 0.0:
@@ -149,6 +175,7 @@ func _switch_to(new_state: int) -> void:
 			video.scale.x = absf(video.scale.x)
 		State.SHOOT: video.stream = STREAM_SHOOT
 		State.HIT: video.stream = STREAM_HIT
+		State.CELEBRATE: video.stream = STREAM_CELEBRATE
 	video.play()
 
 func _spawn_dual_bullets() -> void:
