@@ -71,7 +71,7 @@ func _ready() -> void:
 	if hp_bar:
 		hp_bar.init(MAX_HP)
 	if name_label:
-		name_label.text = Text.get("boss.slippery_pete_name") if Text else "SLIPPERY PETE"
+		name_label.text = Text.lookup("boss.slippery_pete_name") if Text else "SLIPPERY PETE"
 	add_to_group("outlaws")
 	add_to_group("bosses")
 	_cowboy = _find_cowboy()

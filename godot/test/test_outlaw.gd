@@ -109,10 +109,12 @@ func test_no_scroll_after_destroyed():
 
 func test_does_not_fire_above_on_screen_threshold():
 	# Outlaws far above the playfield (negative y) shouldn't pre-fire —
-	# the player can't see them, can't dodge unfairly.
-	outlaw.position.y = OutlawScript.ON_SCREEN_Y - 200.0
+	# the player can't see them, can't dodge unfairly. Use a far-off-
+	# screen position so the simulated _process tick (which moves the
+	# outlaw by SCROLL_SPEED × delta) doesn't cross ON_SCREEN_Y during
+	# the test window.
+	outlaw.position.y = OutlawScript.ON_SCREEN_Y - 2000.0
 	var before_count: int = get_tree().get_nodes_in_group("outlaw_bullets").size()
-	# Tick past one fire interval.
 	outlaw._process(OutlawScript.FIRE_INTERVAL * 1.5)
 	await get_tree().process_frame
 	var after_count: int = get_tree().get_nodes_in_group("outlaw_bullets").size()

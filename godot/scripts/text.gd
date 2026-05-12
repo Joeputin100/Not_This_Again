@@ -2,10 +2,13 @@ extends Node
 
 # Text autoload — single point of access for all visible UI strings.
 # Iter 31 setup: loads godot/assets/text/<lang>.json and exposes:
-#   Text.get("path.to.key")              → returns string
-#   Text.get("path.to.array_key.0")      → returns indexed array element
+#   Text.lookup("path.to.key")           → returns string
+#   Text.lookup("path.to.array_key.0")   → returns indexed array element
 #   Text.format("template_key", {n: 5})  → returns string with {placeholders} filled
+#   Text.random("array_key_path")        → random element from an array
 #   Text.set_language("es")              → swap loaded language at runtime
+# (lookup() not get() — get() is reserved on Object and would override
+# the built-in, breaking property access on the autoload elsewhere.)
 #
 # Plan-for-localization scaffolding: existing scenes can keep their
 # hardcoded text for now and migrate piecemeal. New text (e.g., Pete's
@@ -44,7 +47,7 @@ func set_language(lang: String) -> bool:
 # Look up a dotted key path. Numeric segments index into arrays.
 # Returns "" if the path doesn't resolve — caller is responsible for
 # handling fallback display (keeps UI alive if a key is mid-rename).
-func get(key_path: String) -> String:
+func lookup(key_path: String) -> String:
 	var parts: PackedStringArray = key_path.split(".")
 	var node: Variant = _data
 	for part in parts:
@@ -84,7 +87,7 @@ func random(array_key_path: String) -> String:
 # Template substitution: {placeholder} → vars[placeholder]. Numeric
 # values are stringified via str().
 func format(key_path: String, vars: Dictionary) -> String:
-	var tmpl: String = get(key_path)
+	var tmpl: String = lookup(key_path)
 	if tmpl.is_empty():
 		return ""
 	for k in vars:

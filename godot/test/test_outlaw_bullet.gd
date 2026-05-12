@@ -42,7 +42,9 @@ func test_despawns_below_playfield():
 	assert_false(is_instance_valid(bullet),
 		"outlaw bullet should queue_free once past DESPAWN_Y_BOTTOM")
 
-func test_posse_damage_is_two():
-	# A single outlaw bullet bites the posse for 2. 5 hits = -10 posse.
-	assert_eq(OutlawBulletScript.POSSE_DAMAGE, 2,
-		"per-bullet posse damage should remain 2")
+func test_posse_damage_is_one():
+	# Iter 31: bumped 2 → 1 so per-dude bullet collisions have clean
+	# semantics — one bullet, one specific dude dies. Multi-dude posse
+	# damage scales by Pete's dual-bullet rate, not by per-bullet weight.
+	assert_eq(OutlawBulletScript.POSSE_DAMAGE, 1,
+		"per-bullet posse damage should remain 1 (iter 31 per-dude semantics)")
