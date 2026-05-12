@@ -26,7 +26,7 @@ func test_clamps_at_exact_left_margin():
 	assert_eq(Mb.clamp_x(Mb.MARGIN_X), Mb.MARGIN_X)
 
 func test_clamps_at_exact_right_margin():
-	var right_margin := Mb.VIEWPORT_WIDTH - Mb.MARGIN_X
+	var right_margin: float = Mb.VIEWPORT_WIDTH - Mb.MARGIN_X
 	assert_eq(Mb.clamp_x(right_margin), right_margin)
 
 # ---------- normalize_x ----------

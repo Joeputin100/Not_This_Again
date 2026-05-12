@@ -17,7 +17,7 @@ func test_added_to_chicken_coops_group():
 	assert_true(coop.is_in_group("chicken_coops"))
 
 func test_take_bullet_hit_decrements_hp():
-	var before := coop.hp
+	var before: int = coop.hp
 	coop.take_bullet_hit()
 	assert_eq(coop.hp, before - 1)
 
@@ -46,7 +46,7 @@ func test_destruction_releases_chickens():
 	# Process a frame so any deferred adds settle.
 	await get_tree().process_frame
 	var after_count := get_tree().get_nodes_in_group("chickens").size()
-	var added := after_count - before_count
+	var added: int = after_count - before_count
 	assert_gte(added, CoopScript.CHICKEN_COUNT_MIN,
 		"should spawn at least CHICKEN_COUNT_MIN chickens (got %d)" % added)
 	assert_lte(added, CoopScript.CHICKEN_COUNT_MAX,
