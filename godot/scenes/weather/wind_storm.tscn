@@ -1,0 +1,21 @@
+[gd_scene load_steps=2 format=3 uid="uid://b0nttg_weather_wind_001"]
+
+[node name="WindStorm" type="CPUParticles2D"]
+position = Vector2(-40, 960)
+z_index = 5
+emitting = true
+amount = 240
+lifetime = 0.6
+preprocess = 0.6
+explosiveness = 0.0
+randomness = 0.4
+emission_shape = 3
+emission_rect_extents = Vector2(8, 980)
+direction = Vector2(1, -0.05)
+spread = 4.0
+gravity = Vector2(0, 0)
+initial_velocity_min = 1900.0
+initial_velocity_max = 2400.0
+scale_amount_min = 3.0
+scale_amount_max = 6.0
+color = Color(0.92, 0.78, 0.42, 0.55)

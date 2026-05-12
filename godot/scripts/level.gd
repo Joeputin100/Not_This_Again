@@ -24,9 +24,18 @@ const GunScript = preload("res://scripts/gun.gd")
 const GunStateScript = preload("res://scripts/gun_state.gd")
 const PosseRendererScript = preload("res://scripts/posse_renderer.gd")
 const BonusScript = preload("res://scripts/bonus.gd")
+const WeatherScript = preload("res://scripts/weather.gd")
+const WeatherManagerScript = preload("res://scripts/weather_manager.gd")
 
 const FOLLOW_SPEED: float = 12.0
 const STARTING_POSSE: int = 5
+
+# Iter 22d: weather chosen per-level. Simplest activation — designer sets
+# this in the scene tree (or leave default). Future: random per run, or
+# tied to level number. Default DUST_STORM so the very first sideload
+# after iter 22d ships shows the new feature on screen without any
+# tweaking.
+@export var weather_type: String = "DUST_STORM"
 
 # Bullets spawn this far above the cowboy each shot.
 const BULLET_SPAWN_Y_OFFSET: float = -120.0
@@ -45,6 +54,7 @@ const COWBOY_SIZE: Vector2 = Vector2(120, 200)
 @onready var win_subtitle: Label = $WinOverlay/WinPanel/WinSubtitle
 @onready var again_button: Button = $WinOverlay/WinPanel/PlayAgainButton
 @onready var menu_button: Button = $WinOverlay/WinPanel/MenuButton
+@onready var weather_manager: Node2D = $WeatherManager
 
 var target_x: float
 var _input_event_count: int = 0
@@ -65,6 +75,21 @@ var _barrels_destroyed: int = 0
 # keep showering the (now-decorative) screen with bullets during the
 # victory overlay.
 var _shooting_active: bool = true
+
+# Iter 22d weather state. WeatherManager.apply_weather() mutates these
+# at level start. Defaults are identity values (no effect) so a level
+# without weather behaves exactly like pre-iter-22d.
+#
+#   steering_speed_mult — multiplied into FOLLOW_SPEED in the cowboy
+#                         lerp. DUST_STORM drops this to 0.7.
+#   cowboy_wind_drift_x — px/sec added to target_x each frame regardless
+#                         of player input. WIND_STORM sets this to ±25.
+#   bullet_velocity_mult, bullet_lateral_drift — passed to spawned
+#                         bullets in _spawn_bullet().
+var steering_speed_mult: float = 1.0
+var cowboy_wind_drift_x: float = 0.0
+var bullet_velocity_mult: float = 1.0
+var bullet_lateral_drift: float = 0.0
 
 # Run-local state. Resets each level.
 var posse_count: int = STARTING_POSSE:
@@ -107,6 +132,13 @@ func _ready() -> void:
 	if posse_renderer:
 		posse_renderer.posse_count = posse_count
 
+	# Iter 22d: weather is applied AFTER the gun exists (it may mutate
+	# _gun.range_px) and AFTER the cowboy is positioned. WeatherManager
+	# is a Node2D child placed in the scene tree (level.tscn); see
+	# weather_manager.gd for the full mutation list.
+	if weather_manager:
+		weather_manager.apply_weather(weather_type, self)
+
 	# Discover all gates by group instead of hand-listing — adding a 4th
 	# gate to the scene tree later won't require code changes here.
 	var gates := _gather_gates()
@@ -137,7 +169,15 @@ func _gather_gates() -> Array[Node]:
 
 func _process(delta: float) -> void:
 	_process_run_count += 1
-	cowboy.position.x = lerpf(cowboy.position.x, target_x, FOLLOW_SPEED * delta)
+	# Wind drift — push target_x sideways every frame, even when the
+	# player isn't dragging. Player input still overrides instantly via
+	# _input() setting target_x to the new touch position; the wind just
+	# keeps nudging in between drags. Clamp to playable bounds so we
+	# don't overshoot past the lane guides.
+	if cowboy_wind_drift_x != 0.0:
+		target_x = MovementBounds.clamp_x(target_x + cowboy_wind_drift_x * delta)
+	# Steering lerp scaled by weather (DUST_STORM = 0.7×, default 1.0).
+	cowboy.position.x = lerpf(cowboy.position.x, target_x, FOLLOW_SPEED * steering_speed_mult * delta)
 	# Drive screen shake. CanvasLayer-rooted UI is unaffected; only
 	# world-space nodes (background, lane guides, gates, cowboy) shake.
 	camera.offset = shake.tick(delta)
@@ -199,6 +239,11 @@ func _spawn_bullet() -> void:
 	# on the script var sticks regardless of _ready order.
 	bullet.max_range = _gun.range_px
 	bullet.damage = _gun.caliber
+	# Iter 22d weather: bullets pick up per-spawn modifiers from the
+	# level's current weather state. RAIN slows them; WIND_STORM curves
+	# them. Defaults (1.0, 0.0) are no-effect.
+	bullet.velocity_mult = bullet_velocity_mult
+	bullet.lateral_drift = bullet_lateral_drift
 	add_child(bullet)
 	_bullets_fired += 1
 

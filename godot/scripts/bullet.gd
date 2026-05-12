@@ -19,6 +19,17 @@ var max_range: float = 0.0
 # handlers in level.gd, NOT applied here.
 var damage: int = 1
 
+# Weather modifier — multiplied into SPEED each frame. RAIN sets this
+# to 0.8 (bullets travel slower in rain). Default 1.0 = no effect.
+# Set by the level via _spawn_bullet() before add_child, so _ready/_process
+# both observe the modified value.
+var velocity_mult: float = 1.0
+
+# Weather modifier — lateral px/sec added to position.x each frame.
+# WIND_STORM sets this to ~40.0 (bullets curve sideways). Default 0.0 =
+# no drift, bullets travel straight up.
+var lateral_drift: float = 0.0
+
 var _spawn_y: float = 0.0
 
 func _ready() -> void:
@@ -26,7 +37,8 @@ func _ready() -> void:
 	_spawn_y = position.y
 
 func _process(delta: float) -> void:
-	position.y -= SPEED * delta
+	position.y -= SPEED * velocity_mult * delta
+	position.x += lateral_drift * delta
 	if max_range > 0.0 and (_spawn_y - position.y) >= max_range:
 		queue_free()
 		return
