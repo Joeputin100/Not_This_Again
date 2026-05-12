@@ -40,6 +40,14 @@ func test_destruction_emits_destroyed_signal():
 func test_destruction_releases_chickens():
 	# When the coop dies, it should add CHICKEN_COUNT_MIN..MAX chickens
 	# to its parent. Count them by group membership.
+	#
+	# Crucial: position the coop INSIDE chicken.gd's despawn bounds
+	# (x in [-120, 1200], y in [-120, 2080]). The scene's default position
+	# is (540, -400) — y=-400 is above the playfield, so chickens spawn
+	# out-of-bounds and immediately queue_free in their first _process tick
+	# (right after the await below). At (540, 100) they survive long enough
+	# to be counted.
+	coop.position = Vector2(540, 100)
 	var before_count := get_tree().get_nodes_in_group("chickens").size()
 	for i in CoopScript.MAX_HP:
 		coop.take_bullet_hit()
