@@ -9,6 +9,7 @@ extends Node2D
 signal destroyed(coop_x: float)
 
 const ChickenScene := preload("res://scenes/chicken.tscn")
+const DamagePopup := preload("res://scripts/damage_popup.gd")
 
 const MAX_HP: int = 10
 const SCROLL_SPEED: float = 220.0
