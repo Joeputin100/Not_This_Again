@@ -20,6 +20,15 @@ static func gate_is_growing(left_value: int, right_value: int, gate_type: int) -
 		return left_value >= 0 and right_value >= 0
 	return left_value >= 1 and right_value >= 1
 
+# Per-door variant — used for iter-25+ per-door color (blue = this door
+# grows the posse / red = this door shrinks it). Color is computed
+# independently per door so a -3 / +10 additive gate shows left=red,
+# right=blue rather than the whole gate going red.
+static func door_is_growing(value: int, gate_type: int) -> bool:
+	if gate_type == TYPE_ADDITIVE:
+		return value >= 0
+	return value >= 1
+
 # Given a cowboy's X position and the gate's center X, return which side
 # the cowboy is on. Ties (cowboy exactly on the divider) go right; the
 # game ships with X clamped to lane bounds so exact-tie is rare anyway.

@@ -21,8 +21,14 @@ extends RefCounted
 # the playable width (~920px) without runners overlapping each other
 # or clipping into the lane guides.
 
-const HORIZONTAL_SPACING: float = 44.0
-const VERTICAL_SPACING: float = 58.0
+# Iter 25+: bumped 44→130 and 58→200 after sideload feedback that posse
+# dudes were "on top of each other" with the new sprite scale (0.4 ×
+# 256×512 → 102×205 px visible per dude). At 130/200 the formation has
+# breathing room between figures while still reading as one cohesive
+# crowd — single-row maximum width (6 dudes × 130) is 780 px, comfortably
+# inside the ~920px playfield lane.
+const HORIZONTAL_SPACING: float = 130.0
+const VERTICAL_SPACING: float = 200.0
 const MAX_ROW_WIDTH: int = 6
 
 # Returns follower offsets relative to the leader at (0,0). Does NOT

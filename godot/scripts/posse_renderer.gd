@@ -80,6 +80,29 @@ func set_leader_position(pos: Vector2) -> void:
 func active_follower_count() -> int:
 	return _active_dudes.size()
 
+# Iter 25+: switches every active dude's AnimatedSprite2D to the given
+# animation. Used by level.gd on win → "idle" so the crowd stops looking
+# like it's still running into a wall after the bounty appears.
+func set_animation(anim_name: String) -> void:
+	for dude in _active_dudes:
+		if dude == null or not is_instance_valid(dude):
+			continue
+		var sprite: AnimatedSprite2D = dude.get_node_or_null("Sprite") as AnimatedSprite2D
+		if sprite and sprite.sprite_frames and sprite.sprite_frames.has_animation(anim_name):
+			sprite.play(anim_name)
+
+# Iter 25+: returns world-space positions of every active follower —
+# used by level.gd to spawn a muzzle flash at each dude on every shot
+# (visual fix for "only the leader has a muzzle flash"). Each position
+# includes the current jitter offset, so flashes track wobble naturally.
+func get_dude_world_positions() -> Array[Vector2]:
+	var positions: Array[Vector2] = []
+	for dude in _active_dudes:
+		if dude == null or not is_instance_valid(dude):
+			continue
+		positions.append(global_position + dude.position)
+	return positions
+
 # Rebuilds the formation when posse_count changes. Spawns new dudes,
 # tweens out departing ones, and reassigns cached offsets to actives.
 func _rebuild_formation() -> void:

@@ -50,6 +50,7 @@ const COWBOY_SIZE: Vector2 = Vector2(120, 200)
 @onready var posse_label: Label = $UI/PosseCount
 @onready var ammo_label: Label = $UI/AmmoLabel
 @onready var debug_label: Label = $UI/DebugInfo
+@onready var in_level_menu_button: Button = $UI/InLevelMenuButton
 @onready var win_overlay: CanvasLayer = $WinOverlay
 @onready var win_panel: Control = $WinOverlay/WinPanel
 @onready var win_subtitle: Label = $WinOverlay/WinPanel/WinSubtitle
@@ -150,6 +151,11 @@ func _ready() -> void:
 
 	again_button.pressed.connect(_on_again_pressed)
 	menu_button.pressed.connect(_on_menu_pressed)
+	# In-level MENU button (top-left corner). Workaround for the back-
+	# gesture-still-exits-app bug — gives the player a reliable way to
+	# leave a level without quitting the whole app.
+	if in_level_menu_button:
+		in_level_menu_button.pressed.connect(_on_in_level_menu_pressed)
 	# Pivot for the win panel scale-in animation
 	win_panel.pivot_offset = Vector2(440, 280)
 	_refresh_posse_label()
@@ -233,11 +239,19 @@ func _process(delta: float) -> void:
 func _spawn_bullet() -> void:
 	if not _shooting_active:
 		return
-	# Muzzle flash burst — child of cowboy so it tracks the shooter
-	# through the 200ms animation. Self-frees on animation_finished.
-	var flash := MuzzleFlashScene.instantiate()
-	flash.position = Vector2(0, BULLET_SPAWN_Y_OFFSET)
-	cowboy.add_child(flash)
+	# Muzzle flash burst — leader gets a flash as a CHILD so the flash
+	# tracks the cowboy through its 200ms animation. Followers (drawn
+	# by PosseRenderer) each get a flash at their current world position;
+	# they're parented to the level (not the follower) because follower
+	# nodes are owned by the renderer and would create a layered mess.
+	var leader_flash := MuzzleFlashScene.instantiate()
+	leader_flash.position = Vector2(0, BULLET_SPAWN_Y_OFFSET)
+	cowboy.add_child(leader_flash)
+	if posse_renderer:
+		for follower_pos in posse_renderer.get_dude_world_positions():
+			var ff := MuzzleFlashScene.instantiate()
+			ff.position = follower_pos + Vector2(0, BULLET_SPAWN_Y_OFFSET)
+			add_child(ff)
 
 	var bullet := BulletScene.instantiate()
 	bullet.position = cowboy.position + Vector2(0, BULLET_SPAWN_Y_OFFSET)
@@ -290,7 +304,12 @@ func _resolve_bullet_gate_collisions() -> void:
 			if Collision2D.rects_overlap(
 					bullet.position, BulletScript.SIZE,
 					gate.position, gate.SIZE):
-				var consumed: bool = gate.take_bullet_hit()
+				# Iter 25+: bullet hits only the door it actually overlaps.
+				# Side from bullet.x vs gate.x — left door if bullet.x is
+				# left of gate center, right door otherwise. Fixes the bug
+				# where shooting the right door also incremented left.
+				var side: int = GateHelper.SIDE_LEFT if bullet.position.x < gate.position.x else GateHelper.SIDE_RIGHT
+				var consumed: bool = gate.take_bullet_hit(bullet.damage, side)
 				if consumed:
 					bullet.remove_from_group("bullets")
 					bullet.queue_free()
@@ -592,16 +611,25 @@ func _pulse_posse_label() -> void:
 # ---------- Win flow ----------
 
 func _show_win() -> void:
-	# Stop new bullets from spawning during/after the win overlay. Bullets
-	# already in flight continue until they exit the top of the screen
-	# (cleaner than a hard-cancel; no abrupt visual stop).
+	# Iter 25 fix for "bounty appears before level is completed":
+	# Keep firing for POST_GATE_RUNWAY_S after the last gate so the
+	# level decompresses naturally — bull rolls past, last barrels
+	# clear, bullets fly into the distance. Only THEN stop shooting +
+	# pop the overlay. The 4s window covers a bull at 320 px/sec
+	# travelling 1280 px, plenty to scroll off the top.
+	const POST_GATE_RUNWAY_S: float = 4.0
+	DebugLog.add("WIN: gates done, runway %.1fs before bounty" % POST_GATE_RUNWAY_S)
+	await get_tree().create_timer(POST_GATE_RUNWAY_S).timeout
 	_shooting_active = false
 	DebugLog.add("WIN: bullets stopped, %d posse remaining" % posse_count)
-	# Murderbot-flavored bounty copy. Phase 1+ may template this further.
+	# Switch every dude (leader + followers) from run_shoot → idle so
+	# the crowd visibly stops running once the level is over. Was a
+	# polish bug — dudes kept sprinting under the bounty banner.
+	_switch_posse_to_idle()
 	win_subtitle.text = "%d posse members made it.
 whatever that's worth." % posse_count
-	# Wait a beat so the player notices the last gate fire before the
-	# overlay covers it.
+	# Short additional beat after stopping fire so the gunfire silence
+	# registers before the overlay covers everything.
 	await get_tree().create_timer(0.55).timeout
 	win_overlay.visible = true
 	win_panel.scale = Vector2(0.55, 0.55)
@@ -609,6 +637,16 @@ whatever that's worth." % posse_count
 	tween.tween_property(win_panel, "scale", Vector2.ONE, 0.32) \
 		.set_trans(Tween.TRANS_BACK) \
 		.set_ease(Tween.EASE_OUT)
+
+# Iter 25+: switch leader cowboy + every follower in PosseRenderer from
+# run_shoot to idle. Called on win so the crowd visibly relaxes once
+# the gates are done.
+func _switch_posse_to_idle() -> void:
+	var cowboy_sprite: AnimatedSprite2D = cowboy.get_node_or_null("Sprite") as AnimatedSprite2D
+	if cowboy_sprite and cowboy_sprite.sprite_frames and cowboy_sprite.sprite_frames.has_animation("idle"):
+		cowboy_sprite.play("idle")
+	if posse_renderer:
+		posse_renderer.set_animation("idle")
 
 func _on_again_pressed() -> void:
 	AudioBus.play_tap()
@@ -633,3 +671,10 @@ func _on_menu_pressed() -> void:
 		.set_ease(Tween.EASE_OUT)
 	await t.finished
 	get_tree().change_scene_to_file("res://scenes/main_menu.tscn")
+
+# Iter 25+: in-level MENU button handler (top-left corner). Mid-game
+# exit to main menu — works regardless of the back-gesture bug.
+func _on_in_level_menu_pressed() -> void:
+	AudioBus.play_tap()
+	DebugLog.add("in-level MENU pressed → main_menu")
+	_go_back_to_menu()

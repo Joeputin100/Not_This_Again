@@ -72,15 +72,22 @@ if __name__ == "__main__":
     # fast), die (3 fr, no loop, medium).
     gen_sprite_frames("posse_dude_frames.tres", "b22a_posse_frames", [
         {
+            # Iter 25 bumped 6 → 10fps after sideload feedback that the
+            # foot-tap looked choppy. At 10fps the 6-frame cycle completes
+            # in 0.6s — quick enough to read as movement, slow enough that
+            # individual poses don't blur together.
             "name": "idle",
             "loop": True,
-            "speed": 6.0,
+            "speed": 10.0,
             "files": [f"posse_idle_{i:02d}" for i in range(6)],
         },
         {
+            # Iter 25 bumped 12 → 20fps. Run cycle now completes in 0.4s
+            # — sells "running hard" without the in-between-frames blur
+            # that more art (or Skeleton2D rigging) would otherwise need.
             "name": "run_shoot",
             "loop": True,
-            "speed": 12.0,
+            "speed": 20.0,
             "files": [f"posse_run_shoot_{i:02d}" for i in range(8)],
         },
         {

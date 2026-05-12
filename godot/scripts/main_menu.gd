@@ -57,7 +57,12 @@ func _ready() -> void:
 	# for verifying Crashlytics integration on first sideload. Release
 	# builds never wire this up — OS.crash() is a no-op there anyway,
 	# but skipping the connect saves us from any input-flooding risk.
-	if OS.is_debug_build():
+	# OS.is_debug_build() returns true only for engine debug compiles, NOT
+	# for debug-template exports — wrong check for exported APKs. The
+	# correct feature flag for "this is a debug export" is "debug".
+	# Iter 24 used the wrong API; user reported triple-tap-crash never
+	# fired despite running the debug build. Fixed in iter 25.
+	if OS.has_feature("debug"):
 		build_id_label.gui_input.connect(_on_build_id_tap)
 	# Defer pivot capture so Godot's layout pass has run and sizes are real.
 	call_deferred("_finalize_setup")
