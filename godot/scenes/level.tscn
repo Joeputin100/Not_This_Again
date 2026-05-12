@@ -9,6 +9,7 @@
 [ext_resource type="PackedScene" path="res://scenes/barricade.tscn" id="7_barricade"]
 [ext_resource type="PackedScene" path="res://scenes/chicken_coop.tscn" id="8_coop"]
 [ext_resource type="Script" path="res://scripts/posse_renderer.gd" id="9_posse"]
+[ext_resource type="PackedScene" path="res://scenes/bull.tscn" id="10_bull"]
 
 [node name="Level" type="Node2D"]
 script = ExtResource("1_level")
@@ -82,6 +83,9 @@ position = Vector2(540, -1100)
 [node name="Barrel2" parent="." instance=ExtResource("4_barrel")]
 position = Vector2(720, -100)
 max_hp = 6
+
+[node name="Bull1" parent="." instance=ExtResource("10_bull")]
+position = Vector2(540, -1700)
 
 [node name="Camera" type="Camera2D" parent="."]
 position = Vector2(540, 960)

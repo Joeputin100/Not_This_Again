@@ -10,6 +10,13 @@ extends Node2D
 # visual that's trivial to clone (multiple gates per level later).
 
 signal triggered(gate_center_x: float)
+# Emitted when the gate's effective direction crosses from "shrinking"
+# (red) to "growing" (blue) — i.e., when the player has shot the gate
+# enough that previously-negative values cross into non-negative
+# territory (additive), or into ≥1 territory (multiplicative).
+# Level.gd listens for this and confuses any on-screen bulls.
+# NOT emitted on the initial _ready paint (initial-snap is silent).
+signal direction_flipped(gate)
 
 const GateHelper = preload("res://scripts/gate_helper.gd")
 
@@ -37,6 +44,11 @@ var _fired: bool = false
 # Compared each refresh to decide whether to snap-set the color or
 # tween it (so a threshold-crossing color flip gets a visible beat).
 var _is_growing: bool = true
+# Guards against direction_flipped emission during the _ready() initial
+# color snap. Once _ready has finished its first paint, subsequent
+# threshold crossings (caused by take_bullet_hit) are real events and
+# the signal fires.
+var _initial_color_set: bool = false
 
 @onready var _left_label: Label = $LeftDoor/LeftLabel
 @onready var _right_label: Label = $RightDoor/RightLabel
@@ -60,6 +72,10 @@ func _ready() -> void:
 		_left_door.color = color
 	if _right_door:
 		_right_door.color = color
+	# Mark initial paint complete. Any future _refresh_color() call that
+	# transitions red→blue is now a real mid-game flip and will emit
+	# the direction_flipped signal.
+	_initial_color_set = true
 
 func _format_left(v: int) -> String:
 	if gate_type == GateHelper.TYPE_MULTIPLICATIVE:
@@ -100,6 +116,9 @@ func _refresh_color() -> void:
 	var now_growing := GateHelper.gate_is_growing(left_value, right_value, gate_type)
 	if now_growing == _is_growing:
 		return
+	# Capture the "red → blue" transition BEFORE we overwrite _is_growing.
+	# This is the moment the on-screen bull gets dazed.
+	var flipped_to_growing: bool = now_growing and not _is_growing
 	_is_growing = now_growing
 	var target := COLOR_GROWING if now_growing else COLOR_SHRINKING
 	for door in [_left_door, _right_door]:
@@ -108,6 +127,12 @@ func _refresh_color() -> void:
 		var t := create_tween()
 		t.tween_property(door, "color", target, COLOR_TWEEN_DURATION) \
 			.set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN_OUT)
+	# Emit AFTER starting the color tween so any listener sees the
+	# visual change in progress. Guard on _initial_color_set so the
+	# _ready() snap (which doesn't go through this function anyway,
+	# but defensively) can never fire this signal.
+	if flipped_to_growing and _initial_color_set:
+		direction_flipped.emit(self)
 
 func _pulse_labels() -> void:
 	for label in [_left_label, _right_label]:

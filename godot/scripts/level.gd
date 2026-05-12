@@ -19,6 +19,7 @@ const CactusScript = preload("res://scripts/cactus.gd")
 const BarricadeScript = preload("res://scripts/barricade.gd")
 const ChickenCoopScript = preload("res://scripts/chicken_coop.gd")
 const ChickenScript = preload("res://scripts/chicken.gd")
+const BullScript = preload("res://scripts/bull.gd")
 const GunScript = preload("res://scripts/gun.gd")
 const GunStateScript = preload("res://scripts/gun_state.gd")
 const PosseRendererScript = preload("res://scripts/posse_renderer.gd")
@@ -112,6 +113,7 @@ func _ready() -> void:
 	progress.reset(gates.size())
 	for gate in gates:
 		gate.triggered.connect(_on_gate_triggered.bind(gate))
+		gate.direction_flipped.connect(_on_gate_direction_flipped)
 
 	again_button.pressed.connect(_on_again_pressed)
 	menu_button.pressed.connect(_on_menu_pressed)
@@ -163,11 +165,13 @@ func _process(delta: float) -> void:
 	_resolve_bullet_obstacle_collisions("barricades", BarricadeScript.SIZE)
 	_resolve_bullet_obstacle_collisions("chicken_coops", ChickenCoopScript.SIZE)
 	_resolve_bullet_obstacle_collisions("chickens", ChickenScript.SIZE)
+	_resolve_bullet_obstacle_collisions("bulls", BullScript.SIZE)
 	# Cowboy ↔ obstacle collision passes (posse damage).
 	_resolve_barrel_cowboy_collisions()
 	_resolve_obstacle_cowboy_collisions("tumbleweeds", TumbleweedScript.SIZE)
 	_resolve_obstacle_cowboy_collisions("cacti", CactusScript.SIZE)
 	_resolve_obstacle_cowboy_collisions("barricades", BarricadeScript.SIZE)
+	_resolve_obstacle_cowboy_collisions("bulls", BullScript.SIZE)
 	# chicken_coops and chickens have get_cowboy_damage() == 0, so we
 	# skip them in the cowboy-collision pass (no point processing).
 	# Bonuses are auto-equipped on cowboy contact (no tap-to-take prompt).
@@ -447,6 +451,16 @@ func _on_gate_triggered(gate_center_x: float, gate: Node) -> void:
 	progress.record_pass()
 	if progress.is_complete():
 		_show_win()
+
+# A gate transitioned from red (shrinking) to blue (growing) mid-game.
+# All bulls currently on-screen are confused by the visual change —
+# they slow, drift sideways, and eventually walk off the track at a
+# 60° angle. See bull.gd for the state machine.
+func _on_gate_direction_flipped(_gate) -> void:
+	var bulls := get_tree().get_nodes_in_group("bulls")
+	DebugLog.add("gate flipped red→blue → confusing %d bull(s)" % bulls.size())
+	for bull in bulls:
+		bull.confuse()
 
 # Floating combo banner ("DOUBLE!" / "MEGA!") added to the UI canvas
 # layer so screen shake doesn't jitter it. Scales in with a bounce,
