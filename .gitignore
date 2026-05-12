@@ -64,3 +64,7 @@ logs/
 # they share .git with main, so git tries to track them as submodules.
 # Always ignored — never commit them.)
 .claude/
+
+# Python bytecode from the sprite-slicing scripts
+__pycache__/
+*.pyc

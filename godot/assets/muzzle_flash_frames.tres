@@ -1,0 +1,26 @@
+[gd_resource type="SpriteFrames" load_steps=7 format=3 uid="uid://b22a_muzzle_flash"]
+
+
+[ext_resource type="Texture2D" path="res://assets/sprites/muzzle_flash_00.png" id="1_00"]
+[ext_resource type="Texture2D" path="res://assets/sprites/muzzle_flash_01.png" id="2_01"]
+[ext_resource type="Texture2D" path="res://assets/sprites/muzzle_flash_02.png" id="3_02"]
+[ext_resource type="Texture2D" path="res://assets/sprites/muzzle_flash_03.png" id="4_03"]
+[ext_resource type="Texture2D" path="res://assets/sprites/muzzle_flash_04.png" id="5_04"]
+[ext_resource type="Texture2D" path="res://assets/sprites/muzzle_flash_05.png" id="6_05"]
+
+[resource]
+animations = [
+{
+"frames": [
+{"duration": 1.0, "texture": ExtResource("1_00")},
+{"duration": 1.0, "texture": ExtResource("2_01")},
+{"duration": 1.0, "texture": ExtResource("3_02")},
+{"duration": 1.0, "texture": ExtResource("4_03")},
+{"duration": 1.0, "texture": ExtResource("5_04")},
+{"duration": 1.0, "texture": ExtResource("6_05")}
+],
+"loop": false,
+"name": &"fire",
+"speed": 30.0
+}
+]

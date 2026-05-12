@@ -1,0 +1,62 @@
+[gd_resource type="SpriteFrames" load_steps=18 format=3 uid="uid://b22a_posse_frames"]
+
+
+[ext_resource type="Texture2D" path="res://assets/sprites/posse_idle_00.png" id="1_00"]
+[ext_resource type="Texture2D" path="res://assets/sprites/posse_idle_01.png" id="2_01"]
+[ext_resource type="Texture2D" path="res://assets/sprites/posse_idle_02.png" id="3_02"]
+[ext_resource type="Texture2D" path="res://assets/sprites/posse_idle_03.png" id="4_03"]
+[ext_resource type="Texture2D" path="res://assets/sprites/posse_idle_04.png" id="5_04"]
+[ext_resource type="Texture2D" path="res://assets/sprites/posse_idle_05.png" id="6_05"]
+[ext_resource type="Texture2D" path="res://assets/sprites/posse_run_shoot_00.png" id="7_00"]
+[ext_resource type="Texture2D" path="res://assets/sprites/posse_run_shoot_01.png" id="8_01"]
+[ext_resource type="Texture2D" path="res://assets/sprites/posse_run_shoot_02.png" id="9_02"]
+[ext_resource type="Texture2D" path="res://assets/sprites/posse_run_shoot_03.png" id="10_03"]
+[ext_resource type="Texture2D" path="res://assets/sprites/posse_run_shoot_04.png" id="11_04"]
+[ext_resource type="Texture2D" path="res://assets/sprites/posse_run_shoot_05.png" id="12_05"]
+[ext_resource type="Texture2D" path="res://assets/sprites/posse_run_shoot_06.png" id="13_06"]
+[ext_resource type="Texture2D" path="res://assets/sprites/posse_run_shoot_07.png" id="14_07"]
+[ext_resource type="Texture2D" path="res://assets/sprites/posse_die_00.png" id="15_00"]
+[ext_resource type="Texture2D" path="res://assets/sprites/posse_die_01.png" id="16_01"]
+[ext_resource type="Texture2D" path="res://assets/sprites/posse_die_02.png" id="17_02"]
+
+[resource]
+animations = [
+{
+"frames": [
+{"duration": 1.0, "texture": ExtResource("1_00")},
+{"duration": 1.0, "texture": ExtResource("2_01")},
+{"duration": 1.0, "texture": ExtResource("3_02")},
+{"duration": 1.0, "texture": ExtResource("4_03")},
+{"duration": 1.0, "texture": ExtResource("5_04")},
+{"duration": 1.0, "texture": ExtResource("6_05")}
+],
+"loop": true,
+"name": &"idle",
+"speed": 6.0
+},
+{
+"frames": [
+{"duration": 1.0, "texture": ExtResource("7_00")},
+{"duration": 1.0, "texture": ExtResource("8_01")},
+{"duration": 1.0, "texture": ExtResource("9_02")},
+{"duration": 1.0, "texture": ExtResource("10_03")},
+{"duration": 1.0, "texture": ExtResource("11_04")},
+{"duration": 1.0, "texture": ExtResource("12_05")},
+{"duration": 1.0, "texture": ExtResource("13_06")},
+{"duration": 1.0, "texture": ExtResource("14_07")}
+],
+"loop": true,
+"name": &"run_shoot",
+"speed": 12.0
+},
+{
+"frames": [
+{"duration": 1.0, "texture": ExtResource("15_00")},
+{"duration": 1.0, "texture": ExtResource("16_01")},
+{"duration": 1.0, "texture": ExtResource("17_02")}
+],
+"loop": false,
+"name": &"die",
+"speed": 8.0
+}
+]

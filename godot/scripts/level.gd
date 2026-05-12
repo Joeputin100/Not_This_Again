@@ -26,6 +26,7 @@ const PosseRendererScript = preload("res://scripts/posse_renderer.gd")
 const BonusScript = preload("res://scripts/bonus.gd")
 const WeatherScript = preload("res://scripts/weather.gd")
 const WeatherManagerScript = preload("res://scripts/weather_manager.gd")
+const MuzzleFlashScene = preload("res://scenes/muzzle_flash.tscn")
 
 const FOLLOW_SPEED: float = 12.0
 const STARTING_POSSE: int = 5
@@ -232,6 +233,12 @@ func _process(delta: float) -> void:
 func _spawn_bullet() -> void:
 	if not _shooting_active:
 		return
+	# Muzzle flash burst — child of cowboy so it tracks the shooter
+	# through the 200ms animation. Self-frees on animation_finished.
+	var flash := MuzzleFlashScene.instantiate()
+	flash.position = Vector2(0, BULLET_SPAWN_Y_OFFSET)
+	cowboy.add_child(flash)
+
 	var bullet := BulletScene.instantiate()
 	bullet.position = cowboy.position + Vector2(0, BULLET_SPAWN_Y_OFFSET)
 	# max_range and damage are set BEFORE add_child so bullet._ready can
