@@ -131,14 +131,14 @@ func test_confuse_slows_forward_speed():
 # ---------- _process motion ----------
 
 func test_charging_bull_moves_downward():
-	var y_before := bull.position.y
+	var y_before: float = bull.position.y
 	bull._process(0.1)
 	assert_gt(bull.position.y, y_before, "charging bull moves down (+y)")
 
 func test_confused_bull_uses_drift_velocity():
 	bull.position = Vector2(800, 0)
 	bull.confuse()
-	var before := bull.position
+	var before: Vector2 = bull.position
 	bull._process(0.1)
 	assert_ne(bull.position, before,
 		"confused bull should move per _drift_velocity")
@@ -157,7 +157,7 @@ func test_confused_bull_commits_escape_after_duration():
 	# with a 60°-toward-edge escape vector.
 	bull.position = Vector2(800, 0)
 	bull.confuse()
-	var initial_drift := bull._drift_velocity
+	var initial_drift: Vector2 = bull._drift_velocity
 	# Tick well past the confused-duration boundary.
 	bull._process(BullScript.CONFUSED_DURATION + 0.1)
 	# After commit, _drift_velocity.x magnitude should be the escape

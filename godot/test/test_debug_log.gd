@@ -28,14 +28,14 @@ func test_get_text_contains_message():
 func test_get_text_includes_timestamp_prefix():
 	log.add("msg")
 	# Timestamp format is HH:MM:SS, so the line starts with "[" and has ":"
-	var text := log.get_text()
+	var text: String = log.get_text()
 	assert_true(text.begins_with("["), "log line should start with [")
 	assert_true(":" in text, "timestamp should contain colons")
 
 func test_get_text_joins_with_newlines():
 	log.add("first")
 	log.add("second")
-	var text := log.get_text()
+	var text: String = log.get_text()
 	assert_true("first" in text)
 	assert_true("second" in text)
 	assert_true("\n" in text, "lines should be newline-joined")
@@ -57,7 +57,7 @@ func test_oldest_dropped_on_overflow():
 	log.add("DROPPED_LINE")
 	for i in DebugLogScript.MAX_LINES:
 		log.add("kept " + str(i))
-	var text := log.get_text()
+	var text: String = log.get_text()
 	assert_false("DROPPED_LINE" in text,
 		"oldest line should fall off the end")
 	assert_true("kept 0" in text,

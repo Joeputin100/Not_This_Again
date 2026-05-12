@@ -107,7 +107,7 @@ func test_mouse_motion_without_button_pressed_ignored():
 
 func test_drag_event_then_processing_moves_cowboy_toward_target():
 	var cowboy: Node2D = level.get_node("Cowboy")
-	var initial_x := cowboy.position.x
+	var initial_x: float = cowboy.position.x
 	assert_eq(initial_x, 540.0, "cowboy starts centered")
 
 	# Drag to the left.

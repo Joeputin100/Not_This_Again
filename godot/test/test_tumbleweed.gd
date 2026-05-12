@@ -17,12 +17,12 @@ func test_added_to_tumbleweeds_group():
 	assert_true(tw.is_in_group("tumbleweeds"))
 
 func test_take_bullet_hit_reduces_hp_by_one():
-	var before := tw.hp
+	var before: int = tw.hp
 	tw.take_bullet_hit()
 	assert_eq(tw.hp, before - 1)
 
 func test_take_bullet_hit_pushes_back():
-	var before_y := tw.position.y
+	var before_y: float = tw.position.y
 	tw.take_bullet_hit()
 	assert_eq(tw.position.y, before_y - TumbleweedScript.PUSHBACK_PER_HIT,
 		"y should decrease (move up) by PUSHBACK_PER_HIT")

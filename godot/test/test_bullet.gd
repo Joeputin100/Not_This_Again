@@ -21,7 +21,7 @@ func test_added_to_bullets_group():
 
 func test_moves_upward_per_process_tick():
 	bullet.position = Vector2(540, 1500)
-	var initial_y := bullet.position.y
+	var initial_y: float = bullet.position.y
 	bullet._process(0.1)
 	# After 0.1s at SPEED=1500, bullet should have moved up ~150px.
 	assert_lt(bullet.position.y, initial_y - 100,

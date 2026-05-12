@@ -20,7 +20,7 @@ func test_added_to_bonuses_group():
 
 func test_process_scrolls_down():
 	bonus.position = Vector2(540, 200)
-	var initial_y := bonus.position.y
+	var initial_y: float = bonus.position.y
 	bonus._process(0.1)
 	# SCROLL_SPEED=220 * 0.1 = 22px downward.
 	assert_almost_eq(bonus.position.y, initial_y + 22.0, 0.01,

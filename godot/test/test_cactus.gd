@@ -17,13 +17,13 @@ func test_added_to_cacti_group():
 	assert_true(cactus.is_in_group("cacti"))
 
 func test_take_bullet_hit_reduces_hp():
-	var before := cactus.hp
+	var before: int = cactus.hp
 	cactus.take_bullet_hit()
 	assert_eq(cactus.hp, before - 1)
 
 func test_take_bullet_hit_does_NOT_push_back():
 	# Unlike tumbleweed, cactus does NOT recoil from bullets.
-	var before_y := cactus.position.y
+	var before_y: float = cactus.position.y
 	cactus.take_bullet_hit()
 	assert_eq(cactus.position.y, before_y,
 		"cactus position should be unchanged by bullet hit")
