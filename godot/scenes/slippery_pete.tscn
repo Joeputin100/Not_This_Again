@@ -4,7 +4,7 @@
 [ext_resource type="Theme" path="res://assets/theme.tres" id="2_theme"]
 [ext_resource type="PackedScene" path="res://scenes/hp_bar.tscn" id="3_hpbar"]
 [ext_resource type="Shader" path="res://shaders/chromakey.gdshader" id="4_chromakey"]
-[ext_resource type="VideoStream" path="res://assets/videos/pete/taps_foot_idle.webm" id="5_idle"]
+[ext_resource type="VideoStream" path="res://assets/videos/pete/taps_foot_idle.ogv" id="5_idle"]
 
 [sub_resource type="ShaderMaterial" id="ShaderMaterial_pete_chroma"]
 shader = ExtResource("4_chromakey")

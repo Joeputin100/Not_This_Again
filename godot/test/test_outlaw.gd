@@ -37,10 +37,18 @@ func test_cowboy_damage_15():
 
 func test_cowboy_damage_higher_than_barrels():
 	# Outlaw contact should hurt more than a single barrel-cowboy hit.
-	const BarrelScript = preload("res://scripts/barrel.gd")
-	assert_gt(outlaw.get_cowboy_damage(), BarrelScript.MAX_HP,
-		"outlaw contact (%d) should outweigh barrel max-hp damage (%d)" % [
-			outlaw.get_cowboy_damage(), BarrelScript.MAX_HP,
+	# barrel.gd uses an @export var max_hp (not a const), so instantiate
+	# a barrel and read its value rather than indexing a non-existent
+	# BarrelScript.MAX_HP constant (the iter 29 version of this test
+	# was a silent parse error; iter 32 surfaces it after the suite
+	# starts running all 390 tests instead of the 296 that fit through
+	# the earlier := inference quirk).
+	const BarrelScene = preload("res://scenes/barrel.tscn")
+	var b: Node2D = BarrelScene.instantiate()
+	add_child_autofree(b)
+	assert_gt(outlaw.get_cowboy_damage(), b.max_hp,
+		"outlaw contact (%d) should outweigh barrel max_hp (%d)" % [
+			outlaw.get_cowboy_damage(), b.max_hp,
 		])
 
 # ---------- take_bullet_hit ----------

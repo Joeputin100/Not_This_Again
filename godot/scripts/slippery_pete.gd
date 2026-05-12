@@ -24,11 +24,11 @@ const OutlawBulletScene := preload("res://scenes/outlaw_bullet.tscn")
 const OutlawBulletScript := preload("res://scripts/outlaw_bullet.gd")
 const MuzzleFlashScene := preload("res://scenes/muzzle_flash.tscn")
 
-const STREAM_IDLE := preload("res://assets/videos/pete/taps_foot_idle.webm")
-const STREAM_FORWARD := preload("res://assets/videos/pete/steps_forward.webm")
-const STREAM_STRAFE := preload("res://assets/videos/pete/strafe_right_to_left.webm")
-const STREAM_SHOOT := preload("res://assets/videos/pete/shoots_at_player.webm")
-const STREAM_HIT := preload("res://assets/videos/pete/hit_by_gunfire.webm")
+const STREAM_IDLE := preload("res://assets/videos/pete/taps_foot_idle.ogv")
+const STREAM_FORWARD := preload("res://assets/videos/pete/steps_forward.ogv")
+const STREAM_STRAFE := preload("res://assets/videos/pete/strafe_right_to_left.ogv")
+const STREAM_SHOOT := preload("res://assets/videos/pete/shoots_at_player.ogv")
+const STREAM_HIT := preload("res://assets/videos/pete/hit_by_gunfire.ogv")
 
 signal destroyed(x: float)
 

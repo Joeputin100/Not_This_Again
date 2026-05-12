@@ -32,12 +32,15 @@ func test_speed_matches_spec():
 		"OutlawBullet.SPEED should remain 700 — UX tuning constant")
 
 func test_despawns_below_playfield():
-	bullet.position.y = OutlawBulletScript.DESPAWN_Y - 1
-	bullet._process(0.1)  # pushes y past DESPAWN_Y
-	# Bullet should have queue_freed.
+	bullet.position.y = OutlawBulletScript.DESPAWN_Y_BOTTOM - 1
+	# Iter 31 renamed: bullets now also despawn off the top/sides because
+	# the velocity vector can take them in any direction. The classic
+	# 'past-the-bottom' path is verified here.
+	bullet.velocity = Vector2(0, 1000)  # straight down, fast
+	bullet._process(0.1)  # pushes y past DESPAWN_Y_BOTTOM
 	await get_tree().process_frame
 	assert_false(is_instance_valid(bullet),
-		"outlaw bullet should queue_free once past DESPAWN_Y")
+		"outlaw bullet should queue_free once past DESPAWN_Y_BOTTOM")
 
 func test_posse_damage_is_two():
 	# A single outlaw bullet bites the posse for 2. 5 hits = -10 posse.
