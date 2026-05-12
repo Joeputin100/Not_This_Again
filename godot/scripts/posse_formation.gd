@@ -21,15 +21,21 @@ extends RefCounted
 # the playable width (~920px) without runners overlapping each other
 # or clipping into the lane guides.
 
-# Iter 25+: bumped 44→130 and 58→200 after sideload feedback that posse
-# dudes were "on top of each other" with the new sprite scale (0.4 ×
-# 256×512 → 102×205 px visible per dude). At 130/200 the formation has
-# breathing room between figures while still reading as one cohesive
-# crowd — single-row maximum width (6 dudes × 130) is 780 px, comfortably
-# inside the ~920px playfield lane.
-const HORIZONTAL_SPACING: float = 130.0
-const VERTICAL_SPACING: float = 200.0
+# Iter 39: tightened from 130/200 to 95/150 after sideload feedback to
+# match Evony: The King's Return crowd-runner density — the original
+# game-ad inspiration this whole project rifts on. Their crowd reads
+# as a dense organic blob, not a parade. Tighter spacing here is the
+# BASE grid; PosseRenderer adds per-dude random scatter (±35 px) on
+# top, so the actual visible formation is less rigid than the grid
+# suggests. Front-row dudes overlap by design — depth comes from the
+# per-row scale fade in PosseRenderer, not from gaps.
+const HORIZONTAL_SPACING: float = 95.0
+const VERTICAL_SPACING: float = 150.0
 const MAX_ROW_WIDTH: int = 6
+# Random scatter range applied to each dude's grid position once at
+# spawn (persistent per-dude). Matches the Evony "loose crowd" feel —
+# dudes aren't pinned to row centers.
+const SCATTER_RANGE: float = 35.0
 
 # Returns follower offsets relative to the leader at (0,0). Does NOT
 # include the leader itself. For posse_count <= 1, returns empty.

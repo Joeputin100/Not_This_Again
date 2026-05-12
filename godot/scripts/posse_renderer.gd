@@ -22,9 +22,17 @@ const PosseDudeScene = preload("res://scenes/posse_dude.tscn")
 
 # Sinusoidal jitter — each dude carries its own phase so the crowd
 # doesn't move in lockstep. Amplitude is in pixels; freq is rad/sec for
-# a clean ~1.7Hz wobble.
-const JITTER_AMPLITUDE: float = 8.0
-const JITTER_FREQUENCY: float = 1.7
+# a clean ~1.7Hz wobble. Iter 39: bumped 8→14 amplitude after Evony
+# crowd reference — more alive, less marching-in-formation.
+const JITTER_AMPLITUDE: float = 14.0
+const JITTER_FREQUENCY: float = 1.9
+# Iter 39: depth scaling. Followers in deeper rows render at this
+# fraction of the leader's size, smoothly tweened across rows. Reads
+# as "the crowd recedes into the distance" without needing a real
+# perspective camera. End scale = 1.0 - SCALE_FADE_PER_ROW * row_index,
+# clamped at MIN_SCALE.
+const SCALE_FADE_PER_ROW: float = 0.06
+const MIN_SCALE: float = 0.72
 
 # Fade/scale-in for newly-spawned dudes (posse grew).
 const SPAWN_FADE_DURATION: float = 0.25
@@ -65,17 +73,20 @@ var posse_count: int = 1:
 
 func _process(delta: float) -> void:
 	_elapsed += delta
-	# Apply per-dude jitter on top of the cached base offset. Skip dudes
-	# without base_pos metadata (defensive — shouldn't happen, but cheap).
+	# Apply per-dude jitter on top of the cached base offset + the
+	# per-dude scatter (set once at spawn, gives Evony-style loose
+	# crowd vs strict grid). Skip dudes without base_pos metadata
+	# (defensive — shouldn't happen, but cheap).
 	for dude in _active_dudes:
 		if dude == null or not is_instance_valid(dude):
 			continue
 		var base_pos: Vector2 = dude.get_meta("base_pos", Vector2.ZERO)
+		var scatter: Vector2 = dude.get_meta("scatter", Vector2.ZERO)
 		var phase_x: float = dude.get_meta("phase_x", 0.0)
 		var phase_y: float = dude.get_meta("phase_y", 0.0)
 		var jx: float = JITTER_AMPLITUDE * sin(_elapsed * JITTER_FREQUENCY + phase_x)
 		var jy: float = JITTER_AMPLITUDE * cos(_elapsed * JITTER_FREQUENCY + phase_y)
-		dude.position = base_pos + Vector2(jx, jy)
+		dude.position = base_pos + scatter + Vector2(jx, jy)
 
 # Called from level.gd's _process each frame to anchor the formation to
 # wherever the leader cowboy currently is. Cheap (just sets position).
@@ -164,25 +175,43 @@ func _rebuild_formation() -> void:
 
 	# Reassign base positions for all active dudes from the cached
 	# offsets. (Order in _active_dudes mirrors order in _cached_offsets.)
+	# Iter 39: also assign per-dude scale based on which formation row
+	# they landed in (deeper row = smaller, fake-perspective recede).
 	for i in range(_active_dudes.size()):
 		var dude: Node2D = _active_dudes[i]
 		if dude == null or not is_instance_valid(dude):
 			continue
-		dude.set_meta("base_pos", _cached_offsets[i])
+		var base_offset: Vector2 = _cached_offsets[i]
+		dude.set_meta("base_pos", base_offset)
+		# Row index: base_offset.y is (row+1) × VERTICAL_SPACING.
+		var row_index: int = int(round(base_offset.y / PosseFormation.VERTICAL_SPACING)) - 1
+		var depth_scale: float = maxf(MIN_SCALE, 1.0 - SCALE_FADE_PER_ROW * float(maxi(0, row_index)))
+		dude.scale = Vector2(depth_scale, depth_scale)
 		# Snap to base immediately so newly-spawned dudes appear at
 		# their slot (jitter overlays on next _process tick).
-		dude.position = _cached_offsets[i]
+		dude.position = base_offset + dude.get_meta("scatter", Vector2.ZERO)
 
 func _spawn_dude() -> Node2D:
 	var dude: Node2D = PosseDudeScene.instantiate()
 	dude.set_meta("phase_x", randf() * TAU)
 	dude.set_meta("phase_y", randf() * TAU)
 	dude.set_meta("base_pos", Vector2.ZERO)
+	# Iter 39: per-dude positional scatter. ±SCATTER_RANGE in both axes,
+	# baked once at spawn — sticks to this dude for its lifetime. Evony
+	# crowd reference: dudes aren't pinned to grid centers, the cluster
+	# reads as organic.
+	dude.set_meta("scatter", Vector2(
+		randf_range(-PosseFormation.SCATTER_RANGE, PosseFormation.SCATTER_RANGE),
+		randf_range(-PosseFormation.SCATTER_RANGE, PosseFormation.SCATTER_RANGE),
+	))
 	dude.modulate.a = 0.0
 	dude.scale = Vector2(SPAWN_SCALE_FROM, SPAWN_SCALE_FROM)
 	add_child(dude)
 	var tween := create_tween().set_parallel(true)
 	tween.tween_property(dude, "modulate:a", 1.0, SPAWN_FADE_DURATION)
+	# Scale tween ends at Vector2.ONE; _rebuild_formation then snaps to
+	# the per-row depth_scale on the next assignment pass. The brief
+	# overshoot at ONE is invisible at SPAWN_FADE_DURATION (250ms).
 	tween.tween_property(dude, "scale", Vector2.ONE, SPAWN_FADE_DURATION) \
 		.set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
 	return dude
