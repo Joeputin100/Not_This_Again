@@ -110,15 +110,15 @@ func _find_cowboy() -> Node2D:
 func _process(delta: float) -> void:
 	if _destroyed:
 		return
-	# Iter 34: detect posse_count drops and trigger CELEBRATE overlay.
-	# Only fires when not already in a higher-priority overlay (HIT) —
-	# getting shot still trumps gloating. SHOOT can be overridden.
+	# Iter 35: tightened to fire ONLY when the posse is effectively
+	# defeated — i.e., posse_count transitions from > 1 down to 1
+	# (level.gd clamps to a minimum of 1, so 1 is "everyone but the
+	# leader is dead"). Iter 34's "celebrate on every kill" was too
+	# noisy mid-battle. Now Pete only gloats at the decisive moment.
 	if _level and "posse_count" in _level:
 		var pc: int = _level.posse_count
-		if _last_posse_count > 0 and pc < _last_posse_count:
-			if _state != State.HIT and _override_timer <= 0.5:
-				# Override even an in-progress SHOOT — landing a kill
-				# is more interesting than the firing animation tail.
+		if _last_posse_count > 1 and pc <= 1:
+			if _state != State.HIT:
 				_switch_to(State.CELEBRATE)
 				_override_timer = CELEBRATE_OVERLAY_DURATION
 		_last_posse_count = pc
