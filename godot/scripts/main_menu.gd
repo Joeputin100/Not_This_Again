@@ -57,13 +57,18 @@ func _ready() -> void:
 	# for verifying Crashlytics integration on first sideload. Release
 	# builds never wire this up — OS.crash() is a no-op there anyway,
 	# but skipping the connect saves us from any input-flooding risk.
-	# OS.is_debug_build() returns true only for engine debug compiles, NOT
-	# for debug-template exports — wrong check for exported APKs. The
-	# correct feature flag for "this is a debug export" is "debug".
-	# Iter 24 used the wrong API; user reported triple-tap-crash never
-	# fired despite running the debug build. Fixed in iter 25.
-	if OS.has_feature("debug"):
-		build_id_label.gui_input.connect(_on_build_id_tap)
+	# Iter 26: dropped the OS.has_feature("debug") gate — that ALSO
+	# returned false on the user's debug-exported APK (iter 25 attempt
+	# never crashed). Going belt-and-suspenders: always wire the handler,
+	# log every event we see, log every tap. If the handler still doesn't
+	# fire, the issue is at the Label mouse_filter / event-dispatch layer
+	# rather than the feature-flag layer. Diagnostic logs land in the
+	# DebugLog ring buffer that the COPY button dumps to clipboard.
+	build_id_label.gui_input.connect(_on_build_id_tap)
+	DebugLog.add("crash-gesture: handler connected; has_feature(debug)=%s mouse_filter=%d" % [
+		str(OS.has_feature("debug")),
+		build_id_label.mouse_filter,
+	])
 	# Defer pivot capture so Godot's layout pass has run and sizes are real.
 	call_deferred("_finalize_setup")
 
@@ -160,6 +165,15 @@ func _on_idle_ended() -> void:
 # auto-init ContentProvider), captures the crash, queues a report. The
 # report uploads the NEXT time the app launches.
 func _on_build_id_tap(event: InputEvent) -> void:
+	# Iter 26 diagnostics: log EVERY gui_input event we receive so we
+	# can see in the COPY-button log whether the handler is firing at
+	# all. If we get nothing, the issue is upstream (mouse_filter, focus,
+	# Z-order). If we get TOUCH/MOUSE_MOTION but no presses, we're
+	# filtering too aggressively.
+	DebugLog.add("crash-gesture event: %s pressed=%s" % [
+		event.get_class(),
+		str(event.is_pressed()) if event.has_method("is_pressed") else "n/a",
+	])
 	var is_press: bool = false
 	if event is InputEventScreenTouch:
 		is_press = (event as InputEventScreenTouch).pressed
@@ -179,9 +193,6 @@ func _on_build_id_tap(event: InputEvent) -> void:
 	DebugLog.add("crash-gesture tap %d/3" % _crash_tap_count)
 	if _crash_tap_count >= 3:
 		DebugLog.add("crash-gesture: triggering OS.crash for Crashlytics test")
-		# Flush DebugLog by giving Crashlytics + filesystem a tick. The
-		# crash report includes the most recent log lines via
-		# DebugLog.get_text() if/when we add custom keys (future iter).
 		OS.crash("Not_This_Again debug crash-gesture (Crashlytics test)")
 
 func _kill_idle_tweens() -> void:
