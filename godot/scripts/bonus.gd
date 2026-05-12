@@ -8,9 +8,12 @@ extends Node2D
 # Tap-to-take would have broken the pacing; auto-equip preserves it.
 #
 # bonus_type strings recognized by level.gd's _equip_bonus():
-#   "fast_fire"   — multiplies _gun.fire_interval by 0.7 (30% faster)
-#   "extra_dude"  — posse_count += 2
-#   "rifle"       — swap _gun to a slower, longer-range, harder-hitting Rifle
+#   "fast_fire"    — multiplies _gun.fire_interval by 0.7 (30% faster)
+#   "extra_dude"   — posse_count += 2
+#   "rifle"        — swap _gun to a slower, longer-range, harder-hitting Rifle
+#   "jelly_frenzy" — Sugar Rush equivalent: 5-second burst with triple-stream
+#                    bullets in a ±15° fan, every shot a candy color, banner
+#                    + camera shake on activation. Earned via barrel drop.
 #
 # Joins the "bonuses" group so level.gd's collision pass can find it.
 
@@ -37,6 +40,7 @@ static func letter_for(type: String) -> String:
 		"fast_fire": return "F"
 		"extra_dude": return "+D"
 		"rifle": return "R"
+		"jelly_frenzy": return "J!"
 		_: return "?"
 
 func _process(delta: float) -> void:

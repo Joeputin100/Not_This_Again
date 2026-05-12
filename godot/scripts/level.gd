@@ -30,6 +30,7 @@ const BonusScript = preload("res://scripts/bonus.gd")
 const WeatherScript = preload("res://scripts/weather.gd")
 const WeatherManagerScript = preload("res://scripts/weather_manager.gd")
 const MuzzleFlashScene = preload("res://scenes/muzzle_flash.tscn")
+const FlourishBanner = preload("res://scripts/flourish_banner.gd")
 
 const FOLLOW_SPEED: float = 12.0
 const STARTING_POSSE: int = 5
@@ -89,6 +90,31 @@ var _barrels_destroyed: int = 0
 # keep showering the (now-decorative) screen with bullets during the
 # victory overlay.
 var _shooting_active: bool = true
+
+# Iter 41: Sugar Rush ("Jelly Bean Frenzy"). When _frenzy_active is true,
+# _spawn_bullet emits three bullets in a ±15° fan instead of one straight
+# bullet. _frenzy_timer counts down in _process; on hitting 0 the flag
+# clears. Activation comes from picking up a "jelly_frenzy" bonus barrel
+# (see _equip_bonus). 5-second burst, no overlap (a second pickup during
+# an active frenzy just refreshes the timer to 5).
+var _frenzy_active: bool = false
+var _frenzy_timer: float = 0.0
+const FRENZY_DURATION: float = 5.0
+const FRENZY_FAN_ANGLE_DEG: float = 15.0
+const FRENZY_FAN_SHOTS: int = 3
+
+# Iter 41: kill-streak tracking for JUICY (3 kills in 2s) and RAMPAGE
+# (5 in 5s). Banner emission is rate-limited so successive streaks
+# don't spam the screen. Timestamps are seconds since process start.
+var _kill_timestamps: Array[float] = []
+var _last_juicy_time: float = -10.0
+var _last_rampage_time: float = -10.0
+const JUICY_WINDOW: float = 2.0
+const JUICY_THRESHOLD: int = 3
+const JUICY_COOLDOWN: float = 3.0
+const RAMPAGE_WINDOW: float = 5.0
+const RAMPAGE_THRESHOLD: int = 5
+const RAMPAGE_COOLDOWN: float = 6.0
 
 # Iter 40c: latches true when posse_count hits 0 mid-level. Triggers the
 # fail modal + spends a heart. Independent of the win path — once
@@ -219,6 +245,18 @@ func _ready() -> void:
 		in_level_menu_button.pressed.connect(_on_in_level_menu_pressed)
 	# Pivot for the win panel scale-in animation
 	win_panel.pivot_offset = Vector2(440, 280)
+	# Iter 41: subscribe to every killable entity's `destroyed` signal so
+	# we can run kill-streak detection (JUICY/RAMPAGE banners) from one
+	# place. Group memberships were registered in each entity's _ready,
+	# which runs BEFORE level.gd's _ready in Godot's scene-tree order —
+	# so by the time we reach this line, every pre-placed enemy is
+	# already in its group. Dynamically-spawned ones (chicken_coop's
+	# chickens) don't fire destroyed signals so they're not tracked.
+	for group_name in ["barrels", "bulls", "outlaws", "prospectors",
+			"tumbleweeds", "cacti"]:
+		for node in get_tree().get_nodes_in_group(group_name):
+			if node.has_signal("destroyed"):
+				node.destroyed.connect(_on_kill_tracked)
 	_refresh_posse_label()
 	# Diagnostic: mark that _ready completed end-to-end.
 	if debug_label:
@@ -237,6 +275,14 @@ func _gather_gates() -> Array[Node]:
 
 func _process(delta: float) -> void:
 	_process_run_count += 1
+	# Iter 41: tick the Jelly Bean Frenzy timer. When it expires the
+	# burst ends and _spawn_bullet reverts to single-shot. No banner on
+	# expiry — the visible end-of-fan stream is its own readable signal.
+	if _frenzy_active:
+		_frenzy_timer -= delta
+		if _frenzy_timer <= 0.0:
+			_frenzy_active = false
+			DebugLog.add("jelly frenzy ended")
 	# Wind drift — push target_x sideways every frame, even when the
 	# player isn't dragging. Player input still overrides instantly via
 	# _input() setting target_x to the new touch position; the wind just
@@ -317,6 +363,14 @@ func _process(delta: float) -> void:
 func _spawn_bullet() -> void:
 	if not _shooting_active:
 		return
+	# Iter 41: Jelly Bean Frenzy fans bullets out at ±FRENZY_FAN_ANGLE_DEG.
+	# Three projectiles total: one straight, one angled left, one angled
+	# right. Bullets use velocity to move (their lateral_drift property
+	# already supports per-frame x-drift); we set initial drifts derived
+	# from the fan angle so they spread visibly as they travel upward.
+	if _frenzy_active:
+		_spawn_frenzy_fan()
+		return
 	# Muzzle flash burst — leader gets a flash as a CHILD anchored at
 	# the cowboy's gun-hand (DUDE_MUZZLE_OFFSET) so the flash reads at
 	# the barrel rather than floating above the head. Followers each
@@ -351,6 +405,60 @@ func _spawn_bullet() -> void:
 	bullet.lateral_drift = bullet_lateral_drift
 	add_child(bullet)
 	_bullets_fired += 1
+
+# Iter 41: Jelly Bean Frenzy multi-shot. Spawns FRENZY_FAN_SHOTS bullets
+# in a fan, each with a lateral_drift derived from its angle off-axis.
+# Skips the muzzle flash duplication (single center flash is plenty
+# read; three flashes would just blow out the visual).
+func _spawn_frenzy_fan() -> void:
+	var leader_flash := MuzzleFlashScene.instantiate()
+	leader_flash.position = DUDE_MUZZLE_OFFSET
+	cowboy.add_child(leader_flash)
+	AudioBus.play_gunfire()
+	var center: int = (FRENZY_FAN_SHOTS - 1) / 2  # 0,1,2 → center index 1
+	for i in range(FRENZY_FAN_SHOTS):
+		var bullet := BulletScene.instantiate()
+		bullet.position = cowboy.position + Vector2(0, BULLET_SPAWN_Y_OFFSET)
+		bullet.max_range = _gun.range_px
+		bullet.damage = _gun.caliber
+		bullet.velocity_mult = bullet_velocity_mult
+		# Convert the fan offset into a lateral drift. Outer bullets
+		# (i=0, i=2) drift sideways at ±tan(15°) × bullet vertical speed.
+		# Center bullet (i=1) gets the level's normal drift only.
+		var off: int = i - center
+		var angle_rad: float = deg_to_rad(FRENZY_FAN_ANGLE_DEG) * float(off)
+		bullet.lateral_drift = bullet_lateral_drift + tan(angle_rad) * BulletScript.SPEED
+		add_child(bullet)
+		_bullets_fired += 1
+
+# Iter 41: invoked from each entity's `destroyed` signal (connected in
+# _ready). Maintains _kill_timestamps + checks streak thresholds for
+# JUICY (3 in 2s) and RAMPAGE (5 in 5s). Each banner has its own
+# cooldown so successive bursts of kills don't spam the screen.
+func _on_kill_tracked(_x: float) -> void:
+	var now: float = Time.get_ticks_msec() / 1000.0
+	_kill_timestamps.append(now)
+	# Prune anything older than RAMPAGE_WINDOW; we never need older
+	# timestamps and the array bloats over a long level otherwise.
+	var cutoff: float = now - RAMPAGE_WINDOW
+	while not _kill_timestamps.is_empty() and _kill_timestamps[0] < cutoff:
+		_kill_timestamps.pop_front()
+	# RAMPAGE check first (higher tier) — if it fires, suppress JUICY
+	# this same frame so the player doesn't read two banners stacking.
+	if _kill_timestamps.size() >= RAMPAGE_THRESHOLD \
+			and (now - _last_rampage_time) > RAMPAGE_COOLDOWN:
+		_last_rampage_time = now
+		FlourishBanner.spawn($UI, "RAMPAGE!", self)
+		return
+	var recent_juicy: int = 0
+	var juicy_cutoff: float = now - JUICY_WINDOW
+	for t in _kill_timestamps:
+		if t >= juicy_cutoff:
+			recent_juicy += 1
+	if recent_juicy >= JUICY_THRESHOLD \
+			and (now - _last_juicy_time) > JUICY_COOLDOWN:
+		_last_juicy_time = now
+		FlourishBanner.spawn($UI, "JUICY!", self)
 
 func _resolve_bullet_barrel_collisions() -> void:
 	var bullets := get_tree().get_nodes_in_group("bullets")
@@ -573,6 +681,15 @@ func _equip_bonus(type: String) -> void:
 			posse_count += 2
 			_pulse_posse_label()
 			DebugLog.add("bonus equipped: extra_dude → posse_count=%d" % posse_count)
+		"jelly_frenzy":
+			# Iter 41: Sugar Rush equivalent. 5-second burst of rainbow
+			# triple-stream bullets. Banner pops on activation;
+			# _spawn_bullet observes _frenzy_active to fan out shots.
+			# Refreshes (not stacks) if picked up during an active burst.
+			_frenzy_active = true
+			_frenzy_timer = FRENZY_DURATION
+			FlourishBanner.spawn($UI, "JELLY_FRENZY", self)
+			DebugLog.add("bonus equipped: jelly_frenzy → %ss burst" % FRENZY_DURATION)
 		"rifle":
 			# Tradeoff weapon: caliber 3 (triple damage), 900px range
 			# (50% longer), but only 4 rounds, 1.3s reload, 0.30s
@@ -669,7 +786,13 @@ func _on_gate_triggered(gate_center_x: float, gate: Node) -> void:
 
 	var combo_label := CombosCounterScript.label_for(combo)
 	if combo_label != "":
-		_spawn_combo_banner(combo_label)
+		FlourishBanner.spawn($UI, combo_label, self)
+	# Iter 41: extra YEEHAW! flourish on multiplier gates regardless of
+	# combo state — × gates are the high-value swings and deserve their
+	# own ego cookie. Fires AFTER the DOUBLE/MEGA banner if both apply
+	# (banners stack visually, which reads as "double cookie" not bug).
+	if gate.gate_type == GateHelper.TYPE_MULTIPLICATIVE:
+		FlourishBanner.spawn($UI, "YEEHAW!", self)
 
 	progress.record_pass()
 	if progress.is_complete():

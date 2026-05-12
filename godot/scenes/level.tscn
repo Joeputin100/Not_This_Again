@@ -87,6 +87,11 @@ position = Vector2(360, -950)
 max_hp = 4
 bonus_type = "extra_dude"
 
+[node name="BarrelJellyFrenzy" parent="." instance=ExtResource("4_barrel")]
+position = Vector2(720, -1300)
+max_hp = 4
+bonus_type = "jelly_frenzy"
+
 [node name="ChickenCoop1" parent="." instance=ExtResource("8_coop")]
 position = Vector2(540, -1100)
 
