@@ -65,8 +65,14 @@ func test_red_to_blue_flip_passes_self_in_signal():
 	await get_tree().process_frame
 	watch_signals(gate)
 	gate.take_bullet_hit()  # 0, 0 → flip
-	assert_signal_emitted_with_parameters(gate, "direction_flipped", [gate],
-		"direction_flipped should pass the gate itself")
+	# Manual param check — assert_signal_emitted_with_parameters has a
+	# Variant-comparison quirk with Object-typed args under this GUT
+	# version that surfaces as "Invalid operands 'String' and 'int'".
+	assert_signal_emitted(gate, "direction_flipped",
+		"direction_flipped should fire on the red→blue transition")
+	var params = get_signal_parameters(gate, "direction_flipped", 0)
+	assert_eq(params[0] if params else null, gate,
+		"direction_flipped should pass the gate itself as its argument")
 
 func test_caliber_aware_flip():
 	# A high-caliber shot can flip a gate in fewer hits.

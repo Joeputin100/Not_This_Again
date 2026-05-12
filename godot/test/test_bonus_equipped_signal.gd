@@ -29,7 +29,13 @@ func test_equip_emits_with_bonus_type_param():
 	bonus.bonus_type = "rifle"
 	watch_signals(bonus)
 	bonus.equip()
-	assert_signal_emitted_with_parameters(bonus, "equipped", ["rifle"],
+	# Manual param check — assert_signal_emitted_with_parameters has a
+	# Variant-comparison quirk with String args under this GUT version
+	# that surfaces as "Invalid operands 'String' and 'int' in ==".
+	assert_signal_emitted(bonus, "equipped",
+		"equip() should emit equipped()")
+	var params = get_signal_parameters(bonus, "equipped", 0)
+	assert_eq(params[0] if params else "", "rifle",
 		"equipped() should carry the bonus_type string")
 
 func test_equip_emits_extra_dude_type():
