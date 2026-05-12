@@ -641,10 +641,18 @@ whatever that's worth." % posse_count
 # Iter 25+: switch leader cowboy + every follower in PosseRenderer from
 # run_shoot to idle. Called on win so the crowd visibly relaxes once
 # the gates are done.
+# Iter 27+: leader is now a Cowboy3D (Mixamo-rigged 3D model rendered
+# via SubViewport). Old AnimatedSprite2D check kept as a fallback in
+# case the 3D scene fails to load and we get the legacy sprite.
 func _switch_posse_to_idle() -> void:
-	var cowboy_sprite: AnimatedSprite2D = cowboy.get_node_or_null("Sprite") as AnimatedSprite2D
-	if cowboy_sprite and cowboy_sprite.sprite_frames and cowboy_sprite.sprite_frames.has_animation("idle"):
-		cowboy_sprite.play("idle")
+	var cowboy_3d: Node2D = cowboy.get_node_or_null("Cowboy3D") as Node2D
+	if cowboy_3d and cowboy_3d.has_method("play_anim"):
+		cowboy_3d.play_anim("idle")
+	else:
+		# Fallback: legacy 2D AnimatedSprite path (still used for followers).
+		var cowboy_sprite: AnimatedSprite2D = cowboy.get_node_or_null("Sprite") as AnimatedSprite2D
+		if cowboy_sprite and cowboy_sprite.sprite_frames and cowboy_sprite.sprite_frames.has_animation("idle"):
+			cowboy_sprite.play("idle")
 	if posse_renderer:
 		posse_renderer.set_animation("idle")
 
