@@ -80,16 +80,17 @@ func set_leader_position(pos: Vector2) -> void:
 func active_follower_count() -> int:
 	return _active_dudes.size()
 
-# Iter 25+: switches every active dude's AnimatedSprite2D to the given
-# animation. Used by level.gd on win → "idle" so the crowd stops looking
-# like it's still running into a wall after the bounty appears.
+# Iter 25+: switches every active dude's animation. Iter 28+: dudes now
+# wrap a Cowboy3D node (3D Mixamo model rendered to a SubViewport-backed
+# Sprite2D), so we delegate to its play_anim() rather than poking an
+# AnimatedSprite2D.
 func set_animation(anim_name: String) -> void:
 	for dude in _active_dudes:
 		if dude == null or not is_instance_valid(dude):
 			continue
-		var sprite: AnimatedSprite2D = dude.get_node_or_null("Sprite") as AnimatedSprite2D
-		if sprite and sprite.sprite_frames and sprite.sprite_frames.has_animation(anim_name):
-			sprite.play(anim_name)
+		var c3d: Node2D = dude.get_node_or_null("Cowboy3D") as Node2D
+		if c3d and c3d.has_method("play_anim"):
+			c3d.play_anim(anim_name)
 
 # Iter 25+: returns world-space positions of every active follower —
 # used by level.gd to spawn a muzzle flash at each dude on every shot

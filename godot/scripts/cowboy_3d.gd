@@ -58,6 +58,10 @@ func _setup_3d_scene() -> void:
 	if _character_instance == null:
 		push_error("cowboy_3d: character.glb did not instance as Node3D")
 		return
+	# Iter 28: Mixamo characters via FBX2glTF land facing +Z relative to
+	# our camera (which sits at +Z looking toward origin) — we see their
+	# back. Rotate 180° around Y so they face the camera (player POV).
+	_character_instance.rotation.y = PI
 	sub_viewport.add_child(_character_instance)
 
 	# Find the AnimationPlayer Mixamo / FBX2glTF generated. character.glb
