@@ -22,6 +22,14 @@ const BuildInfo = preload("res://scripts/build_info.gd")
 # Captured after initial layout so idle_ended can restore exact positions.
 var _subtitle_base_y: float = 0.0
 
+# Debug-only triple-tap on BuildId triggers OS.crash() so Crashlytics
+# round-trip can be verified end-to-end. _crash_tap_count resets if more
+# than CRASH_TAP_WINDOW seconds pass between taps. Release builds skip
+# the input handler wiring entirely.
+const CRASH_TAP_WINDOW: float = 1.5
+var _crash_tap_count: int = 0
+var _crash_last_tap_time: float = 0.0
+
 # Track idle-fidget tweens so we can kill them on input or scene exit.
 var _button_idle_tween: Tween
 var _title_idle_tween: Tween
@@ -45,6 +53,12 @@ func _ready() -> void:
 	# Build identifier in the bottom-right corner — proves which build is
 	# actually installed when sideloading repeatedly.
 	build_id_label.text = "%s  %s  iter %s" % [BuildInfo.SHA, BuildInfo.SHORT_DATE, BuildInfo.ITER]
+	# Debug-build-only triple-tap-to-crash gesture on the BuildId label,
+	# for verifying Crashlytics integration on first sideload. Release
+	# builds never wire this up — OS.crash() is a no-op there anyway,
+	# but skipping the connect saves us from any input-flooding risk.
+	if OS.is_debug_build():
+		build_id_label.gui_input.connect(_on_build_id_tap)
 	# Defer pivot capture so Godot's layout pass has run and sizes are real.
 	call_deferred("_finalize_setup")
 
@@ -134,6 +148,36 @@ func _on_idle_ended() -> void:
 	t.tween_property(play_button, "scale", Vector2.ONE, 0.18)
 	t.tween_property(title_label, "rotation_degrees", 0.0, 0.18)
 	t.tween_property(subtitle_label, "position:y", _subtitle_base_y, 0.18)
+
+# Triple-tap on BuildId in a debug build = deliberate SIGSEGV via
+# OS.crash, used to verify Firebase Crashlytics is wired up correctly.
+# Crashlytics NDK installs signal handlers at app start (via Firebase's
+# auto-init ContentProvider), captures the crash, queues a report. The
+# report uploads the NEXT time the app launches.
+func _on_build_id_tap(event: InputEvent) -> void:
+	var is_press: bool = false
+	if event is InputEventScreenTouch:
+		is_press = (event as InputEventScreenTouch).pressed
+	elif event is InputEventMouseButton:
+		var mb := event as InputEventMouseButton
+		is_press = mb.button_index == MOUSE_BUTTON_LEFT and mb.pressed
+	if not is_press:
+		return
+
+	var now: float = Time.get_unix_time_from_system()
+	if now - _crash_last_tap_time > CRASH_TAP_WINDOW:
+		_crash_tap_count = 1
+	else:
+		_crash_tap_count += 1
+	_crash_last_tap_time = now
+
+	DebugLog.add("crash-gesture tap %d/3" % _crash_tap_count)
+	if _crash_tap_count >= 3:
+		DebugLog.add("crash-gesture: triggering OS.crash for Crashlytics test")
+		# Flush DebugLog by giving Crashlytics + filesystem a tick. The
+		# crash report includes the most recent log lines via
+		# DebugLog.get_text() if/when we add custom keys (future iter).
+		OS.crash("Not_This_Again debug crash-gesture (Crashlytics test)")
 
 func _kill_idle_tweens() -> void:
 	if _button_idle_tween:

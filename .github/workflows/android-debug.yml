@@ -79,6 +79,15 @@ jobs:
           touch "$GITHUB_WORKSPACE/godot/android/build/.gdignore"
           ls -la "$GITHUB_WORKSPACE/godot/android/" | head -10
 
+      - name: Patch Android template for Firebase Crashlytics
+        # Injects google-services + firebase-crashlytics Gradle plugins
+        # and the Firebase BOM + Crashlytics-NDK + Analytics deps into
+        # the unzipped Godot template's settings.gradle and build.gradle.
+        # Idempotent; fails loudly if the template format changes.
+        run: |
+          python3 scripts/patch_android_for_firebase.py \
+            "$GITHUB_WORKSPACE/godot/android/build"
+
       - name: Authenticate to GCP (Workload Identity Federation)
         uses: google-github-actions/auth@v2
         with:
