@@ -18,6 +18,9 @@ const BuildInfo = preload("res://scripts/build_info.gd")
 @onready var build_id_label: Label = $UI/BuildId
 @onready var copy_button: Button = $UI/CopyButton
 @onready var copy_toast: Label = $UI/CopyToast
+# Iter 40c: hearts row — 5 slots, each ♥ when full, faded for spent.
+# Subscribes to GameState.hearts_changed in _ready and re-renders.
+@onready var hearts_label: Label = $UI/Hearts
 
 # Captured after initial layout so idle_ended can restore exact positions.
 var _subtitle_base_y: float = 0.0
@@ -50,6 +53,12 @@ func _ready() -> void:
 	IdleNudge.idle_started.connect(_on_idle_started)
 	IdleNudge.idle_ended.connect(_on_idle_ended)
 	copy_button.pressed.connect(_on_copy_pressed)
+	# Iter 40c: hearts subscription. Re-render on every change so a fail
+	# in a level (which calls GameState.spend_heart()) updates the menu
+	# next time it's shown. Also re-render now so the row reflects the
+	# current state on entry (e.g. after losing a level + returning).
+	GameState.hearts_changed.connect(_refresh_hearts)
+	_refresh_hearts(GameState.hearts)
 	# Build identifier in the bottom-right corner — proves which build is
 	# actually installed when sideloading repeatedly.
 	build_id_label.text = "%s  %s  iter %s" % [BuildInfo.SHA, BuildInfo.SHORT_DATE, BuildInfo.ITER]
@@ -109,6 +118,26 @@ func _notification(what: int) -> void:
 func _on_back_requested_signal() -> void:
 	DebugLog.add("main_menu go_back_requested SIGNAL → quit")
 	get_tree().quit()
+
+# Iter 40c: render the hearts row. Two characters: ♥ for remaining (kept
+# bright red), · for spent (dim). Player can read "I have 3 left" at a
+# glance without doing arithmetic. Also locks/unlocks PLAY based on
+# whether there's a heart to spend on a fresh run.
+func _refresh_hearts(current_hearts: int) -> void:
+	if hearts_label == null:
+		return
+	var max_h: int = GameState.MAX_HEARTS
+	var parts: PackedStringArray = []
+	for i in range(max_h):
+		parts.append("♥" if i < current_hearts else "·")
+	hearts_label.text = " ".join(parts)
+	# Lock PLAY when out of hearts. Standard Candy Crush behavior: dim
+	# the primary CTA + change the label to make the gate obvious. (Heart
+	# regen is deferred to a separate iter; cold app launches reset to
+	# MAX_HEARTS, which is the workaround for v1 sideload testing.)
+	if play_button:
+		play_button.disabled = current_hearts <= 0
+		play_button.text = "OUT OF POSSE" if current_hearts <= 0 else "PLAY"
 
 func _on_play_pressed() -> void:
 	# Candy-Crush press feedback: tap SFX + squish + bounce back + scene change.

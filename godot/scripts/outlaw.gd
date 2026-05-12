@@ -21,6 +21,7 @@ extends Node2D
 const OutlawBulletScene := preload("res://scenes/outlaw_bullet.tscn")
 const OutlawBulletScript := preload("res://scripts/outlaw_bullet.gd")
 const MuzzleFlashScene := preload("res://scenes/muzzle_flash.tscn")
+const DamagePopup := preload("res://scripts/damage_popup.gd")
 
 const STREAM_IDLE := preload("res://assets/videos/vagrant/idle_wobble.ogv")
 const STREAM_FORWARD := preload("res://assets/videos/vagrant/drunk_walk.ogv")
@@ -29,6 +30,7 @@ const STREAM_STRAFE_RIGHT := preload("res://assets/videos/vagrant/strafe_right.o
 const STREAM_SHOOT_LEFT := preload("res://assets/videos/vagrant/shoot_left.ogv")
 const STREAM_SHOOT_RIGHT := preload("res://assets/videos/vagrant/shoot_right.ogv")
 const STREAM_SHOOT_DOWN := preload("res://assets/videos/vagrant/shoot_down.ogv")
+const STREAM_DEATH := preload("res://assets/videos/vagrant/death.ogv")
 
 const DeathPolish := preload("res://scripts/death_polish.gd")
 
@@ -58,7 +60,7 @@ const STRAFE_VELOCITY_THRESHOLD: float = 1.5
 # "shoot left/right" — when the cowboy is nearly directly below.
 const SHOOT_DOWN_BAND: float = 80.0
 
-enum State { IDLE, FORWARD, STRAFE_LEFT, STRAFE_RIGHT, SHOOT_LEFT, SHOOT_RIGHT, SHOOT_DOWN }
+enum State { IDLE, FORWARD, STRAFE_LEFT, STRAFE_RIGHT, SHOOT_LEFT, SHOOT_RIGHT, SHOOT_DOWN, DEATH }
 
 var hp: int = MAX_HP
 var _destroyed: bool = false
@@ -143,6 +145,7 @@ func _switch_to(new_state: int) -> void:
 		State.SHOOT_LEFT: video.stream = STREAM_SHOOT_LEFT
 		State.SHOOT_RIGHT: video.stream = STREAM_SHOOT_RIGHT
 		State.SHOOT_DOWN: video.stream = STREAM_SHOOT_DOWN
+		State.DEATH: video.stream = STREAM_DEATH
 	video.play()
 
 func _spawn_bullet() -> void:
@@ -177,6 +180,7 @@ func _spawn_bullet() -> void:
 func take_bullet_hit(damage: int = 1) -> bool:
 	if _destroyed:
 		return false
+	DamagePopup.spawn(get_parent(), global_position, damage)
 	hp -= damage
 	_refresh_hp_label()
 	if hp_bar:
@@ -204,12 +208,17 @@ func _play_destroy_animation() -> void:
 	if splinters:
 		splinters.amount = 40
 		splinters.restart()
-	# No death video for vagrant (user hasn't provided one). Use the
-	# iter 31 tween — modulate fade + scale up — then universal polish.
-	var tween := create_tween().set_parallel(true)
-	tween.tween_property(self, "modulate:a", 0.0, 0.4)
-	tween.tween_property(self, "scale", Vector2(1.3, 1.3), 0.4) \
-		.set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
-	await tween.finished
+	# Iter 40c: switch to the Veo-rendered DEATH animation (vagrant looks
+	# surprised, jumps back, falls with arms flailing — ~3s of motion).
+	# Play it through, THEN run the universal DeathPolish strobe.
+	# _override_timer is set absurdly high so no state transitions can
+	# preempt DEATH while it plays. The await-on-finished pattern (used
+	# elsewhere) doesn't fit a VideoStreamPlayer; instead we wait a fixed
+	# duration matching the clip length.
+	_switch_to(State.DEATH)
+	_override_timer = 10.0  # block any state preemption
+	# Death clip is 4s but the figure lies still after ~3s — pacing
+	# feels right to start the strobe just before the clip ends.
+	await get_tree().create_timer(3.0).timeout
 	await DeathPolish.play(self)
 	queue_free()

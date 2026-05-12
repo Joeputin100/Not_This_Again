@@ -22,6 +22,11 @@ const SCROLL_SPEED: float = 0.25
 
 var _material: StandardMaterial3D
 var _uv_offset: float = 0.0
+# Iter 40c: set false during boss fights so the world stops moving
+# while the duel resolves. The cowboy is stationary, the boss is in
+# STAY mode — the dirt scroll was the only motion telegraphing
+# "running forward", which contradicted the showdown framing.
+var _scroll_active: bool = true
 
 func _ready() -> void:
 	if sprite_2d:
@@ -29,7 +34,15 @@ func _ready() -> void:
 	if ground:
 		_material = ground.material_override as StandardMaterial3D
 
+# Iter 40c: level.gd flips this off when the boss-engaged signal fires.
+# Kept as a generic boolean (rather than a one-way latch) so it could
+# also be flipped back on for win cinematics or special level events.
+func set_scroll_active(active: bool) -> void:
+	_scroll_active = active
+
 func _process(delta: float) -> void:
+	if not _scroll_active:
+		return
 	_uv_offset += SCROLL_SPEED * delta
 	# Wrap to keep the offset bounded — UV repeat makes any whole-tile
 	# offset visually equivalent, but unbounded floats could lose

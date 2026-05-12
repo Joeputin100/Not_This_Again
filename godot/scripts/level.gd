@@ -63,6 +63,11 @@ const COWBOY_SIZE: Vector2 = Vector2(120, 200)
 @onready var win_subtitle: Label = $WinOverlay/WinPanel/WinSubtitle
 @onready var again_button: Button = $WinOverlay/WinPanel/PlayAgainButton
 @onready var menu_button: Button = $WinOverlay/WinPanel/MenuButton
+# Iter 40c: posse-wipe fail modal. Mirrors WinOverlay structure.
+@onready var fail_overlay: CanvasLayer = $FailOverlay
+@onready var fail_panel: Control = $FailOverlay/FailPanel
+@onready var fail_retry_button: Button = $FailOverlay/FailPanel/RetryButton
+@onready var fail_menu_button: Button = $FailOverlay/FailPanel/MenuButton
 @onready var weather_manager: Node2D = $WeatherManager
 
 var target_x: float
@@ -84,6 +89,12 @@ var _barrels_destroyed: int = 0
 # keep showering the (now-decorative) screen with bullets during the
 # victory overlay.
 var _shooting_active: bool = true
+
+# Iter 40c: latches true when posse_count hits 0 mid-level. Triggers the
+# fail modal + spends a heart. Independent of the win path — once
+# _failed is true, win conditions are short-circuited too (no
+# simultaneous WIN+FAIL flashes).
+var _failed: bool = false
 
 # Iter 37: level-end is gated on TWO conditions instead of just gates-done.
 #   _gates_complete  — last gate has fired
@@ -110,15 +121,23 @@ var bullet_velocity_mult: float = 1.0
 var bullet_lateral_drift: float = 0.0
 
 # Run-local state. Resets each level.
+# Iter 40c: posse is mortal now. The setter clamps to 0 (was 1 — the
+# leader cowboy used to be immortal). When posse_count transitions to
+# 0, fail the level: deduct a heart and pop the fail modal.
 var posse_count: int = STARTING_POSSE:
 	set(value):
-		posse_count = maxi(1, value)
+		posse_count = maxi(0, value)
 		_refresh_posse_label()
 		# Push count to the renderer so trapezoid grows/shrinks in sync
 		# with gameplay. Guarded — setter can fire before _ready resolves
 		# the @onready var (e.g. during scene-load defaults).
 		if posse_renderer:
 			posse_renderer.posse_count = posse_count
+		# Iter 40c: catch the death moment. _failed latch prevents
+		# re-triggering if more damage lands in the same frame.
+		if posse_count == 0 and not _failed:
+			_failed = true
+			_show_fail()
 
 var progress: RefCounted
 var shake: RefCounted
@@ -168,6 +187,12 @@ func _ready() -> void:
 		for boss in bosses:
 			if boss.has_signal("destroyed"):
 				boss.destroyed.connect(_on_boss_destroyed)
+			# Iter 40c: stop terrain scroll when boss reaches STAY mode.
+			# The showdown is an event — no more "running forward" until
+			# the duel resolves. Only Pete has the `engaged` signal so
+			# far; future bosses can opt in by emitting it.
+			if boss.has_signal("engaged"):
+				boss.engaged.connect(_on_boss_engaged)
 
 	# Discover all gates by group instead of hand-listing — adding a 4th
 	# gate to the scene tree later won't require code changes here.
@@ -179,6 +204,14 @@ func _ready() -> void:
 
 	again_button.pressed.connect(_on_again_pressed)
 	menu_button.pressed.connect(_on_menu_pressed)
+	# Iter 40c: fail-modal buttons. Same RETRY/MENU dichotomy as win flow.
+	if fail_retry_button:
+		fail_retry_button.pressed.connect(_on_fail_retry_pressed)
+	if fail_menu_button:
+		fail_menu_button.pressed.connect(_on_fail_menu_pressed)
+	# Pivot for the fail panel scale-in animation (same dims as win panel).
+	if fail_panel:
+		fail_panel.pivot_offset = Vector2(440, 280)
 	# In-level MENU button (top-left corner). Workaround for the back-
 	# gesture-still-exits-app bug — gives the player a reliable way to
 	# leave a level without quitting the whole app.
@@ -401,7 +434,7 @@ func _resolve_obstacle_cowboy_collisions(group_name: String, obstacle_size: Vect
 			continue
 		var damage: int = obstacle.get_cowboy_damage()
 		DebugLog.add("%s hit cowboy → posse -%d" % [group_name, damage])
-		posse_count = maxi(1, posse_count - damage)
+		posse_count = maxi(0, posse_count - damage)
 		_pulse_posse_label()
 		shake.add_trauma(minf(0.4 + damage * 0.05, 0.95))
 		# Destroy destructibles via take_damage if available, otherwise
@@ -427,7 +460,7 @@ func _resolve_outlaw_bullet_dude_collisions() -> void:
 				bullet.position, OutlawBulletScript.SIZE,
 				cowboy.position, COWBOY_SIZE):
 			DebugLog.add("outlaw bullet hit leader → posse -%d" % OutlawBulletScript.POSSE_DAMAGE)
-			posse_count = maxi(1, posse_count - OutlawBulletScript.POSSE_DAMAGE)
+			posse_count = maxi(0, posse_count - OutlawBulletScript.POSSE_DAMAGE)
 			_pulse_posse_label()
 			shake.add_trauma(0.25)
 			bullet.queue_free()
@@ -445,7 +478,7 @@ func _resolve_outlaw_bullet_dude_collisions() -> void:
 			posse_renderer.kill_specific_dude(fr.node)
 			# Decrement posse_count AFTER kill_specific_dude so the
 			# renderer's setter detects state alignment and skips rebuild.
-			posse_count = maxi(1, posse_count - OutlawBulletScript.POSSE_DAMAGE)
+			posse_count = maxi(0, posse_count - OutlawBulletScript.POSSE_DAMAGE)
 			_pulse_posse_label()
 			shake.add_trauma(0.25)
 			bullet.queue_free()
@@ -475,7 +508,7 @@ func _resolve_prospector_melee_collisions() -> void:
 			continue
 		if p.try_swing():
 			DebugLog.add("prospector pickaxe swing → posse -%d" % ProspectorScript.SWING_DAMAGE)
-			posse_count = maxi(1, posse_count - ProspectorScript.SWING_DAMAGE)
+			posse_count = maxi(0, posse_count - ProspectorScript.SWING_DAMAGE)
 			_pulse_posse_label()
 			shake.add_trauma(0.4)
 
@@ -491,7 +524,7 @@ func _resolve_barrel_cowboy_collisions() -> void:
 				cowboy.position, COWBOY_SIZE):
 			var damage: int = barrel.hp
 			DebugLog.add("barrel hit cowboy at hp=%d → posse -%d" % [damage, damage])
-			posse_count = maxi(1, posse_count - damage)
+			posse_count = maxi(0, posse_count - damage)
 			_pulse_posse_label()
 			shake.add_trauma(0.65)
 			# Force-destroy the barrel (overkill so take_damage returns true).
@@ -653,12 +686,85 @@ func _on_boss_destroyed(_x: float) -> void:
 	DebugLog.add("boss defeated — checking win conditions")
 	_maybe_show_win()
 
+# Iter 40c: boss reached STAY mode (cowboy caught up to boss). Stop the
+# terrain scroll so the world stops moving — the showdown is an event,
+# not a continued chase. This is fired ONCE per boss via the `engaged`
+# signal (slippery_pete.gd:_engaged latch).
+func _on_boss_engaged() -> void:
+	DebugLog.add("boss engaged — stopping terrain scroll")
+	var terrain := get_node_or_null("Terrain3D")
+	if terrain and terrain.has_method("set_scroll_active"):
+		terrain.set_scroll_active(false)
+
 # Two conditions to trigger _show_win: gates done AND boss dead. Until
 # both, the firefight continues — player keeps firing, boss keeps
-# crowding, vagrants/prospectors keep coming.
+# crowding, vagrants/prospectors keep coming. Iter 40c: short-circuit
+# if the level has already failed (posse wiped) — fail modal owns the
+# end-of-level frame, can't double-pop a WIN over it.
 func _maybe_show_win() -> void:
+	if _failed:
+		return
 	if _gates_complete and _boss_defeated:
 		_show_win()
+
+# Iter 40c: posse-wipe handler. Triggered from the posse_count setter
+# when count transitions to 0. Mirrors _show_win flow:
+#   1) Stop bullet fire (no posthumous shooting)
+#   2) Switch any remaining renderers to idle (they're already gone, but
+#      defensive — the leader sprite needs to disappear too)
+#   3) Deduct a heart via GameState — affects the main_menu PLAY gate
+#   4) Pop the FailOverlay with a back-in scale tween
+func _show_fail() -> void:
+	DebugLog.add("FAIL: posse wiped out — last dude went down")
+	_shooting_active = false
+	# Hide the leader cowboy sprite — they're dead too. (Followers are
+	# already gone via PosseRenderer's despawn flow.)
+	if cowboy:
+		cowboy.visible = false
+	# Heart cost. GameState is autoloaded; .spend_heart() returns false
+	# if hearts were already 0 (e.g. cheat path), but we don't have a
+	# special branch for that here — failing again at 0 just shows the
+	# same modal. Guard with get_node_or_null because GUT tests may
+	# instantiate level.gd without the full autoload chain.
+	if get_node_or_null("/root/GameState"):
+		GameState.spend_heart()
+	# Brief beat so the death frame registers before the modal slides in.
+	await get_tree().create_timer(0.4).timeout
+	# Guard the overlay refs too — tests sometimes load a partial scene
+	# without the FailOverlay subtree. In real gameplay these are wired
+	# by the @onready vars.
+	if fail_overlay == null or fail_panel == null:
+		return
+	fail_overlay.visible = true
+	fail_panel.scale = Vector2(0.55, 0.55)
+	var tween := create_tween().set_parallel(true)
+	tween.tween_property(fail_panel, "scale", Vector2.ONE, 0.32) \
+		.set_trans(Tween.TRANS_BACK) \
+		.set_ease(Tween.EASE_OUT)
+
+func _on_fail_retry_pressed() -> void:
+	AudioBus.play_tap()
+	fail_retry_button.disabled = true
+	fail_menu_button.disabled = true
+	var t := create_tween()
+	t.tween_property(fail_retry_button, "scale", Vector2(0.92, 0.92), 0.06)
+	t.tween_property(fail_retry_button, "scale", Vector2.ONE, 0.16) \
+		.set_trans(Tween.TRANS_BACK) \
+		.set_ease(Tween.EASE_OUT)
+	await t.finished
+	get_tree().reload_current_scene()
+
+func _on_fail_menu_pressed() -> void:
+	AudioBus.play_tap()
+	fail_retry_button.disabled = true
+	fail_menu_button.disabled = true
+	var t := create_tween()
+	t.tween_property(fail_menu_button, "scale", Vector2(0.92, 0.92), 0.06)
+	t.tween_property(fail_menu_button, "scale", Vector2.ONE, 0.16) \
+		.set_trans(Tween.TRANS_BACK) \
+		.set_ease(Tween.EASE_OUT)
+	await t.finished
+	get_tree().change_scene_to_file("res://scenes/main_menu.tscn")
 
 # A gate transitioned from red (shrinking) to blue (growing) mid-game.
 # All bulls currently on-screen are confused by the visual change —

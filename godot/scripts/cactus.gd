@@ -12,6 +12,8 @@ const SCROLL_SPEED: float = 220.0
 const SIZE: Vector2 = Vector2(80, 220)
 const COWBOY_DAMAGE: int = 4  # spikes hurt more than soft tumbleweed
 
+const DamagePopup = preload("res://scripts/damage_popup.gd")
+
 var hp: int = MAX_HP
 var _destroyed: bool = false
 
@@ -37,6 +39,7 @@ func _process(delta: float) -> void:
 func take_bullet_hit(damage: int = 1) -> bool:
 	if _destroyed:
 		return false
+	DamagePopup.spawn(get_parent(), global_position, damage)
 	hp -= damage
 	_refresh_hp_label()
 	if hp_bar:

@@ -38,6 +38,7 @@ func _process(delta: float) -> void:
 func take_bullet_hit(damage: int = 1) -> bool:
 	if _destroyed:
 		return false
+	DamagePopup.spawn(get_parent(), global_position, damage)
 	hp -= damage
 	_refresh_hp_label()
 	_emit_splinter()

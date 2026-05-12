@@ -51,6 +51,8 @@ const ESCAPE_SPEED: float = 280.0
 const STATE_CHARGING: int = 0
 const STATE_CONFUSED: int = 1
 
+const DamagePopup = preload("res://scripts/damage_popup.gd")
+
 var hp: int
 var _state: int = STATE_CHARGING
 var _confused_timer: float = 0.0
@@ -120,6 +122,7 @@ func _commit_escape_vector() -> void:
 func take_bullet_hit(damage: int = 1) -> bool:
 	if _destroyed:
 		return false
+	DamagePopup.spawn(get_parent(), global_position, damage)
 	hp -= damage
 	_refresh_hp_label()
 	if hp_bar:

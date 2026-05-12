@@ -23,6 +23,7 @@ extends Node2D
 const OutlawBulletScene := preload("res://scenes/outlaw_bullet.tscn")
 const OutlawBulletScript := preload("res://scripts/outlaw_bullet.gd")
 const MuzzleFlashScene := preload("res://scenes/muzzle_flash.tscn")
+const DamagePopup := preload("res://scripts/damage_popup.gd")
 
 const STREAM_IDLE := preload("res://assets/videos/pete/taps_foot_idle.ogv")
 const STREAM_FORWARD := preload("res://assets/videos/pete/steps_forward.ogv")
@@ -47,6 +48,12 @@ const DEATH_DURATION: float = 8.0
 const CELEBRATE_OVERLAY_DURATION: float = 2.5
 
 signal destroyed(x: float)
+# Iter 40c: fired ONCE the first time Pete enters STAY mode (i.e. the
+# moment the cowboy actually reaches him for the boss fight). Level.gd
+# listens and uses this to stop terrain scroll — the showdown is an
+# event, not a continued chase, so the world stops moving while the
+# duel plays out.
+signal engaged
 
 const MAX_HP: int = 40
 const SCROLL_SPEED: float = 200.0
@@ -83,6 +90,10 @@ var _override_timer: float = 0.0
 # the level's posse_count between frames so we can detect the drop.
 var _level: Node = null
 var _last_posse_count: int = -1
+# Iter 40c: latches true on first STAY-mode entry so the `engaged`
+# signal only fires once per boss (otherwise it would emit every
+# frame while Pete is within STAY_DISTANCE_Y).
+var _engaged: bool = false
 
 @onready var hp_label: Label = $HpLabel
 @onready var hp_bar: Control = $HpBar
@@ -138,6 +149,12 @@ func _process(delta: float) -> void:
 		position.x = lerpf(position.x, _cowboy.position.x, clampf(TRACK_SPEED * delta, 0.0, 1.0))
 	var dy: float = (_cowboy.position.y - position.y) if _cowboy else 1000.0
 	position.y += (SCROLL_SPEED if dy > STAY_DISTANCE_Y else STAY_SCROLL_SPEED) * delta
+	# Iter 40c: latch on first STAY entry → notify the level so terrain
+	# scroll can stop. The cowboy and Pete are now eye-to-eye; no more
+	# world motion until the firefight resolves.
+	if not _engaged and dy <= STAY_DISTANCE_Y and _cowboy:
+		_engaged = true
+		engaged.emit()
 	if position.y > 2200.0:
 		queue_free()
 		return
@@ -211,6 +228,7 @@ func _spawn_dual_bullets() -> void:
 func take_bullet_hit(damage: int = 1) -> bool:
 	if _destroyed:
 		return false
+	DamagePopup.spawn(get_parent(), global_position, damage)
 	hp -= damage
 	_refresh_hp_label()
 	if hp_bar:

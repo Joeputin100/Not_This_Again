@@ -13,6 +13,7 @@ signal destroyed(barrel_x: float)
 
 const BonusScene = preload("res://scenes/bonus.tscn")
 const BonusScript = preload("res://scripts/bonus.gd")
+const DamagePopup = preload("res://scripts/damage_popup.gd")
 
 @export var max_hp: int = 4
 @export var scroll_speed: float = 220.0
@@ -57,6 +58,7 @@ func _process(delta: float) -> void:
 func take_damage(amount: int = 1) -> bool:
 	if _destroyed:
 		return false
+	DamagePopup.spawn(get_parent(), global_position, amount)
 	hp -= amount
 	_refresh_hp_label()
 	if hp_bar:

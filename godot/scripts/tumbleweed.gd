@@ -13,6 +13,8 @@ const SIZE: Vector2 = Vector2(120, 120)
 const PUSHBACK_PER_HIT: float = 14.0
 const COWBOY_DAMAGE: int = 3
 
+const DamagePopup = preload("res://scripts/damage_popup.gd")
+
 var hp: int = MAX_HP
 var _destroyed: bool = false
 
@@ -39,6 +41,7 @@ func _process(delta: float) -> void:
 func take_bullet_hit(damage: int = 1) -> bool:
 	if _destroyed:
 		return false
+	DamagePopup.spawn(get_parent(), global_position, damage)
 	hp -= damage
 	# Marginal pushback — tumbleweeds resist the bullet stream slightly.
 	position.y -= PUSHBACK_PER_HIT

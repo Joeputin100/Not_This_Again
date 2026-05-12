@@ -18,6 +18,8 @@ extends Node2D
 #   - FORWARD when scrolling forward
 #   - IDLE_DRINKING otherwise (off-screen, in crawl, or stable position)
 
+const DamagePopup = preload("res://scripts/damage_popup.gd")
+
 const STREAM_IDLE := preload("res://assets/videos/prospector/idle_drinking.ogv")
 const STREAM_FORWARD := preload("res://assets/videos/prospector/steps_forward.ogv")
 const STREAM_STRAFE_LEFT := preload("res://assets/videos/prospector/strafe_left.ogv")
@@ -141,6 +143,7 @@ func try_swing() -> bool:
 func take_bullet_hit(damage: int = 1) -> bool:
 	if _destroyed:
 		return false
+	DamagePopup.spawn(get_parent(), global_position, damage)
 	hp -= damage
 	_refresh_hp_label()
 	if hp_bar:
