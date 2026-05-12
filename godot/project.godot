@@ -49,6 +49,24 @@ window/stretch/mode="canvas_items"
 window/stretch/aspect="keep"
 window/per_pixel_transparency/allowed=false
 
+[debug]
+
+# GDScript warning overrides. GUT 9.6.0's warnings_manager only knows
+# about a subset of Godot 4.6.1's warning IDs (untyped_declaration is
+# covered, but inference_on_variant — used when `var x := obj.untyped`
+# fails type inference — is not). Without these overrides, our 300+
+# tests fail to PARSE because Godot escalates these warnings to errors
+# for test scripts that read fields off a Node2D-typed fixture (e.g.
+# `var before := barrel.hp`). Setting all the dynamic-typing warnings
+# to 0 (ignore) keeps test code idiomatic without forcing every fixture
+# to be typed as its concrete script class.
+gdscript/warnings/inference_on_variant=0
+gdscript/warnings/untyped_declaration=0
+gdscript/warnings/unsafe_method_access=0
+gdscript/warnings/unsafe_property_access=0
+gdscript/warnings/unsafe_cast=0
+gdscript/warnings/unsafe_call_argument=0
+
 [rendering]
 
 renderer/rendering_method="mobile"
