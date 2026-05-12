@@ -1,14 +1,45 @@
-[gd_scene load_steps=5 format=3 uid="uid://b0nttg_terrain3d_001"]
+[gd_scene load_steps=8 format=3 uid="uid://b0nttg_terrain3d_001"]
 
-[ext_resource type="Texture2D" path="res://assets/textures/dirt.png" id="1_dirt"]
+[ext_resource type="Texture2D" path="res://assets/textures/dirt_2k.png" id="1_dirt"]
+[ext_resource type="Texture2D" path="res://assets/textures/dirt_2k_normal.png" id="3_normal"]
+[ext_resource type="Texture2D" path="res://assets/textures/dirt_2k_rough.png" id="4_rough"]
 [ext_resource type="Script" path="res://scripts/terrain_3d.gd" id="2_script"]
 
+; Iter 40d: switched to a properly-subdivided plane (32×64 segments)
+; so that the heightmap-derived normal map actually has detail to shade.
+; A non-subdivided plane shows the bump-mapping as flat lighting because
+; the vertex normals are uniform; the subdivision gives per-segment
+; lighting variation that the normal map can modulate against.
 [sub_resource type="PlaneMesh" id="PlaneMesh_ground"]
 size = Vector2(40, 60)
+subdivide_width = 32
+subdivide_depth = 64
 
+; Iter 40d: full PBR-ish dirt material. Three textures bound:
+;   albedo   — 2K multi-octave perlin browns with wagon ruts + pebbles
+;   normal   — height-derived bumps (carved out via sobel gradient)
+;   roughness— bumps rougher, valleys smoother (compaction story)
+;
+; uv1_scale dropped from (8,12,1) → (3,4,1) because the new texture is
+; 4× the resolution AND has enough internal variation that less tiling
+; is needed. At the old 8×12 scale the same 2K texture would still tile
+; visibly along the long axis of the plane.
+;
+; normal_scale tuned high (3.5) to compensate for the SubViewport's
+; downsample — the SubViewport renders at 540×960 and is upscaled 2× to
+; the playfield, so a normal map's natural strength would feel timid
+; after upsample. 3.5 reads as "real bumpy dirt" at the final screen
+; resolution; lower values read as "vaguely textured".
 [sub_resource type="StandardMaterial3D" id="StandardMaterial3D_dirt"]
 albedo_texture = ExtResource("1_dirt")
-uv1_scale = Vector3(8, 12, 1)
+normal_enabled = true
+normal_scale = 3.5
+normal_texture = ExtResource("3_normal")
+roughness = 1.0
+roughness_texture = ExtResource("4_rough")
+roughness_texture_channel = 0
+metallic_specular = 0.15
+uv1_scale = Vector3(3, 4, 1)
 texture_filter = 5
 
 [node name="Terrain3D" type="Node2D"]
@@ -20,14 +51,30 @@ own_world_3d = true
 transparent_bg = false
 render_target_update_mode = 4
 
+; Iter 40d: kept Camera3D pitch (-30°) but pulled it back slightly
+; (z=0 → z=2) so more of the dirt plane is visible in the frame.
+; Camera was peering into the immediate-foreground before; with the
+; richer texture we want the player's eye to read the variation across
+; the whole plane, not just under the cowboy's feet.
 [node name="Camera3D" type="Camera3D" parent="SubViewport"]
-transform = Transform3D(1, 0, 0, 0, 0.866, 0.5, 0, -0.5, 0.866, 0, 3, 0)
+transform = Transform3D(1, 0, 0, 0, 0.866, 0.5, 0, -0.5, 0.866, 0, 3, 2)
 fov = 70.0
 
+; Iter 40d: added a SECOND fill light from the opposite side so the
+; rim of every pebble + rut catches some light. The original single
+; warm directional from the upper-left made the right halves of bumps
+; near-pure shadow; the cooler fill from the upper-right (low energy,
+; dusk-blue tint) lifts those shadows just enough to read texture
+; variation across the whole plane.
 [node name="DirectionalLight3D" type="DirectionalLight3D" parent="SubViewport"]
 transform = Transform3D(0.866, -0.354, 0.354, 0, 0.707, 0.707, -0.5, -0.612, 0.612, 0, 8, 0)
-light_energy = 1.1
+light_energy = 1.25
 light_color = Color(1.0, 0.94, 0.82, 1)
+
+[node name="FillLight" type="DirectionalLight3D" parent="SubViewport"]
+transform = Transform3D(-0.866, 0.354, -0.354, 0, 0.707, 0.707, 0.5, 0.612, -0.612, 0, 8, 0)
+light_energy = 0.35
+light_color = Color(0.7, 0.78, 1.0, 1)
 
 [node name="Ground" type="MeshInstance3D" parent="SubViewport"]
 mesh = SubResource("PlaneMesh_ground")
