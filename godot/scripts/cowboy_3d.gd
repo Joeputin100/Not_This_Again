@@ -60,12 +60,15 @@ func _setup_3d_scene() -> void:
 		return
 	sub_viewport.add_child(_character_instance)
 
-	# Find the AnimationPlayer Mixamo / FBX2glTF generated. It's typically
-	# a child of the imported Node3D root.
+	# Find the AnimationPlayer Mixamo / FBX2glTF generated. character.glb
+	# ("with skin" export) ships mesh+skeleton ONLY — no animations, so
+	# no AnimationPlayer is created during import. Create one and attach
+	# it to the character root so we have a target for the library.
 	_animation_player = _character_instance.find_child("AnimationPlayer", true, false) as AnimationPlayer
 	if _animation_player == null:
-		push_error("cowboy_3d: character.glb has no AnimationPlayer")
-		return
+		_animation_player = AnimationPlayer.new()
+		_animation_player.name = "AnimationPlayer"
+		_character_instance.add_child(_animation_player)
 
 	# Build a single AnimationLibrary from the 4 animation-only .glb files.
 	# Each one has its own AnimationPlayer with one animation; we extract
