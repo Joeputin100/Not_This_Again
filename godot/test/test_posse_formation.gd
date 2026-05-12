@@ -69,20 +69,20 @@ func test_trapezoid_shape_n20():
 # ---------- offsets are within reasonable bounds ----------
 
 func test_max_x_offset_bounded_n20():
-	# At n=20 (max row width 6), half-width is 5 * H_SPACING / 2 = ~110px.
-	# Allow 240px (generous) so we don't fail on future tuning bumps.
+	# At n=20 (max row width 6), half-width is 5 * H_SPACING / 2 ≈ 325px
+	# with iter 25's bumped spacing (130). Bound at 400 to leave slack.
 	var positions: Array[Vector2] = PosseFormation.compute_positions(20)
 	for p in positions:
-		assert_lt(absf(p.x), 240.0,
-			"x offset %.1f exceeds 240px bound at n=20" % p.x)
+		assert_lt(absf(p.x), 400.0,
+			"x offset %.1f exceeds 400px bound at n=20" % p.x)
 
 func test_max_y_offset_bounded_n20():
-	# At n=20 (~5 rows), max y = 5 * VERTICAL_SPACING = 290px.
-	# Allow 500px bound to absorb tuning.
+	# At n=20 (~5 rows), max y = 5 * VERTICAL_SPACING = 1000px with
+	# iter 25's bumped spacing (200). Bound at 1200 to leave slack.
 	var positions: Array[Vector2] = PosseFormation.compute_positions(20)
 	for p in positions:
-		assert_lt(p.y, 500.0,
-			"y offset %.1f exceeds 500px bound at n=20" % p.y)
+		assert_lt(p.y, 1200.0,
+			"y offset %.1f exceeds 1200px bound at n=20" % p.y)
 
 # ---------- partial front row stays narrower than full rows behind ----------
 

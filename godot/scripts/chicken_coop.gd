@@ -52,15 +52,20 @@ func get_cowboy_damage() -> int:
 	return COWBOY_DAMAGE
 
 func _release_chickens() -> void:
-	var n := randi_range(CHICKEN_COUNT_MIN, CHICKEN_COUNT_MAX)
+	var n: int = randi_range(CHICKEN_COUNT_MIN, CHICKEN_COUNT_MAX)
 	# Add chickens to the SAME parent as the coop (the level), so they
 	# share the world transform. Position them clustered at the coop
 	# spot — chicken.gd's random-heading picker handles their scatter.
-	var level := get_parent()
+	var level: Node = get_parent()
 	if not level:
 		return
 	for i in n:
-		var c := ChickenScene.instantiate()
+		# Explicit Node2D cast (iter 25): without it, `c.position = ...`
+		# triggered an unsafe_property_access warning that — under the
+		# inference-strict path that broke a bunch of test files — was
+		# silently failing the spawn at runtime, leaving the coop test
+		# expecting 6-10 chickens and seeing 0.
+		var c: Node2D = ChickenScene.instantiate() as Node2D
 		c.position = position + Vector2(randf_range(-30, 30), randf_range(-30, 30))
 		level.add_child(c)
 
