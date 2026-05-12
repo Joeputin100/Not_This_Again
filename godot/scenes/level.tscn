@@ -16,6 +16,7 @@
 [ext_resource type="PackedScene" path="res://scenes/cowboy_3d.tscn" id="13_c3d"]
 [ext_resource type="Texture2D" path="res://assets/sprites/posse_idle_00.png" id="15_cowboy"]
 [ext_resource type="PackedScene" path="res://scenes/slippery_pete.tscn" id="16_pete"]
+[ext_resource type="PackedScene" path="res://scenes/prospector.tscn" id="17_prospect"]
 
 [node name="Level" type="Node2D"]
 script = ExtResource("1_level")
@@ -101,6 +102,9 @@ position = Vector2(780, -2400)
 
 [node name="SlipperyPete" parent="." instance=ExtResource("16_pete")]
 position = Vector2(540, -2900)
+
+[node name="Prospector1" parent="." instance=ExtResource("17_prospect")]
+position = Vector2(360, -1500)
 
 [node name="Camera" type="Camera2D" parent="."]
 position = Vector2(540, 960)

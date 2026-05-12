@@ -1,0 +1,46 @@
+{
+  "_meta": {
+    "language": "en",
+    "comment": "All user-visible text lives here. Add new language files (es.json, fr.json, etc.) as siblings. Loaded by godot/scripts/text.gd autoload; access via Text.get('main_menu.title'). Templates use {placeholder} substitution via Text.format('key', {var: value})."
+  },
+  "main_menu": {
+    "title": "NOT THIS AGAIN",
+    "subtitle": "western crowd runner",
+    "play_button": "PLAY"
+  },
+  "level": {
+    "level_label_template": "LEVEL {n}",
+    "in_level_menu": "MENU",
+    "posse_template": "POSSE: {n}",
+    "ammo_label_prefix": "AMMO",
+    "reloading_prefix": "RELOADING",
+    "hint": "drag to steer. tap MENU to leave."
+  },
+  "win_screen": {
+    "title": "BOUNTY!",
+    "subtitle_template": "{n} posse members made it.\nwhatever that's worth.",
+    "play_again": "AGAIN",
+    "menu": "MENU"
+  },
+  "boss": {
+    "slippery_pete_name": "SLIPPERY PETE",
+    "slippery_pete_dialog_taunts": [
+      "WAAAAGH! YOU LILY-LIVERED SADDLE-TRAMPS!",
+      "GIT OFFA MY TRAIL, VARMINTS!",
+      "I'LL LEARN YA SOMETHIN'!",
+      "RAA-SSAA-FRACKIN' POSSE!"
+    ],
+    "slippery_pete_dialog_when_hit": [
+      "OW! MY BACKSIDE!",
+      "DAGNABBIT!",
+      "CONSARN IT!",
+      "YOU FOUL VARMINT!"
+    ],
+    "slippery_pete_dialog_dying": [
+      "AAAAUGH! NOT LIKE THIS!",
+      "REMEMBER ME...",
+      "RA-SSAA-FRACKIN'...",
+      "WHY I OUGHTA-"
+    ]
+  }
+}

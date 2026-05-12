@@ -57,13 +57,12 @@ func _ready() -> void:
 	# for verifying Crashlytics integration on first sideload. Release
 	# builds never wire this up — OS.crash() is a no-op there anyway,
 	# but skipping the connect saves us from any input-flooding risk.
-	# Iter 26: dropped the OS.has_feature("debug") gate — that ALSO
-	# returned false on the user's debug-exported APK (iter 25 attempt
-	# never crashed). Going belt-and-suspenders: always wire the handler,
-	# log every event we see, log every tap. If the handler still doesn't
-	# fire, the issue is at the Label mouse_filter / event-dispatch layer
-	# rather than the feature-flag layer. Diagnostic logs land in the
-	# DebugLog ring buffer that the COPY button dumps to clipboard.
+	# Iter 31 fix: the .tscn says mouse_filter=0 (STOP, receive input)
+	# but Label's constructor in Godot 4 overrides to MOUSE_FILTER_IGNORE
+	# (2) after the scene loads. User's iter 30 log confirmed mouse_filter
+	# read 2 at _ready time → input never reached our handler. Force-set
+	# at runtime so the .tscn value sticks.
+	build_id_label.mouse_filter = Control.MOUSE_FILTER_STOP
 	build_id_label.gui_input.connect(_on_build_id_tap)
 	DebugLog.add("crash-gesture: handler connected; has_feature(debug)=%s mouse_filter=%d" % [
 		str(OS.has_feature("debug")),

@@ -53,6 +53,13 @@ var posse_count: int = 1:
 			# initial set from level.gd's _ready needs to fire through even
 			# when value==default, hence the is_empty() guard.
 			return
+		# Iter 31+: if the caller has already removed dudes manually via
+		# kill_specific_dude(), the renderer's internal state may already
+		# match the new count. Skip rebuild in that case so the surviving
+		# dudes keep their existing formation slots (no reshuffle on death).
+		if new_count == _active_dudes.size() + 1:
+			posse_count = new_count
+			return
 		posse_count = new_count
 		_rebuild_formation()
 
@@ -103,6 +110,36 @@ func get_dude_world_positions() -> Array[Vector2]:
 			continue
 		positions.append(global_position + dude.position)
 	return positions
+
+# Iter 31+: returns each active follower as a dict with the node
+# reference + world-space rect, for per-dude bullet collision checks
+# in level.gd. The bullet-kills-dude flow needs to identify the
+# SPECIFIC dude hit, then call kill_specific_dude(node) to remove just
+# that one (rather than the rear-most via posse_count decrement).
+func get_follower_world_rects() -> Array:
+	var result: Array = []
+	for dude in _active_dudes:
+		if dude == null or not is_instance_valid(dude):
+			continue
+		result.append({
+			"node": dude,
+			"position": global_position + dude.position,
+			"size": Vector2(120, 200),  # matches the visible cowboy sprite
+		})
+	return result
+
+# Iter 31+: removes a specific dude from the formation without
+# triggering a formation rebuild. Use when a bullet identifies and
+# kills a particular follower. Caller is responsible for updating its
+# posse_count tracking AFTER calling this — the renderer's
+# posse_count setter detects post-kill alignment and won't rebuild.
+# Returns true if the dude was active; false if not in the list.
+func kill_specific_dude(dude: Node2D) -> bool:
+	if not (dude in _active_dudes):
+		return false
+	_active_dudes.erase(dude)
+	_despawn_dude(dude)
+	return true
 
 # Rebuilds the formation when posse_count changes. Spawns new dudes,
 # tweens out departing ones, and reassigns cached offsets to actives.

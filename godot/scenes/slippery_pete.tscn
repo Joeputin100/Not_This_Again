@@ -1,8 +1,9 @@
-[gd_scene load_steps=4 format=3 uid="uid://b0nttg_slippery_pete_001"]
+[gd_scene load_steps=5 format=3 uid="uid://b0nttg_slippery_pete_001"]
 
 [ext_resource type="Script" path="res://scripts/slippery_pete.gd" id="1_pete"]
 [ext_resource type="Theme" path="res://assets/theme.tres" id="2_theme"]
 [ext_resource type="Texture2D" path="res://assets/sprites/slippery_pete.png" id="3_sprite"]
+[ext_resource type="PackedScene" path="res://scenes/hp_bar.tscn" id="4_hpbar"]
 
 [node name="SlipperyPete" type="Node2D"]
 script = ExtResource("1_pete")
@@ -12,11 +13,17 @@ position = Vector2(0, -10)
 scale = Vector2(0.32, 0.32)
 texture = ExtResource("3_sprite")
 
+[node name="HpBar" parent="." instance=ExtResource("4_hpbar")]
+offset_left = -50.0
+offset_top = -200.0
+offset_right = 50.0
+offset_bottom = -192.0
+
 [node name="NameLabel" type="Label" parent="."]
 offset_left = -200.0
-offset_top = -250.0
+offset_top = -260.0
 offset_right = 200.0
-offset_bottom = -200.0
+offset_bottom = -215.0
 theme = ExtResource("2_theme")
 theme_override_colors/font_color = Color(0.92, 0.2, 0.2, 1)
 theme_override_colors/font_outline_color = Color(0.05, 0.03, 0.03, 1)
@@ -29,14 +36,14 @@ mouse_filter = 2
 
 [node name="HpLabel" type="Label" parent="."]
 offset_left = -100.0
-offset_top = -200.0
+offset_top = -230.0
 offset_right = 100.0
-offset_bottom = -150.0
+offset_bottom = -205.0
 theme = ExtResource("2_theme")
 theme_override_colors/font_color = Color(1, 0.92, 0.55, 1)
 theme_override_colors/font_outline_color = Color(0.08, 0.05, 0.05, 1)
-theme_override_constants/outline_size = 6
-theme_override_font_sizes/font_size = 48
+theme_override_constants/outline_size = 5
+theme_override_font_sizes/font_size = 28
 text = "40"
 horizontal_alignment = 1
 vertical_alignment = 1

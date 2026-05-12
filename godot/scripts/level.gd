@@ -22,6 +22,7 @@ const ChickenScript = preload("res://scripts/chicken.gd")
 const BullScript = preload("res://scripts/bull.gd")
 const OutlawScript = preload("res://scripts/outlaw.gd")
 const OutlawBulletScript = preload("res://scripts/outlaw_bullet.gd")
+const ProspectorScript = preload("res://scripts/prospector.gd")
 const GunScript = preload("res://scripts/gun.gd")
 const GunStateScript = preload("res://scripts/gun_state.gd")
 const PosseRendererScript = preload("res://scripts/posse_renderer.gd")
@@ -42,6 +43,10 @@ const STARTING_POSSE: int = 5
 
 # Bullets spawn this far above the cowboy each shot.
 const BULLET_SPAWN_Y_OFFSET: float = -120.0
+# Iter 31: muzzle flash anchors to the cowboy's gun HAND in the
+# posse_idle_00 sprite — not above the head where the bullets spawn.
+# Visually reads as "the flash is at the barrel."
+const DUDE_MUZZLE_OFFSET: Vector2 = Vector2(28, -60)
 
 # Approximate cowboy hit box for barrel collision detection.
 const COWBOY_SIZE: Vector2 = Vector2(120, 200)
@@ -216,17 +221,24 @@ func _process(delta: float) -> void:
 	_resolve_bullet_obstacle_collisions("chickens", ChickenScript.SIZE)
 	_resolve_bullet_obstacle_collisions("bulls", BullScript.SIZE)
 	_resolve_bullet_obstacle_collisions("outlaws", OutlawScript.SIZE)
+	_resolve_bullet_obstacle_collisions("prospectors", ProspectorScript.SIZE)
 	# Cowboy ↔ obstacle collision passes (posse damage).
 	_resolve_barrel_cowboy_collisions()
 	_resolve_obstacle_cowboy_collisions("tumbleweeds", TumbleweedScript.SIZE)
 	_resolve_obstacle_cowboy_collisions("cacti", CactusScript.SIZE)
 	_resolve_obstacle_cowboy_collisions("barricades", BarricadeScript.SIZE)
 	_resolve_obstacle_cowboy_collisions("bulls", BullScript.SIZE)
-	_resolve_obstacle_cowboy_collisions("outlaws", OutlawScript.SIZE)
-	# Outlaw projectiles → cowboy. Mirrors the existing posse-bullet
-	# collision passes but the bullets travel DOWN and damage the posse
-	# on hit (rather than damaging obstacles).
-	_resolve_outlaw_bullet_cowboy_collisions()
+	# Outlaws + prospectors are NOT in the generic cowboy-collision pass
+	# (which one-shot-destroys obstacles on contact). They need to
+	# survive contact and keep crowding the posse — handled separately
+	# below. Their ranged + melee damage paths run independently.
+	# Iter 31: outlaw bullets do per-dude collision (cowboy + each
+	# follower), each hit kills ONE specific dude (POSSE_DAMAGE=1).
+	_resolve_outlaw_bullet_dude_collisions()
+	# Iter 31: prospectors swing pickaxes at melee range, dealing
+	# SWING_DAMAGE per swing on a SWING_INTERVAL cadence while in
+	# contact with the cowboy.
+	_resolve_prospector_melee_collisions()
 	# chicken_coops and chickens have get_cowboy_damage() == 0, so we
 	# skip them in the cowboy-collision pass (no point processing).
 	# Bonuses are auto-equipped on cowboy contact (no tap-to-take prompt).
@@ -247,18 +259,20 @@ func _process(delta: float) -> void:
 func _spawn_bullet() -> void:
 	if not _shooting_active:
 		return
-	# Muzzle flash burst — leader gets a flash as a CHILD so the flash
-	# tracks the cowboy through its 200ms animation. Followers (drawn
-	# by PosseRenderer) each get a flash at their current world position;
-	# they're parented to the level (not the follower) because follower
-	# nodes are owned by the renderer and would create a layered mess.
+	# Muzzle flash burst — leader gets a flash as a CHILD anchored at
+	# the cowboy's gun-hand (DUDE_MUZZLE_OFFSET) so the flash reads at
+	# the barrel rather than floating above the head. Followers each
+	# get a flash at THEIR world position + the same hand offset.
+	# Iter 31: flash size is 1/3 of iter 23 (muzzle_flash.tscn scale
+	# 0.5 → 0.17), so 5-dude posse fire bursts read as small chest-
+	# height pops instead of head-sized blasts.
 	var leader_flash := MuzzleFlashScene.instantiate()
-	leader_flash.position = Vector2(0, BULLET_SPAWN_Y_OFFSET)
+	leader_flash.position = DUDE_MUZZLE_OFFSET
 	cowboy.add_child(leader_flash)
 	if posse_renderer:
 		for follower_pos in posse_renderer.get_dude_world_positions():
 			var ff := MuzzleFlashScene.instantiate()
-			ff.position = follower_pos + Vector2(0, BULLET_SPAWN_Y_OFFSET)
+			ff.position = follower_pos + DUDE_MUZZLE_OFFSET
 			add_child(ff)
 
 	var bullet := BulletScene.instantiate()
@@ -368,21 +382,73 @@ func _resolve_obstacle_cowboy_collisions(group_name: String, obstacle_size: Vect
 		else:
 			obstacle.queue_free()
 
-# Iter 29+: outlaw bullets travel DOWN toward the cowboy. On overlap,
-# apply OutlawBulletScript.POSSE_DAMAGE to posse_count and free the
-# bullet. Mirrors _resolve_barrel_cowboy_collisions but with bullets
-# instead of barrels.
-func _resolve_outlaw_bullet_cowboy_collisions() -> void:
+# Iter 31+: outlaw bullets do per-dude collision. Check against the
+# leader (cowboy node) AND each active follower. On hit, kill that
+# specific dude — POSSE_DAMAGE = 1 per bullet (single, one-shot).
+# For the leader: cowboy node is the gameplay input target, so it
+# can't visibly die without breaking input. Instead, when a bullet
+# hits the leader hitbox, we decrement posse_count and let the renderer
+# remove the rear-most follower (lore: "a dude in your posse took
+# the hit and fell"). For followers: the SPECIFIC hit follower fades
+# out via kill_specific_dude.
+func _resolve_outlaw_bullet_dude_collisions() -> void:
 	for bullet in get_tree().get_nodes_in_group("outlaw_bullets"):
-		if not Collision2D.rects_overlap(
+		# 1) Leader (cowboy) hit?
+		if Collision2D.rects_overlap(
 				bullet.position, OutlawBulletScript.SIZE,
 				cowboy.position, COWBOY_SIZE):
+			DebugLog.add("outlaw bullet hit leader → posse -%d" % OutlawBulletScript.POSSE_DAMAGE)
+			posse_count = maxi(1, posse_count - OutlawBulletScript.POSSE_DAMAGE)
+			_pulse_posse_label()
+			shake.add_trauma(0.25)
+			bullet.queue_free()
 			continue
-		DebugLog.add("outlaw bullet hit cowboy → posse -%d" % OutlawBulletScript.POSSE_DAMAGE)
-		posse_count = maxi(1, posse_count - OutlawBulletScript.POSSE_DAMAGE)
-		_pulse_posse_label()
-		shake.add_trauma(0.25)
-		bullet.queue_free()
+		# 2) Follower hit? Check each active follower's world rect.
+		if posse_renderer == null:
+			continue
+		var killed: bool = false
+		for fr in posse_renderer.get_follower_world_rects():
+			if not Collision2D.rects_overlap(
+					bullet.position, OutlawBulletScript.SIZE,
+					fr.position, fr.size):
+				continue
+			DebugLog.add("outlaw bullet hit follower → posse -%d (specific kill)" % OutlawBulletScript.POSSE_DAMAGE)
+			posse_renderer.kill_specific_dude(fr.node)
+			# Decrement posse_count AFTER kill_specific_dude so the
+			# renderer's setter detects state alignment and skips rebuild.
+			posse_count = maxi(1, posse_count - OutlawBulletScript.POSSE_DAMAGE)
+			_pulse_posse_label()
+			shake.add_trauma(0.25)
+			bullet.queue_free()
+			killed = true
+			break
+		if killed:
+			continue
+
+# Iter 31+: prospector melee. Each prospector that overlaps the cowboy
+# (or a follower) gets to try_swing(). The prospector handles its own
+# swing cooldown; on a successful swing we deduct SWING_DAMAGE.
+func _resolve_prospector_melee_collisions() -> void:
+	for p in get_tree().get_nodes_in_group("prospectors"):
+		if p.get("_destroyed") == true:
+			continue
+		var in_range: bool = Collision2D.rects_overlap(
+			p.position, ProspectorScript.SIZE,
+			cowboy.position, COWBOY_SIZE)
+		# Also count follower-range as "in melee" so prospectors can
+		# pick off rear dudes too.
+		if not in_range and posse_renderer:
+			for fr in posse_renderer.get_follower_world_rects():
+				if Collision2D.rects_overlap(p.position, ProspectorScript.SIZE, fr.position, fr.size):
+					in_range = true
+					break
+		if not in_range:
+			continue
+		if p.try_swing():
+			DebugLog.add("prospector pickaxe swing → posse -%d" % ProspectorScript.SWING_DAMAGE)
+			posse_count = maxi(1, posse_count - ProspectorScript.SWING_DAMAGE)
+			_pulse_posse_label()
+			shake.add_trauma(0.4)
 
 func _resolve_barrel_cowboy_collisions() -> void:
 	# If a barrel reaches the cowboy intact, it slams into the posse:
