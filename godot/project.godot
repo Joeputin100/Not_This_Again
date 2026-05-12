@@ -20,6 +20,9 @@ config/features=PackedStringArray("4.6", "Mobile")
 config/icon="res://icon.svg"
 config/quit_on_go_back=false
 run/main_scene="res://scenes/main_menu.tscn"
+boot_splash/show_image=false
+boot_splash/bg_color=Color(0.094, 0.067, 0.027, 1)
+boot_splash/use_filter=false
 
 [autoload]
 
