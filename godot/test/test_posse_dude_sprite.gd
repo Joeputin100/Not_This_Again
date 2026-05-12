@@ -1,9 +1,11 @@
 extends GutTest
 
-# Verifies the posse_dude scene (iter 28+) wraps a Cowboy3D node — the
-# 3D Mixamo character rendered via SubViewport. Replaces the iter 23
-# version that checked for an AnimatedSprite2D + posse_dude_frames.tres,
-# both of which are now obsolete on the active rendering path.
+# Verifies the posse_dude scene (iter 30+) renders the cowboy as a
+# single static Sprite2D — pivoted back from the iter 28 3D Cowboy3D
+# approach after user feedback that the 3D rendering was 'still far
+# from polished.' Iter 30 swaps to the hand-drawn posse_idle_00.png
+# pose. No animation; visual variety comes from PosseRenderer's per-
+# dude jitter + spawn-tween.
 
 const PosseDudeScene = preload("res://scenes/posse_dude.tscn")
 
@@ -14,21 +16,26 @@ func before_each():
 	add_child_autofree(dude)
 	await get_tree().process_frame
 
-func test_has_cowboy3d_child():
-	var c3d: Node2D = dude.get_node_or_null("Cowboy3D") as Node2D
-	assert_not_null(c3d, "posse_dude should wrap a Cowboy3D node")
+func test_has_sprite_2d_child():
+	var sprite: Sprite2D = dude.get_node_or_null("Sprite") as Sprite2D
+	assert_not_null(sprite, "posse_dude should have a static Sprite2D child")
 
-func test_cowboy3d_has_play_anim_method():
-	var c3d: Node2D = dude.get_node("Cowboy3D") as Node2D
-	assert_true(c3d.has_method("play_anim"),
-		"Cowboy3D should expose play_anim(name) so PosseRenderer.set_animation works")
+func test_sprite_has_texture():
+	var sprite: Sprite2D = dude.get_node("Sprite") as Sprite2D
+	assert_not_null(sprite.texture,
+		"Sprite2D texture should be loaded (posse_idle_00.png)")
 
-func test_cowboy3d_has_subviewport():
-	var c3d: Node2D = dude.get_node("Cowboy3D") as Node2D
-	var sv: SubViewport = c3d.get_node_or_null("SubViewport") as SubViewport
-	assert_not_null(sv, "Cowboy3D should own a SubViewport for 3D rendering")
+func test_sprite_positioned_for_cowboy_height():
+	var sprite: Sprite2D = dude.get_node("Sprite") as Sprite2D
+	# y=-100 offset puts the texture center at the cowboy's chest height
+	# relative to the dude's footprint, matching the iter 23+ layout.
+	assert_eq(sprite.position.y, -100.0,
+		"sprite y-offset should be -100 to land the cowboy at chest height")
 
-func test_cowboy3d_has_sprite_2d():
-	var c3d: Node2D = dude.get_node("Cowboy3D") as Node2D
-	var sprite: Sprite2D = c3d.get_node_or_null("Sprite") as Sprite2D
-	assert_not_null(sprite, "Cowboy3D should own a Sprite2D backed by the SubViewport texture")
+func test_sprite_scale_matches_playfield_size():
+	var sprite: Sprite2D = dude.get_node("Sprite") as Sprite2D
+	# 0.4 scales the 341×447-ish source down to ~140×180 visible. Same
+	# size as the iter 23/25 AnimatedSprite2D era so the existing posse
+	# spacing constants (130/200) still keep dudes from overlapping.
+	assert_eq(sprite.scale, Vector2(0.4, 0.4),
+		"sprite scale should be 0.4 to match the original playfield size")
