@@ -49,8 +49,8 @@ func _process(delta: float) -> void:
 	if body:
 		body.scale = Vector2(1.0, flap)
 
-func take_bullet_hit() -> bool:
-	hp -= 1
+func take_bullet_hit(damage: int = 1) -> bool:
+	hp -= damage
 	if hp <= 0:
 		_play_death()
 	return true  # bullet consumed

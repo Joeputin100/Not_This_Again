@@ -35,10 +35,10 @@ func _process(delta: float) -> void:
 	if position.y > 2200.0:
 		queue_free()
 
-func take_bullet_hit() -> bool:
+func take_bullet_hit(damage: int = 1) -> bool:
 	if _destroyed:
 		return false
-	hp -= 1
+	hp -= damage
 	_refresh_hp_label()
 	_emit_splinter()
 	if hp <= 0:

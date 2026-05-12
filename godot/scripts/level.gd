@@ -19,6 +19,8 @@ const CactusScript = preload("res://scripts/cactus.gd")
 const BarricadeScript = preload("res://scripts/barricade.gd")
 const ChickenCoopScript = preload("res://scripts/chicken_coop.gd")
 const ChickenScript = preload("res://scripts/chicken.gd")
+const GunScript = preload("res://scripts/gun.gd")
+const GunStateScript = preload("res://scripts/gun_state.gd")
 
 const FOLLOW_SPEED: float = 12.0
 const STARTING_POSSE: int = 5
@@ -32,6 +34,7 @@ const COWBOY_SIZE: Vector2 = Vector2(120, 200)
 @onready var cowboy: Node2D = $Cowboy
 @onready var camera: Camera2D = $Camera
 @onready var posse_label: Label = $UI/PosseCount
+@onready var ammo_label: Label = $UI/AmmoLabel
 @onready var debug_label: Label = $UI/DebugInfo
 @onready var win_overlay: CanvasLayer = $WinOverlay
 @onready var win_panel: Control = $WinOverlay/WinPanel
@@ -45,10 +48,12 @@ var _process_run_count: int = 0
 var _last_input_type: String = "(none yet)"
 var _last_event_class: String = "(none)"
 
-# Auto-fire mechanic. Posse rate of fire = 1 / fire_interval per second.
-# fire_interval will be mutated by power-up pickups (faster fire).
-var fire_interval: float = 0.18
-var _fire_timer: float = 0.0
+# Posse gun & per-shooter state. Iter 21+: each posse member will own
+# their own GunState; for now the cowboy is the only shooter. Gun is a
+# Resource (data); GunState is RefCounted (per-shooter runtime). The
+# starting gun is a Six-Shooter — see scripts/gun.gd for stats.
+var _gun: Resource
+var _gun_state: RefCounted
 var _bullets_fired: int = 0
 var _barrels_destroyed: int = 0
 
@@ -83,6 +88,8 @@ func _ready() -> void:
 	progress = LevelProgressScript.new()
 	shake = ScreenShakeScript.new()
 	combos = CombosCounterScript.new()
+	_gun = GunScript.new()
+	_gun_state = GunStateScript.new(_gun)
 
 	# Discover all gates by group instead of hand-listing — adding a 4th
 	# gate to the scene tree later won't require code changes here.
@@ -118,10 +125,12 @@ func _process(delta: float) -> void:
 	# world-space nodes (background, lane guides, gates, cowboy) shake.
 	camera.offset = shake.tick(delta)
 
-	# Auto-fire bullets at fire_interval cadence.
-	_fire_timer += delta
-	while _fire_timer >= fire_interval:
-		_fire_timer -= fire_interval
+	# Auto-fire driven by gun_state. tick() advances cooldown + reload
+	# timers; while can_fire() is true we burst out as many shots as the
+	# accumulated delta allows (typically 0 or 1 per frame at 60fps).
+	_gun_state.tick(delta)
+	while _gun_state.can_fire():
+		_gun_state.fire()
 		_spawn_bullet()
 
 	# Bullet ↔ obstacle / gate collision passes. O(bullets × obstacles)
@@ -141,13 +150,16 @@ func _process(delta: float) -> void:
 	# chicken_coops and chickens have get_cowboy_damage() == 0, so we
 	# skip them in the cowboy-collision pass (no point processing).
 
+	_refresh_ammo_label()
 	# Diagnostic — fallback to get_node in case @onready ref is stale.
 	var dbg := debug_label if debug_label != null else get_node_or_null("UI/DebugInfo") as Label
 	if dbg:
-		dbg.text = "proc:%d input:%d type:%s\ntarget_x:%.0f cowboy_x:%.0f bullets_fired:%d barrels_dead:%d" % [
+		var ammo_str: String = ("RLD %.0f%%" % (_gun_state.reload_progress() * 100.0)) \
+			if _gun_state.is_reloading() else ("%d/%d" % [_gun_state.ammo(), _gun.clip_size])
+		dbg.text = "proc:%d input:%d type:%s\ntarget_x:%.0f cowboy_x:%.0f bullets:%d ammo:%s barrels_dead:%d" % [
 			_process_run_count, _input_event_count, _last_input_type,
 			target_x, cowboy.position.x,
-			_bullets_fired, _barrels_destroyed,
+			_bullets_fired, ammo_str, _barrels_destroyed,
 		]
 
 func _spawn_bullet() -> void:
@@ -155,6 +167,11 @@ func _spawn_bullet() -> void:
 		return
 	var bullet := BulletScene.instantiate()
 	bullet.position = cowboy.position + Vector2(0, BULLET_SPAWN_Y_OFFSET)
+	# max_range and damage are set BEFORE add_child so bullet._ready can
+	# capture the values via the now-set var defaults. Property assignment
+	# on the script var sticks regardless of _ready order.
+	bullet.max_range = _gun.range_px
+	bullet.damage = _gun.caliber
 	add_child(bullet)
 	_bullets_fired += 1
 
@@ -168,7 +185,7 @@ func _resolve_bullet_barrel_collisions() -> void:
 			if Collision2D.rects_overlap(
 					bullet.position, BulletScript.SIZE,
 					barrel.position, BarrelScript.SIZE):
-				var was_destroyed: bool = barrel.take_damage(1)
+				var was_destroyed: bool = barrel.take_damage(bullet.damage)
 				if was_destroyed:
 					_barrels_destroyed += 1
 					shake.add_trauma(0.4)
@@ -215,7 +232,7 @@ func _resolve_bullet_obstacle_collisions(group_name: String, obstacle_size: Vect
 			if Collision2D.rects_overlap(
 					bullet.position, BulletScript.SIZE,
 					obstacle.position, obstacle_size):
-				var consumed: bool = obstacle.take_bullet_hit()
+				var consumed: bool = obstacle.take_bullet_hit(bullet.damage)
 				if consumed:
 					bullet.remove_from_group("bullets")
 					bullet.queue_free()
@@ -388,6 +405,23 @@ func _spawn_combo_banner(text: String) -> void:
 func _refresh_posse_label() -> void:
 	if posse_label:
 		posse_label.text = "POSSE: %d" % posse_count
+
+# Updates the on-screen ammo readout. ▰/▱ pips show ready/spent rounds;
+# during reload, the bar fills back up in reload_progress order and
+# colors shift to a warm orange so the player notices the pause.
+func _refresh_ammo_label() -> void:
+	if not ammo_label or _gun_state == null:
+		return
+	var clip: int = _gun.clip_size
+	if _gun_state.is_reloading():
+		var filled: int = int(round(float(clip) * _gun_state.reload_progress()))
+		filled = clampi(filled, 0, clip)
+		ammo_label.text = "RELOADING " + "▰".repeat(filled) + "▱".repeat(clip - filled)
+		ammo_label.modulate = Color(1.0, 0.55, 0.25, 1)
+	else:
+		var ammo: int = _gun_state.ammo()
+		ammo_label.text = "AMMO " + "▰".repeat(ammo) + "▱".repeat(clip - ammo)
+		ammo_label.modulate = Color(1.0, 0.92, 0.55, 1)
 
 func _pulse_posse_label() -> void:
 	if not posse_label:

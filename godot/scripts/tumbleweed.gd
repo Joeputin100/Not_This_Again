@@ -31,11 +31,12 @@ func _process(delta: float) -> void:
 	if position.y > 2200.0:
 		queue_free()
 
-# Called by level.gd's bullet collision pass.
-func take_bullet_hit() -> bool:
+# Called by level.gd's bullet collision pass. `damage` is the firing
+# gun's caliber — six-shooter sends 1, future high-caliber guns send more.
+func take_bullet_hit(damage: int = 1) -> bool:
 	if _destroyed:
 		return false
-	hp -= 1
+	hp -= damage
 	# Marginal pushback — tumbleweeds resist the bullet stream slightly.
 	position.y -= PUSHBACK_PER_HIT
 	_refresh_hp_label()

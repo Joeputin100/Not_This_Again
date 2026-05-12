@@ -75,15 +75,15 @@ func _format_right(v: int) -> String:
 # Called by level.gd's bullet-vs-gate collision pass.
 # Returns true if the bullet was consumed (always, currently — bullets
 # either bump additive gates or are absorbed by multiplicative gates).
-func take_bullet_hit() -> bool:
+func take_bullet_hit(damage: int = 1) -> bool:
 	if _fired:
 		return false  # gate already passed; let bullet keep flying
 	if gate_type == GateHelper.TYPE_ADDITIVE:
-		# Shooting an additive gate makes it MORE GENEROUS by 1 in each
-		# door: -3 → -2 → -1 → 0 → +1; +10 → +11 → +12. Encourages the
-		# player to weaken penalty doors before passing through.
-		left_value += 1
-		right_value += 1
+		# Shooting an additive gate makes it MORE GENEROUS by `damage`
+		# in each door. Six-shooter (caliber 1): -3 → -2 → -1 → 0 → +1.
+		# A future high-caliber gun would walk gates up faster.
+		left_value += damage
+		right_value += damage
 		if _left_label:
 			_left_label.text = _format_left(left_value)
 		if _right_label:

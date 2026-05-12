@@ -19,7 +19,9 @@ func _process(delta: float) -> void:
 
 # Bullets are absorbed but the barricade is unharmed. Returns true
 # (bullet consumed). The barricade itself is never destroyed by shooting.
-func take_bullet_hit() -> bool:
+# `damage` is accepted for API consistency with other destructibles but
+# ignored — even a cannon shell can't punch through this fence.
+func take_bullet_hit(_damage: int = 1) -> bool:
 	return true
 
 func get_cowboy_damage() -> int:
