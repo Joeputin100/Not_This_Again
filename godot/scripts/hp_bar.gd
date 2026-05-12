@@ -47,6 +47,13 @@ func set_hp(current_hp: int) -> void:
 func _redraw() -> void:
 	if _bg == null or _fg == null:
 		return
+	# Iter 40: hide bar entirely while at full health — only revealed once
+	# the entity has been damaged. Reduces visual noise at level start
+	# (Pete's bar, vagrants' bars, every barrel's bar all popping in) and
+	# matches the "casual game" polish bar (Candy Crush, Subway Surfers
+	# both hide HP UI until damage). _current_hp >= _max_hp tolerates the
+	# edge case where init() races a stray set_hp() higher than max.
+	visible = _current_hp < _max_hp
 	var capped_max: float = minf(float(_max_hp), BAR_WIDTH_MAX)
 	_bg.size = Vector2(capped_max, BAR_HEIGHT)
 	var pct: float = float(_current_hp) / float(_max_hp)

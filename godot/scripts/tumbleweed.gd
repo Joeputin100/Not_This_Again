@@ -17,11 +17,14 @@ var hp: int = MAX_HP
 var _destroyed: bool = false
 
 @onready var hp_label: Label = $HpLabel
+@onready var hp_bar: Control = $HpBar
 @onready var splinters: CPUParticles2D = $Splinters
 
 func _ready() -> void:
 	hp = MAX_HP
 	_refresh_hp_label()
+	if hp_bar:
+		hp_bar.init(MAX_HP)
 	add_to_group("tumbleweeds")
 
 func _process(delta: float) -> void:
@@ -40,6 +43,8 @@ func take_bullet_hit(damage: int = 1) -> bool:
 	# Marginal pushback — tumbleweeds resist the bullet stream slightly.
 	position.y -= PUSHBACK_PER_HIT
 	_refresh_hp_label()
+	if hp_bar:
+		hp_bar.set_hp(hp)
 	_emit_splinter()
 	if hp <= 0:
 		_destroyed = true

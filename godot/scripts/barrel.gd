@@ -27,11 +27,14 @@ var hp: int
 var _destroyed: bool = false
 
 @onready var hp_label: Label = $HpLabel
+@onready var hp_bar: Control = $HpBar
 @onready var sparkles: CPUParticles2D = $Sparkles
 
 func _ready() -> void:
 	hp = max_hp
 	_refresh_hp_label()
+	if hp_bar:
+		hp_bar.init(max_hp)
 	add_to_group("barrels")
 	# If this is a power-up barrel, telegraph it with an indicator label
 	# above the barrel body so the player can decide BEFORE shooting
@@ -56,6 +59,8 @@ func take_damage(amount: int = 1) -> bool:
 		return false
 	hp -= amount
 	_refresh_hp_label()
+	if hp_bar:
+		hp_bar.set_hp(hp)
 	# Subtle hit reaction so the player FEELS the impact.
 	_hit_flash()
 	if hp <= 0:

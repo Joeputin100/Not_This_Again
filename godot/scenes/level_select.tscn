@@ -1,0 +1,202 @@
+[gd_scene load_steps=8 format=3 uid="uid://b0nttg_lvlsel_001"]
+
+[ext_resource type="Script" path="res://scripts/level_select.gd" id="1_select"]
+[ext_resource type="Theme" path="res://assets/theme.tres" id="2_theme"]
+[ext_resource type="PackedScene" path="res://scenes/terrain_3d.tscn" id="3_terrain"]
+[ext_resource type="Texture2D" path="res://assets/sprites/posse_idle_00.png" id="4_cowboy"]
+
+[sub_resource type="StyleBoxFlat" id="StyleBox_node_active"]
+bg_color = Color(0.92, 0.78, 0.32, 1)
+border_width_left = 6
+border_width_top = 6
+border_width_right = 6
+border_width_bottom = 6
+border_color = Color(0.5, 0.32, 0.14, 1)
+corner_radius_top_left = 70
+corner_radius_top_right = 70
+corner_radius_bottom_right = 70
+corner_radius_bottom_left = 70
+
+[sub_resource type="StyleBoxFlat" id="StyleBox_node_active_hover"]
+bg_color = Color(1.0, 0.88, 0.42, 1)
+border_width_left = 6
+border_width_top = 6
+border_width_right = 6
+border_width_bottom = 6
+border_color = Color(0.5, 0.32, 0.14, 1)
+corner_radius_top_left = 70
+corner_radius_top_right = 70
+corner_radius_bottom_right = 70
+corner_radius_bottom_left = 70
+
+[sub_resource type="StyleBoxFlat" id="StyleBox_node_locked"]
+bg_color = Color(0.32, 0.24, 0.16, 0.85)
+border_width_left = 6
+border_width_top = 6
+border_width_right = 6
+border_width_bottom = 6
+border_color = Color(0.22, 0.16, 0.10, 1)
+corner_radius_top_left = 70
+corner_radius_top_right = 70
+corner_radius_bottom_right = 70
+corner_radius_bottom_left = 70
+
+[node name="LevelSelect" type="Node2D"]
+script = ExtResource("1_select")
+
+[node name="Background" type="ColorRect" parent="."]
+offset_right = 1080.0
+offset_bottom = 1920.0
+color = Color(0.226, 0.157, 0.078, 1)
+mouse_filter = 2
+
+[node name="Terrain3D" parent="." instance=ExtResource("3_terrain")]
+
+[node name="PathLine" type="Line2D" parent="."]
+width = 22.0
+default_color = Color(0.74, 0.55, 0.28, 0.78)
+joint_mode = 2
+begin_cap_mode = 2
+end_cap_mode = 2
+points = PackedVector2Array(540, 1720, 760, 1500, 380, 1300, 620, 1100, 440, 900, 700, 700, 340, 500, 540, 350)
+
+[node name="PathLineDashes" type="Line2D" parent="."]
+width = 8.0
+default_color = Color(0.96, 0.85, 0.45, 0.6)
+joint_mode = 2
+begin_cap_mode = 2
+end_cap_mode = 2
+points = PackedVector2Array(540, 1720, 760, 1500, 380, 1300, 620, 1100, 440, 900, 700, 700, 340, 500, 540, 350)
+
+[node name="LevelNode1" type="Button" parent="."]
+offset_left = 470.0
+offset_top = 1650.0
+offset_right = 610.0
+offset_bottom = 1790.0
+theme = ExtResource("2_theme")
+theme_override_styles/normal = SubResource("StyleBox_node_active")
+theme_override_styles/hover = SubResource("StyleBox_node_active_hover")
+theme_override_styles/pressed = SubResource("StyleBox_node_active_hover")
+theme_override_colors/font_color = Color(0.18, 0.10, 0.04, 1)
+theme_override_font_sizes/font_size = 88
+text = "1"
+
+[node name="LevelNode2Locked" type="Button" parent="."]
+offset_left = 690.0
+offset_top = 1430.0
+offset_right = 830.0
+offset_bottom = 1570.0
+disabled = true
+theme = ExtResource("2_theme")
+theme_override_styles/normal = SubResource("StyleBox_node_locked")
+theme_override_styles/disabled = SubResource("StyleBox_node_locked")
+theme_override_colors/font_color_disabled = Color(0.83, 0.66, 0.34, 0.5)
+theme_override_font_sizes/font_size = 64
+text = "2"
+
+[node name="LevelNode3Locked" type="Button" parent="."]
+offset_left = 310.0
+offset_top = 1230.0
+offset_right = 450.0
+offset_bottom = 1370.0
+disabled = true
+theme = ExtResource("2_theme")
+theme_override_styles/normal = SubResource("StyleBox_node_locked")
+theme_override_styles/disabled = SubResource("StyleBox_node_locked")
+theme_override_colors/font_color_disabled = Color(0.83, 0.66, 0.34, 0.5)
+theme_override_font_sizes/font_size = 64
+text = "3"
+
+[node name="LevelNode4Locked" type="Button" parent="."]
+offset_left = 550.0
+offset_top = 1030.0
+offset_right = 690.0
+offset_bottom = 1170.0
+disabled = true
+theme = ExtResource("2_theme")
+theme_override_styles/normal = SubResource("StyleBox_node_locked")
+theme_override_styles/disabled = SubResource("StyleBox_node_locked")
+theme_override_colors/font_color_disabled = Color(0.83, 0.66, 0.34, 0.5)
+theme_override_font_sizes/font_size = 64
+text = "4"
+
+[node name="LevelNode5Locked" type="Button" parent="."]
+offset_left = 370.0
+offset_top = 830.0
+offset_right = 510.0
+offset_bottom = 970.0
+disabled = true
+theme = ExtResource("2_theme")
+theme_override_styles/normal = SubResource("StyleBox_node_locked")
+theme_override_styles/disabled = SubResource("StyleBox_node_locked")
+theme_override_colors/font_color_disabled = Color(0.83, 0.66, 0.34, 0.5)
+theme_override_font_sizes/font_size = 64
+text = "5"
+
+[node name="LevelNode6Locked" type="Button" parent="."]
+offset_left = 630.0
+offset_top = 630.0
+offset_right = 770.0
+offset_bottom = 770.0
+disabled = true
+theme = ExtResource("2_theme")
+theme_override_styles/normal = SubResource("StyleBox_node_locked")
+theme_override_styles/disabled = SubResource("StyleBox_node_locked")
+theme_override_colors/font_color_disabled = Color(0.83, 0.66, 0.34, 0.5)
+theme_override_font_sizes/font_size = 64
+text = "6"
+
+[node name="LevelNode7Locked" type="Button" parent="."]
+offset_left = 270.0
+offset_top = 430.0
+offset_right = 410.0
+offset_bottom = 570.0
+disabled = true
+theme = ExtResource("2_theme")
+theme_override_styles/normal = SubResource("StyleBox_node_locked")
+theme_override_styles/disabled = SubResource("StyleBox_node_locked")
+theme_override_colors/font_color_disabled = Color(0.83, 0.66, 0.34, 0.5)
+theme_override_font_sizes/font_size = 64
+text = "7"
+
+[node name="LevelNode8Locked" type="Button" parent="."]
+offset_left = 470.0
+offset_top = 280.0
+offset_right = 610.0
+offset_bottom = 420.0
+disabled = true
+theme = ExtResource("2_theme")
+theme_override_styles/normal = SubResource("StyleBox_node_locked")
+theme_override_styles/disabled = SubResource("StyleBox_node_locked")
+theme_override_colors/font_color_disabled = Color(0.83, 0.66, 0.34, 0.5)
+theme_override_font_sizes/font_size = 64
+text = "8"
+
+[node name="Cowboy" type="Sprite2D" parent="."]
+position = Vector2(420, 1720)
+scale = Vector2(0.22, 0.22)
+texture = ExtResource("4_cowboy")
+
+[node name="UI" type="CanvasLayer" parent="."]
+
+[node name="Title" type="Label" parent="UI"]
+anchors_preset = -1
+anchor_right = 1.0
+offset_left = 60.0
+offset_top = 100.0
+offset_right = -60.0
+offset_bottom = 220.0
+theme = ExtResource("2_theme")
+theme_override_font_sizes/font_size = 88
+text = "WHERE TO?"
+horizontal_alignment = 1
+mouse_filter = 2
+
+[node name="BackButton" type="Button" parent="UI"]
+offset_left = 30.0
+offset_top = 60.0
+offset_right = 230.0
+offset_bottom = 160.0
+theme = ExtResource("2_theme")
+theme_override_font_sizes/font_size = 38
+text = "← MENU"

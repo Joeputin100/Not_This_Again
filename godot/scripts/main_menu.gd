@@ -112,7 +112,11 @@ func _on_back_requested_signal() -> void:
 
 func _on_play_pressed() -> void:
 	# Candy-Crush press feedback: tap SFX + squish + bounce back + scene change.
-	DebugLog.add("PLAY pressed → loading level scene")
+	# Iter 40: PLAY now routes to level_select (Candy Crush world map) instead
+	# of jumping straight into level 1. Even though level 1 is the only
+	# playable node so far, the world map sets up the meta-progression read
+	# for the player ("there are more levels ahead, this is one of many").
+	DebugLog.add("PLAY pressed → loading level_select")
 	AudioBus.play_tap()
 	play_button.disabled = true
 	_kill_idle_tweens()  # don't let fidget fight the press animation
@@ -122,7 +126,7 @@ func _on_play_pressed() -> void:
 		.set_trans(Tween.TRANS_BACK) \
 		.set_ease(Tween.EASE_OUT)
 	await tween.finished
-	get_tree().change_scene_to_file("res://scenes/level.tscn")
+	get_tree().change_scene_to_file("res://scenes/level_select.tscn")
 
 # ---------- Idle fidgets ----------
 
