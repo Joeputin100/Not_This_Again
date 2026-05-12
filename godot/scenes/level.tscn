@@ -14,6 +14,8 @@
 [ext_resource type="Script" path="res://scripts/weather_manager.gd" id="11_weather_mgr"]
 [ext_resource type="SpriteFrames" path="res://assets/posse_dude_frames.tres" id="12_pdf"]
 [ext_resource type="PackedScene" path="res://scenes/cowboy_3d.tscn" id="13_c3d"]
+[ext_resource type="Texture2D" path="res://assets/sprites/posse_idle_00.png" id="15_cowboy"]
+[ext_resource type="PackedScene" path="res://scenes/slippery_pete.tscn" id="16_pete"]
 
 [node name="Level" type="Node2D"]
 script = ExtResource("1_level")
@@ -97,6 +99,9 @@ position = Vector2(300, -2100)
 [node name="Outlaw2" parent="." instance=ExtResource("14_outlaw")]
 position = Vector2(780, -2400)
 
+[node name="SlipperyPete" parent="." instance=ExtResource("16_pete")]
+position = Vector2(540, -2900)
+
 [node name="Camera" type="Camera2D" parent="."]
 position = Vector2(540, 960)
 
@@ -107,7 +112,10 @@ script = ExtResource("9_posse")
 [node name="Cowboy" type="Node2D" parent="."]
 position = Vector2(540, 1500)
 
-[node name="Cowboy3D" parent="Cowboy" instance=ExtResource("13_c3d")]
+[node name="Sprite" type="Sprite2D" parent="Cowboy"]
+position = Vector2(0, -100)
+scale = Vector2(0.4, 0.4)
+texture = ExtResource("15_cowboy")
 
 [node name="WeatherManager" type="Node2D" parent="."]
 script = ExtResource("11_weather_mgr")
