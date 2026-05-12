@@ -10,6 +10,7 @@
 [ext_resource type="PackedScene" path="res://scenes/chicken_coop.tscn" id="8_coop"]
 [ext_resource type="Script" path="res://scripts/posse_renderer.gd" id="9_posse"]
 [ext_resource type="PackedScene" path="res://scenes/bull.tscn" id="10_bull"]
+[ext_resource type="PackedScene" path="res://scenes/outlaw.tscn" id="14_outlaw"]
 [ext_resource type="Script" path="res://scripts/weather_manager.gd" id="11_weather_mgr"]
 [ext_resource type="SpriteFrames" path="res://assets/posse_dude_frames.tres" id="12_pdf"]
 [ext_resource type="PackedScene" path="res://scenes/cowboy_3d.tscn" id="13_c3d"]
@@ -89,6 +90,12 @@ max_hp = 6
 
 [node name="Bull1" parent="." instance=ExtResource("10_bull")]
 position = Vector2(540, -1700)
+
+[node name="Outlaw1" parent="." instance=ExtResource("14_outlaw")]
+position = Vector2(300, -2100)
+
+[node name="Outlaw2" parent="." instance=ExtResource("14_outlaw")]
+position = Vector2(780, -2400)
 
 [node name="Camera" type="Camera2D" parent="."]
 position = Vector2(540, 960)

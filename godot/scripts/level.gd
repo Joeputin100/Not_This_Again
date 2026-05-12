@@ -20,6 +20,8 @@ const BarricadeScript = preload("res://scripts/barricade.gd")
 const ChickenCoopScript = preload("res://scripts/chicken_coop.gd")
 const ChickenScript = preload("res://scripts/chicken.gd")
 const BullScript = preload("res://scripts/bull.gd")
+const OutlawScript = preload("res://scripts/outlaw.gd")
+const OutlawBulletScript = preload("res://scripts/outlaw_bullet.gd")
 const GunScript = preload("res://scripts/gun.gd")
 const GunStateScript = preload("res://scripts/gun_state.gd")
 const PosseRendererScript = preload("res://scripts/posse_renderer.gd")
@@ -213,12 +215,18 @@ func _process(delta: float) -> void:
 	_resolve_bullet_obstacle_collisions("chicken_coops", ChickenCoopScript.SIZE)
 	_resolve_bullet_obstacle_collisions("chickens", ChickenScript.SIZE)
 	_resolve_bullet_obstacle_collisions("bulls", BullScript.SIZE)
+	_resolve_bullet_obstacle_collisions("outlaws", OutlawScript.SIZE)
 	# Cowboy ↔ obstacle collision passes (posse damage).
 	_resolve_barrel_cowboy_collisions()
 	_resolve_obstacle_cowboy_collisions("tumbleweeds", TumbleweedScript.SIZE)
 	_resolve_obstacle_cowboy_collisions("cacti", CactusScript.SIZE)
 	_resolve_obstacle_cowboy_collisions("barricades", BarricadeScript.SIZE)
 	_resolve_obstacle_cowboy_collisions("bulls", BullScript.SIZE)
+	_resolve_obstacle_cowboy_collisions("outlaws", OutlawScript.SIZE)
+	# Outlaw projectiles → cowboy. Mirrors the existing posse-bullet
+	# collision passes but the bullets travel DOWN and damage the posse
+	# on hit (rather than damaging obstacles).
+	_resolve_outlaw_bullet_cowboy_collisions()
 	# chicken_coops and chickens have get_cowboy_damage() == 0, so we
 	# skip them in the cowboy-collision pass (no point processing).
 	# Bonuses are auto-equipped on cowboy contact (no tap-to-take prompt).
@@ -359,6 +367,22 @@ func _resolve_obstacle_cowboy_collisions(group_name: String, obstacle_size: Vect
 			obstacle.take_damage(99999)  # overkill
 		else:
 			obstacle.queue_free()
+
+# Iter 29+: outlaw bullets travel DOWN toward the cowboy. On overlap,
+# apply OutlawBulletScript.POSSE_DAMAGE to posse_count and free the
+# bullet. Mirrors _resolve_barrel_cowboy_collisions but with bullets
+# instead of barrels.
+func _resolve_outlaw_bullet_cowboy_collisions() -> void:
+	for bullet in get_tree().get_nodes_in_group("outlaw_bullets"):
+		if not Collision2D.rects_overlap(
+				bullet.position, OutlawBulletScript.SIZE,
+				cowboy.position, COWBOY_SIZE):
+			continue
+		DebugLog.add("outlaw bullet hit cowboy → posse -%d" % OutlawBulletScript.POSSE_DAMAGE)
+		posse_count = maxi(1, posse_count - OutlawBulletScript.POSSE_DAMAGE)
+		_pulse_posse_label()
+		shake.add_trauma(0.25)
+		bullet.queue_free()
 
 func _resolve_barrel_cowboy_collisions() -> void:
 	# If a barrel reaches the cowboy intact, it slams into the posse:
