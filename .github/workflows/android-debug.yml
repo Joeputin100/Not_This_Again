@@ -12,6 +12,7 @@ on:
 
 permissions:
   contents: read
+  id-token: write   # required for Workload Identity Federation OIDC token exchange
 
 jobs:
   build:
@@ -77,6 +78,28 @@ jobs:
           echo "4.6.1.stable" > "$GITHUB_WORKSPACE/godot/android/.build_version"
           touch "$GITHUB_WORKSPACE/godot/android/build/.gdignore"
           ls -la "$GITHUB_WORKSPACE/godot/android/" | head -10
+
+      - name: Authenticate to GCP (Workload Identity Federation)
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ secrets.GCP_WIF_PROVIDER }}
+          service_account: ${{ secrets.GCP_SERVICE_ACCOUNT }}
+
+      - name: Setup gcloud
+        uses: google-github-actions/setup-gcloud@v2
+
+      - name: Fetch google-services.json from Secret Manager
+        # Plain text (JSON) — the binary-stdout corruption bug that bites
+        # the .p12 keystore fetch doesn't apply here, so direct stdout
+        # redirect is safe. Must run AFTER the Godot Android template
+        # unzip (which would otherwise overwrite android/build/ contents).
+        run: |
+          gcloud secrets versions access latest \
+            --secret=notthisagain-google-services \
+            --project=static-webbing-461904-c4 \
+            > "$GITHUB_WORKSPACE/godot/android/build/google-services.json"
+          head -c 200 "$GITHUB_WORKSPACE/godot/android/build/google-services.json"
+          echo ""
 
       - name: Godot export (debug)
         uses: firebelley/godot-export@v7.0.0

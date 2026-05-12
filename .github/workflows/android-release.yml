@@ -93,6 +93,15 @@ jobs:
           fi
           echo "Keystore size: $(stat -c '%s' "$RUNNER_TEMP/release.p12") bytes"
 
+      - name: Fetch google-services.json from Secret Manager
+        # Plain JSON — no binary corruption risk. Must run AFTER the
+        # Godot Android template unzip (which would overwrite the file).
+        run: |
+          gcloud secrets versions access latest \
+            --secret=notthisagain-google-services \
+            --project=static-webbing-461904-c4 \
+            > "$GITHUB_WORKSPACE/godot/android/build/google-services.json"
+
       - name: Fetch keystore password from Secret Manager
         id: fetch_password
         run: |
