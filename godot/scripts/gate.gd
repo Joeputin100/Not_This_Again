@@ -43,10 +43,12 @@ const COLOR_TWEEN_DURATION: float = 0.22
 var _fired: bool = false
 # Per-door growing state (iter 25+). Each door is colored based on its
 # own value, NOT the gate as a whole. _is_growing (legacy whole-gate
-# flag) is kept for any external readers / tests, computed as AND of
-# the two doors.
+# flag) is maintained as a plain var (NOT a property getter — the getter
+# syntax tripped some Godot 4.6.1 parser interaction that escalated
+# inference warnings to errors in unrelated test scripts).
 var _left_growing: bool = true
 var _right_growing: bool = true
+var _is_growing: bool = true  # invariant: == (_left_growing AND _right_growing)
 # Guards against direction_flipped emission during the _ready() initial
 # color snap. Once _ready has finished its first paint, subsequent
 # threshold crossings (caused by take_bullet_hit) are real events and
@@ -59,12 +61,6 @@ var _initial_color_set: bool = false
 @onready var _left_door: ColorRect = $LeftDoor
 @onready var _right_door: ColorRect = $RightDoor
 
-# Legacy gate-as-a-whole growing flag — true iff BOTH doors grow.
-# Kept for external callers / tests that may still read it.
-var _is_growing: bool:
-	get:
-		return _left_growing and _right_growing
-
 func _ready() -> void:
 	# Update labels to match the @export values. Lets one gate.tscn
 	# serve every variant — caller sets left_value/right_value and the
@@ -76,6 +72,7 @@ func _ready() -> void:
 	# Per-door initial paint. Snap each door's tint based on its own value.
 	_left_growing = GateHelper.door_is_growing(left_value, gate_type)
 	_right_growing = GateHelper.door_is_growing(right_value, gate_type)
+	_is_growing = _left_growing and _right_growing
 	if _left_door:
 		_left_door.color = COLOR_GROWING if _left_growing else COLOR_SHRINKING
 	if _right_door:
@@ -133,6 +130,9 @@ func take_bullet_hit(damage: int = 1, side: int = 0) -> bool:
 		if _right_growing and not was_right_growing:
 			any_red_to_blue = true
 	_pulse_labels()
+	# Keep the legacy whole-gate flag in sync with per-door state so
+	# existing tests / external readers see a consistent value.
+	_is_growing = _left_growing and _right_growing
 	# Emit on red→blue transition of EITHER door so the bull-confuse
 	# mechanic still triggers when a previously-dangerous gate becomes
 	# helpful. Guard on _initial_color_set so _ready's snap can't fire it.

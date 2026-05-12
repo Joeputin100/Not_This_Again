@@ -49,20 +49,6 @@ window/stretch/mode="canvas_items"
 window/stretch/aspect="keep"
 window/per_pixel_transparency/allowed=false
 
-[debug]
-
-; GDScript warning overrides for test scripts that duck-type into
-; Node2D-typed fixtures. inference_on_variant + the unsafe_* family
-; would otherwise escalate to ERROR during GUT's test-script parse.
-; Comments here use ; (Godot config file syntax), NOT # — got bitten
-; by that once at line 55 with an "Unexpected identifier" parse error.
-gdscript/warnings/inference_on_variant=0
-gdscript/warnings/untyped_declaration=0
-gdscript/warnings/unsafe_method_access=0
-gdscript/warnings/unsafe_property_access=0
-gdscript/warnings/unsafe_cast=0
-gdscript/warnings/unsafe_call_argument=0
-
 [rendering]
 
 renderer/rendering_method="mobile"
