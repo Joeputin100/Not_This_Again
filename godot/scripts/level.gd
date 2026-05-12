@@ -21,6 +21,7 @@ const ChickenCoopScript = preload("res://scripts/chicken_coop.gd")
 const ChickenScript = preload("res://scripts/chicken.gd")
 const GunScript = preload("res://scripts/gun.gd")
 const GunStateScript = preload("res://scripts/gun_state.gd")
+const PosseRendererScript = preload("res://scripts/posse_renderer.gd")
 
 const FOLLOW_SPEED: float = 12.0
 const STARTING_POSSE: int = 5
@@ -32,6 +33,7 @@ const BULLET_SPAWN_Y_OFFSET: float = -120.0
 const COWBOY_SIZE: Vector2 = Vector2(120, 200)
 
 @onready var cowboy: Node2D = $Cowboy
+@onready var posse_renderer: Node2D = $PosseRenderer
 @onready var camera: Camera2D = $Camera
 @onready var posse_label: Label = $UI/PosseCount
 @onready var ammo_label: Label = $UI/AmmoLabel
@@ -67,6 +69,11 @@ var posse_count: int = STARTING_POSSE:
 	set(value):
 		posse_count = maxi(1, value)
 		_refresh_posse_label()
+		# Push count to the renderer so trapezoid grows/shrinks in sync
+		# with gameplay. Guarded — setter can fire before _ready resolves
+		# the @onready var (e.g. during scene-load defaults).
+		if posse_renderer:
+			posse_renderer.posse_count = posse_count
 
 var progress: RefCounted
 var shake: RefCounted
@@ -90,6 +97,13 @@ func _ready() -> void:
 	combos = CombosCounterScript.new()
 	_gun = GunScript.new()
 	_gun_state = GunStateScript.new(_gun)
+
+	# Seed the posse renderer with the starting count so followers appear
+	# on frame 0 (before the first gate trigger). PosseRenderer is a
+	# sibling Node2D placed BEFORE Cowboy in the scene tree, so followers
+	# draw behind the leader (cleaner Z-order, leader visually in front).
+	if posse_renderer:
+		posse_renderer.posse_count = posse_count
 
 	# Discover all gates by group instead of hand-listing — adding a 4th
 	# gate to the scene tree later won't require code changes here.
@@ -132,6 +146,12 @@ func _process(delta: float) -> void:
 	while _gun_state.can_fire():
 		_gun_state.fire()
 		_spawn_bullet()
+
+	# Anchor the posse renderer to the leader BEFORE collision passes.
+	# Followers don't have hit boxes — only the cowboy node does — so
+	# this is purely a visual update. Cheap (single position assignment).
+	if posse_renderer:
+		posse_renderer.set_leader_position(cowboy.position)
 
 	# Bullet ↔ obstacle / gate collision passes. O(bullets × obstacles)
 	# per frame, trivial at this scale.

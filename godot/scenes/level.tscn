@@ -8,6 +8,7 @@
 [ext_resource type="PackedScene" path="res://scenes/cactus.tscn" id="6_cactus"]
 [ext_resource type="PackedScene" path="res://scenes/barricade.tscn" id="7_barricade"]
 [ext_resource type="PackedScene" path="res://scenes/chicken_coop.tscn" id="8_coop"]
+[ext_resource type="Script" path="res://scripts/posse_renderer.gd" id="9_posse"]
 
 [node name="Level" type="Node2D"]
 script = ExtResource("1_level")
@@ -73,6 +74,10 @@ max_hp = 6
 
 [node name="Camera" type="Camera2D" parent="."]
 position = Vector2(540, 960)
+
+[node name="PosseRenderer" type="Node2D" parent="."]
+position = Vector2(540, 1500)
+script = ExtResource("9_posse")
 
 [node name="Cowboy" type="Node2D" parent="."]
 position = Vector2(540, 1500)
