@@ -11,13 +11,24 @@ extends Node
 
 const TAP_SOUND := preload("res://assets/sfx/tap.ogg")
 const GATE_PASS_SOUND := preload("res://assets/sfx/gate_pass.ogg")
+const GUNFIRE_SOUND := preload("res://assets/sfx/gunfire.wav")
+
+# Multiple gunfire players so rapid posse fire doesn't truncate each
+# other's playback. AudioStreamPlayer.play() restarts the current sound
+# even if it's mid-playback — bad for a multi-bullet salvo. Round-robin
+# through a small pool so consecutive shots stack instead of clipping.
+const GUNFIRE_POOL_SIZE: int = 6
 
 var _tap_player: AudioStreamPlayer
 var _gate_pass_player: AudioStreamPlayer
+var _gunfire_players: Array[AudioStreamPlayer] = []
+var _gunfire_index: int = 0
 
 func _ready() -> void:
 	_tap_player = _make_player(TAP_SOUND)
 	_gate_pass_player = _make_player(GATE_PASS_SOUND)
+	for i in GUNFIRE_POOL_SIZE:
+		_gunfire_players.append(_make_player(GUNFIRE_SOUND))
 
 func _make_player(stream: AudioStream) -> AudioStreamPlayer:
 	var p := AudioStreamPlayer.new()
@@ -37,3 +48,10 @@ func play_tap() -> void:
 
 func play_gate_pass() -> void:
 	_gate_pass_player.play()
+
+func play_gunfire() -> void:
+	# Round-robin through the pool — each posse bullet gets its own
+	# AudioStreamPlayer so rapid fire stacks naturally without one
+	# shot's playback cutting off the previous one.
+	_gunfire_players[_gunfire_index].play()
+	_gunfire_index = (_gunfire_index + 1) % GUNFIRE_POOL_SIZE

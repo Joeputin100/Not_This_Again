@@ -85,6 +85,15 @@ var _barrels_destroyed: int = 0
 # victory overlay.
 var _shooting_active: bool = true
 
+# Iter 37: level-end is gated on TWO conditions instead of just gates-done.
+#   _gates_complete  — last gate has fired
+#   _boss_defeated   — Slippery Pete (or any 'bosses' group member)
+#                      destroyed
+# Both true → _show_win. Until then, gameplay continues so the player
+# can actually fight the boss with the posse they have left.
+var _gates_complete: bool = false
+var _boss_defeated: bool = false
+
 # Iter 22d weather state. WeatherManager.apply_weather() mutates these
 # at level start. Defaults are identity values (no effect) so a level
 # without weather behaves exactly like pre-iter-22d.
@@ -148,6 +157,18 @@ func _ready() -> void:
 	if weather_manager:
 		weather_manager.apply_weather(weather_type, self)
 
+	# Iter 37: hook the boss's destroyed signal so the level only ends
+	# AFTER both gates pass AND Pete (or any boss) is dead. If no boss
+	# is in the scene, _boss_defeated starts true so old levels behave
+	# unchanged (gates-only win condition).
+	var bosses: Array = get_tree().get_nodes_in_group("bosses")
+	if bosses.is_empty():
+		_boss_defeated = true
+	else:
+		for boss in bosses:
+			if boss.has_signal("destroyed"):
+				boss.destroyed.connect(_on_boss_destroyed)
+
 	# Discover all gates by group instead of hand-listing — adding a 4th
 	# gate to the scene tree later won't require code changes here.
 	var gates := _gather_gates()
@@ -199,10 +220,14 @@ func _process(delta: float) -> void:
 	# Auto-fire driven by gun_state. tick() advances cooldown + reload
 	# timers; while can_fire() is true we burst out as many shots as the
 	# accumulated delta allows (typically 0 or 1 per frame at 60fps).
-	_gun_state.tick(delta)
-	while _gun_state.can_fire():
-		_gun_state.fire()
-		_spawn_bullet()
+	# Iter 37: gate the entire firing loop on _shooting_active. When the
+	# level ends, we don't want the gun to keep ticking down its reload
+	# timer and visually refill the ammo bar — the firefight is over.
+	if _shooting_active:
+		_gun_state.tick(delta)
+		while _gun_state.can_fire():
+			_gun_state.fire()
+			_spawn_bullet()
 
 	# Anchor the posse renderer to the leader BEFORE collision passes.
 	# Followers don't have hit boxes — only the cowboy node does — so
@@ -275,6 +300,10 @@ func _spawn_bullet() -> void:
 			ff.position = follower_pos + DUDE_MUZZLE_OFFSET
 			add_child(ff)
 
+	# Iter 37: gunshot SFX. Fires once per posse bullet — rapid fire
+	# rolls through AudioBus's 6-player gunfire pool so the shots stack
+	# instead of cutting each other off.
+	AudioBus.play_gunfire()
 	var bullet := BulletScene.instantiate()
 	bullet.position = cowboy.position + Vector2(0, BULLET_SPAWN_Y_OFFSET)
 	# max_range and damage are set BEFORE add_child so bullet._ready can
@@ -611,6 +640,24 @@ func _on_gate_triggered(gate_center_x: float, gate: Node) -> void:
 
 	progress.record_pass()
 	if progress.is_complete():
+		_gates_complete = true
+		DebugLog.add("gates done — waiting for boss to fall")
+		_maybe_show_win()
+
+# Iter 37: boss-defeated handler. When the SlipperyPete (or any
+# 'bosses' group member) fires its destroyed signal, mark the boss
+# down and check win conditions. Players who shoot the boss before
+# the last gate fires still need to pass the last gate to win.
+func _on_boss_destroyed(_x: float) -> void:
+	_boss_defeated = true
+	DebugLog.add("boss defeated — checking win conditions")
+	_maybe_show_win()
+
+# Two conditions to trigger _show_win: gates done AND boss dead. Until
+# both, the firefight continues — player keeps firing, boss keeps
+# crowding, vagrants/prospectors keep coming.
+func _maybe_show_win() -> void:
+	if _gates_complete and _boss_defeated:
 		_show_win()
 
 # A gate transitioned from red (shrinking) to blue (growing) mid-game.

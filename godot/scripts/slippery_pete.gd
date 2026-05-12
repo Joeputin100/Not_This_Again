@@ -53,7 +53,11 @@ const SCROLL_SPEED: float = 200.0
 const STAY_SCROLL_SPEED: float = 18.0
 const STAY_DISTANCE_Y: float = 300.0
 const TRACK_SPEED: float = 1.0
-const SIZE: Vector2 = Vector2(180, 280)
+# Iter 37: tripled hitbox to match the 3x-scaled video display (690×1230
+# px on screen vs vagrant's 150×270). Pete now genuinely looms over
+# the posse — boss-tier silhouette readable from the moment he enters
+# the screen.
+const SIZE: Vector2 = Vector2(540, 840)
 const COWBOY_DAMAGE: int = 30
 const FIRE_INTERVAL: float = 0.7
 const LEFT_GUN_X_OFFSET: float = 45.0

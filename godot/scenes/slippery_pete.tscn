@@ -17,10 +17,10 @@ script = ExtResource("1_pete")
 
 [node name="Video" type="VideoStreamPlayer" parent="."]
 material = SubResource("ShaderMaterial_pete_chroma")
-offset_left = -115.0
-offset_top = -415.0
-offset_right = 115.0
-offset_bottom = -5.0
+offset_left = -345.0
+offset_top = -1245.0
+offset_right = 345.0
+offset_bottom = -15.0
 mouse_filter = 2
 expand = true
 stream = ExtResource("5_idle")
@@ -29,15 +29,15 @@ loop = true
 
 [node name="HpBar" parent="." instance=ExtResource("3_hpbar")]
 offset_left = -50.0
-offset_top = -460.0
+offset_top = -1290.0
 offset_right = 50.0
-offset_bottom = -452.0
+offset_bottom = -1282.0
 
 [node name="NameLabel" type="Label" parent="."]
 offset_left = -200.0
-offset_top = -510.0
+offset_top = -1345.0
 offset_right = 200.0
-offset_bottom = -465.0
+offset_bottom = -1300.0
 theme = ExtResource("2_theme")
 theme_override_colors/font_color = Color(0.92, 0.2, 0.2, 1)
 theme_override_colors/font_outline_color = Color(0.05, 0.03, 0.03, 1)
@@ -50,9 +50,9 @@ mouse_filter = 2
 
 [node name="HpLabel" type="Label" parent="."]
 offset_left = -100.0
-offset_top = -490.0
+offset_top = -1318.0
 offset_right = 100.0
-offset_bottom = -465.0
+offset_bottom = -1295.0
 theme = ExtResource("2_theme")
 theme_override_colors/font_color = Color(1, 0.92, 0.55, 1)
 theme_override_colors/font_outline_color = Color(0.08, 0.05, 0.05, 1)
