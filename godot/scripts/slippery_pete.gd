@@ -29,6 +29,14 @@ const STREAM_FORWARD := preload("res://assets/videos/pete/steps_forward.ogv")
 const STREAM_STRAFE := preload("res://assets/videos/pete/strafe_right_to_left.ogv")
 const STREAM_SHOOT := preload("res://assets/videos/pete/shoots_at_player.ogv")
 const STREAM_HIT := preload("res://assets/videos/pete/hit_by_gunfire.ogv")
+const STREAM_DEATH := preload("res://assets/videos/pete/death.ogv")
+
+const DeathPolish := preload("res://scripts/death_polish.gd")
+
+# Death video duration. Pete's death is 8s (longer than the other 4s
+# animations — dramatic boss exit). Used to await the video's end
+# before applying the universal freeze-strobe polish.
+const DEATH_DURATION: float = 8.0
 
 signal destroyed(x: float)
 
@@ -198,11 +206,14 @@ func _play_destroy_animation() -> void:
 	if splinters:
 		splinters.amount = 80
 		splinters.restart()
-	var tween := create_tween().set_parallel(true)
-	tween.tween_property(self, "modulate:a", 0.0, 0.7)
-	tween.tween_property(self, "scale", Vector2(1.5, 1.5), 0.7) \
-		.set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
-	tween.tween_property(self, "rotation_degrees", 25.0, 0.7) \
-		.set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_IN)
-	await tween.finished
+	# Iter 33+: play the user-provided death video and let it carry the
+	# visual instead of the old scale/rotation/fade tween. Set loop=false
+	# so the player stops on the last frame. After DEATH_DURATION, the
+	# universal DeathPolish runs (freeze 0.5s, strobe-disappear 0.5s).
+	if video:
+		video.loop = false
+		video.stream = STREAM_DEATH
+		video.play()
+		await get_tree().create_timer(DEATH_DURATION).timeout
+	await DeathPolish.play(self)
 	queue_free()

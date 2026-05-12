@@ -1,49 +1,63 @@
 extends Node2D
 
-# Prospector — melee-only enemy. Tracks the posse like a vagrant but
-# instead of ranged fire he closes to swing range and swings a pickaxe
-# every SWING_INTERVAL seconds while in contact. Crowds the posse until
-# killed; does NOT pass by.
+# Prospector — melee-only enemy. Iter 33+: animated via VideoStreamPlayer
+# + chromakey shader (same pattern as Slippery Pete in iter 32). Six
+# Veo-rendered animations: idle_drinking, steps_forward, strafe_left,
+# strafe_right, reacts_to_gunshot, death.
 #
-# Iter 31. AI mirrors outlaw.gd's tracking but with no _spawn_bullet,
-# no fire timer. Adds:
-#   - SWING_INTERVAL: time between consecutive pickaxe hits while in
-#     melee range.
-#   - SWING_DAMAGE: posse loss per landed swing.
-#   - try_swing(): called by level.gd from the melee collision pass.
-#     Returns true and resets the swing cooldown if the prospector is
-#     off-cooldown; false otherwise.
-#   - _play_swing_animation(): brief rotation tween so the player sees
-#     the pickaxe lunge on each landed swing.
+# AI behavior (unchanged from iter 31):
+#   - Tracks cowboy.x via lerpf at TRACK_SPEED (imperfect lag)
+#   - Forward scroll at SCROLL_SPEED, STAY_SCROLL_SPEED crawl in range
+#   - try_swing() on melee range overlap, called by level.gd
+#   - HP bar above head
+#
+# State machine for video animations:
+#   - DEATH overlays everything on _play_destroy_animation
+#   - HIT overlays briefly on take_bullet_hit (REACTS_TO_GUNSHOT video)
+#   - STRAFE_LEFT/RIGHT when horizontal velocity is significant
+#   - FORWARD when scrolling forward
+#   - IDLE_DRINKING otherwise (off-screen, in crawl, or stable position)
 
-const MuzzleFlashScene := preload("res://scenes/muzzle_flash.tscn")  # not used directly but kept for parity
+const STREAM_IDLE := preload("res://assets/videos/prospector/idle_drinking.ogv")
+const STREAM_FORWARD := preload("res://assets/videos/prospector/steps_forward.ogv")
+const STREAM_STRAFE_LEFT := preload("res://assets/videos/prospector/strafe_left.ogv")
+const STREAM_STRAFE_RIGHT := preload("res://assets/videos/prospector/strafe_right.ogv")
+const STREAM_HIT := preload("res://assets/videos/prospector/reacts_to_gunshot.ogv")
+const STREAM_DEATH := preload("res://assets/videos/prospector/death.ogv")
+
+const DeathPolish := preload("res://scripts/death_polish.gd")
+const HIT_OVERLAY_DURATION: float = 0.45
+const DEATH_DURATION: float = 4.0  # prospector death is 4s (vs Pete's 8s)
+# Per-frame horizontal velocity (px/frame at 60fps) above which we
+# switch from FORWARD/IDLE to STRAFE_LEFT or STRAFE_RIGHT.
+const STRAFE_VELOCITY_THRESHOLD: float = 1.5
 
 signal destroyed(x: float)
 
 const MAX_HP: int = 20
 const SCROLL_SPEED: float = 220.0
 const STAY_SCROLL_SPEED: float = 30.0
-# Prospectors close to true melee range — much closer than outlaws.
-# Pickaxe is short-reach, has to actually touch the posse to hit.
 const STAY_DISTANCE_Y: float = 180.0
 const TRACK_SPEED: float = 1.6
 const SIZE: Vector2 = Vector2(140, 220)
-# Contact damage if the prospector reaches the cowboy and hits — applied
-# per SWING_INTERVAL via try_swing(). 5 per swing × ~1 swing/sec means
-# 30 damage over 6 seconds of close contact if the player doesn't kill
-# the prospector quickly.
 const SWING_DAMAGE: int = 5
 const SWING_INTERVAL: float = 0.8
 const ON_SCREEN_Y: float = 0.0
+
+enum State { IDLE, FORWARD, STRAFE_LEFT, STRAFE_RIGHT, HIT, DEATH }
 
 var hp: int = MAX_HP
 var _destroyed: bool = false
 var _swing_cooldown_timer: float = 0.0
 var _cowboy: Node2D = null
+var _state: int = State.IDLE
+var _override_timer: float = 0.0
+var _last_x: float = 0.0
 
 @onready var hp_label: Label = $HpLabel
 @onready var hp_bar: Control = $HpBar
 @onready var splinters: CPUParticles2D = $Splinters
+@onready var video: VideoStreamPlayer = $Video
 
 func _ready() -> void:
 	hp = MAX_HP
@@ -52,6 +66,8 @@ func _ready() -> void:
 		hp_bar.init(MAX_HP)
 	add_to_group("prospectors")
 	_cowboy = _find_cowboy()
+	_last_x = position.x
+	_switch_to(State.IDLE)
 
 func _find_cowboy() -> Node2D:
 	var level := get_parent()
@@ -65,6 +81,12 @@ func _process(delta: float) -> void:
 	if _destroyed:
 		return
 	_swing_cooldown_timer = maxf(0.0, _swing_cooldown_timer - delta)
+	if _override_timer > 0.0:
+		_override_timer -= delta
+		if _override_timer <= 0.0:
+			_apply_base_state()
+	# Track + scroll
+	var x_before: float = position.x
 	if _cowboy:
 		position.x = lerpf(position.x, _cowboy.position.x, clampf(TRACK_SPEED * delta, 0.0, 1.0))
 	var dy: float = (_cowboy.position.y - position.y) if _cowboy else 1000.0
@@ -72,26 +94,49 @@ func _process(delta: float) -> void:
 	if position.y > 2200.0:
 		queue_free()
 		return
+	# Base state choice (skipped while HIT overlay active).
+	if _override_timer <= 0.0:
+		var dx: float = position.x - x_before
+		_apply_base_state(dx, dy)
+	_last_x = position.x
+
+func _apply_base_state(dx: float = 0.0, dy: float = 1000.0) -> void:
+	if position.y < ON_SCREEN_Y:
+		_switch_to(State.IDLE)
+		return
+	# Strafe when lateral velocity is significant AND we're still
+	# approaching forward (otherwise idle/drink in crawl phase).
+	if dx < -STRAFE_VELOCITY_THRESHOLD:
+		_switch_to(State.STRAFE_LEFT)
+	elif dx > STRAFE_VELOCITY_THRESHOLD:
+		_switch_to(State.STRAFE_RIGHT)
+	elif dy > STAY_DISTANCE_Y:
+		_switch_to(State.FORWARD)
+	else:
+		_switch_to(State.IDLE)
+
+func _switch_to(new_state: int) -> void:
+	if new_state == _state:
+		return
+	_state = new_state
+	if video == null:
+		return
+	match new_state:
+		State.IDLE: video.stream = STREAM_IDLE
+		State.FORWARD: video.stream = STREAM_FORWARD
+		State.STRAFE_LEFT: video.stream = STREAM_STRAFE_LEFT
+		State.STRAFE_RIGHT: video.stream = STREAM_STRAFE_RIGHT
+		State.HIT: video.stream = STREAM_HIT
+		State.DEATH: video.stream = STREAM_DEATH
+	video.play()
 
 # Returns true and resets the swing cooldown if off-cooldown; false
-# otherwise. Called by level.gd's melee collision pass when this
-# prospector overlaps the cowboy or a posse follower.
+# otherwise. Called by level.gd's melee collision pass.
 func try_swing() -> bool:
 	if _swing_cooldown_timer > 0.0:
 		return false
 	_swing_cooldown_timer = SWING_INTERVAL
-	_play_swing_animation()
 	return true
-
-func _play_swing_animation() -> void:
-	# Quick rotation tween — pickaxe lunge. The prospector's pickaxe is
-	# held to the left in the source art, so the swing reads as
-	# counter-clockwise.
-	var tween := create_tween()
-	tween.tween_property(self, "rotation_degrees", -18.0, 0.08) \
-		.set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
-	tween.tween_property(self, "rotation_degrees", 0.0, 0.18) \
-		.set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
 
 func take_bullet_hit(damage: int = 1) -> bool:
 	if _destroyed:
@@ -101,6 +146,10 @@ func take_bullet_hit(damage: int = 1) -> bool:
 	if hp_bar:
 		hp_bar.set_hp(hp)
 	_emit_splinter()
+	# Brief HIT overlay — plays REACTS_TO_GUNSHOT video for 0.45s,
+	# then reverts to base state.
+	_switch_to(State.HIT)
+	_override_timer = HIT_OVERLAY_DURATION
 	if hp <= 0:
 		_destroyed = true
 		destroyed.emit(position.x)
@@ -108,10 +157,6 @@ func take_bullet_hit(damage: int = 1) -> bool:
 	return true
 
 func get_cowboy_damage() -> int:
-	# Used by the generic obstacle-cowboy pass as a fallback; primary
-	# damage path is via try_swing() from the dedicated melee collision
-	# resolver in level.gd. Returning SWING_DAMAGE keeps the generic
-	# pass meaningful in case the melee pass misses an edge case.
 	return SWING_DAMAGE
 
 func _refresh_hp_label() -> void:
@@ -127,12 +172,11 @@ func _play_destroy_animation() -> void:
 	if splinters:
 		splinters.amount = 50
 		splinters.restart()
-	var tween := create_tween().set_parallel(true)
-	tween.tween_property(self, "modulate:a", 0.0, 0.5)
-	tween.tween_property(self, "scale", Vector2(1.4, 1.4), 0.5) \
-		.set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
-	# Pickaxe drop — prospector keels over sideways.
-	tween.tween_property(self, "rotation_degrees", 60.0, 0.5) \
-		.set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_IN)
-	await tween.finished
+	# Iter 33+: death video + universal freeze-strobe polish.
+	if video:
+		video.loop = false
+		video.stream = STREAM_DEATH
+		video.play()
+		await get_tree().create_timer(DEATH_DURATION).timeout
+	await DeathPolish.play(self)
 	queue_free()
