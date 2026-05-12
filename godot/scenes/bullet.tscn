@@ -5,10 +5,16 @@
 [node name="Bullet" type="Node2D"]
 script = ExtResource("1_bullet")
 
-[node name="Body" type="ColorRect" parent="."]
-offset_left = -5.0
-offset_top = -14.0
-offset_right = 5.0
-offset_bottom = 14.0
-color = Color(1, 0.95, 0.5, 1)
-mouse_filter = 2
+; Iter 40e: bullet is now a jelly bean (family-friendly tone pivot).
+; Two stacked Polygon2Ds form the bean: Body is the colored oval,
+; Highlight is the white catch-light up at the top-left. The Body's
+; color is randomized per-shot in bullet.gd._ready() from a candy
+; palette (cherry, lemon, mint, grape, orange) so a rapid burst reads
+; as a colorful spray, not a stream of identical projectiles.
+[node name="Body" type="Polygon2D" parent="."]
+color = Color(1, 0.32, 0.42, 1)
+polygon = PackedVector2Array(0, -16, 4, -14, 6, -10, 7, -4, 7, 4, 6, 10, 4, 14, 0, 16, -4, 14, -6, 10, -7, 4, -7, -4, -6, -10, -4, -14)
+
+[node name="Highlight" type="Polygon2D" parent="."]
+color = Color(1, 1, 1, 0.55)
+polygon = PackedVector2Array(-3, -10, -1, -12, 1, -11, 2, -9, 1, -7, -2, -7, -3, -9)
