@@ -101,21 +101,28 @@ static func spawn(parent: Node, preset_name: String, shake_source: Node = null) 
 # clip on Android devices with rounded corners or notches.
 const MAX_TEXT_WIDTH: float = 1000.0
 
-# Iter 89: rough character-width-per-pt ratio for Western text in the
-# project's theme font. Empirical; tuned so 18 chars × 144pt × 0.55 =
-# 1425 → scales down to ~100pt to fit 1000px width.
-const APPROX_CHAR_WIDTH_RATIO: float = 0.55
-
-# Iter 89: heuristically scale font_size down when text would overflow
-# MAX_TEXT_WIDTH. Short presets keep their punchy size; long ones
-# ('JELLY BEAN FRENZY!', 'RELUCTANTLY COMPETENT.', 'PERFECT VOLLEY!')
-# auto-shrink. Returns max(base, 32) to avoid microscopic text.
-static func _fit_font_size(text: String, base: int) -> int:
-	var approx_w: float = float(text.length()) * float(base) * APPROX_CHAR_WIDTH_RATIO
-	if approx_w <= MAX_TEXT_WIDTH:
+# Iter 90: use the ACTUAL theme font's measurement via
+# Font.get_string_size rather than a character-width heuristic. Iter 89's
+# 0.55 ratio was too low — RAMPAGE!, YEEHAW!, RELUCTANTLY COMPETENT.
+# still overflowed at their preset sizes because the theme font (chunky
+# Western display) is wider per-character than the heuristic predicted.
+func _fit_font_size_measured(target_label: Label, text: String, base: int) -> int:
+	if target_label == null:
 		return base
-	var scaled: int = int(float(base) * (MAX_TEXT_WIDTH / approx_w))
-	return maxi(scaled, 32)
+	var font: Font = target_label.get_theme_font("font", "Label")
+	if font == null:
+		# Fallback to the old heuristic with a higher 0.72 ratio if no
+		# theme font is available (shouldn't happen in normal scene load).
+		var approx_w: float = float(text.length()) * float(base) * 0.72
+		if approx_w <= MAX_TEXT_WIDTH:
+			return base
+		return maxi(int(float(base) * (MAX_TEXT_WIDTH / approx_w)), 32)
+	var measured: Vector2 = font.get_string_size(
+		text, HORIZONTAL_ALIGNMENT_LEFT, -1, base
+	)
+	if measured.x <= MAX_TEXT_WIDTH:
+		return base
+	return maxi(int(float(base) * MAX_TEXT_WIDTH / measured.x), 32)
 
 # Plays the banner. Static spawn() calls this on the freshly-instantiated
 # node; can also be called directly if the caller wants custom text
@@ -124,9 +131,12 @@ func play(text: String, color: Color, font_size: int, ring_color: Color) -> void
 	# ---- Label setup ----
 	label.text = text
 	label.add_theme_color_override("font_color", color)
-	# Iter 89: auto-fit font_size so long banners don't overflow the
-	# 1080px screen width.
-	label.add_theme_font_size_override("font_size", _fit_font_size(text, font_size))
+	# Iter 90: accurate font measurement via the actual theme font.
+	# Previous heuristic (0.55 ratio) under-estimated character widths
+	# for the chunky Western display font — banners like YEEHAW! and
+	# RAMPAGE! still overflowed at their nominal preset sizes.
+	label.add_theme_font_size_override("font_size",
+		_fit_font_size_measured(label, text, font_size))
 	# pivot for scale-pop tween — center of the label's bounding box.
 	label.pivot_offset = label.size / 2.0
 	label.scale = Vector2(0.35, 0.35)
