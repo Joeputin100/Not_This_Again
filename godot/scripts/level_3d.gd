@@ -297,7 +297,49 @@ func _spawn_pete() -> void:
 	label.modulate = Color(1, 0.45, 0.30, 1)
 	label.position = Vector3(0, 3.2, 0)
 	pete.add_child(label)
+	# Iter 84: HP bar above name. Background bar (dark) + foreground
+	# (red) that shrinks as HP drops. Stored under meta 'hp_fg' so the
+	# bullet-hit handler can refresh it.
+	var hp_bg := CSGBox3D.new()
+	hp_bg.size = Vector3(2.5, 0.25, 0.05)
+	hp_bg.position = Vector3(0, 2.7, 0)
+	var bg_mat := StandardMaterial3D.new()
+	bg_mat.albedo_color = Color(0.05, 0.05, 0.05, 0.85)
+	hp_bg.material = bg_mat
+	pete.add_child(hp_bg)
+	var hp_fg := CSGBox3D.new()
+	hp_fg.size = Vector3(2.5, 0.20, 0.08)
+	hp_fg.position = Vector3(0, 2.7, 0.01)  # forward of bg to avoid z-fight
+	var fg_mat := StandardMaterial3D.new()
+	fg_mat.albedo_color = Color(0.95, 0.25, 0.25, 1)
+	fg_mat.emission_enabled = true
+	fg_mat.emission = Color(0.5, 0.1, 0.1, 1)
+	hp_fg.material = fg_mat
+	pete.add_child(hp_fg)
+	pete.set_meta("hp_fg", hp_fg)
+	pete.set_meta("hp_fg_max_width", 2.5)
 	info_label.text = "BOSS APPEARS — SHOOT PETE"
+
+# Iter 84: refresh Pete's HP bar foreground width + color based on HP %.
+func _refresh_pete_hp(pete: Node3D) -> void:
+	var fg: CSGBox3D = pete.get_meta("hp_fg")
+	if fg == null or not is_instance_valid(fg):
+		return
+	var hp: int = pete.get_meta("hp", PETE_HP)
+	var max_w: float = pete.get_meta("hp_fg_max_width", 2.5)
+	var pct: float = float(maxi(hp, 0)) / float(PETE_HP)
+	fg.size.x = max_w * pct
+	# Re-center on shrink so the bar shrinks from the right edge.
+	fg.position.x = (max_w * pct - max_w) * 0.5
+	# Color: green > 60%, yellow > 30%, red below.
+	var c: Color
+	if pct > 0.6:
+		c = Color(0.35, 0.85, 0.32, 1)
+	elif pct > 0.3:
+		c = Color(0.95, 0.85, 0.25, 1)
+	else:
+		c = Color(0.95, 0.25, 0.25, 1)
+	(fg.material as StandardMaterial3D).albedo_color = c
 
 # Iter 77/83: Pete fires a red bullet at the cowboy. Iter 83 adds a
 # random taunt shout above his head every 3rd-4th fire — pulls from
@@ -626,6 +668,7 @@ func _process(delta: float) -> void:
 					bullet.queue_free()
 					_hits += 1
 					_refresh_hud()
+					_refresh_pete_hp(pete)
 					if hp <= 0:
 						pete.queue_free()
 						_show_win()
