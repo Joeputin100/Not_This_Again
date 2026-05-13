@@ -1953,8 +1953,137 @@ func _gold_rush_avalanche_bonanza() -> void:
 	await get_tree().create_timer(0.85).timeout
 
 func _gold_rush_gumball_runaway() -> void:
+	# Iter 52: Coconut Wheel solo. Giant rainbow gumball (boulder-sized,
+	# 180px radius) rolls DOWN the screen from y=200. Player shoots to
+	# KEEP it rolling — each shot extends its lifespan + slows decay.
+	# Without sustained fire, the gumball slows and stalls.
+	# If it reaches y=1700 (cowboy zone) → STAMPEDE finale +1500.
+	# If it stalls short → partial bonus proportional to distance traveled.
+	_shooting_active = true
+	const PER_HIT_BONUS: int = 75
+	const FINALE_FULL_BONUS: int = 1500
+	const START_Y: float = 200.0
+	const TARGET_Y: float = 1700.0
+	const HIT_RADIUS_SQ: float = 180.0 * 180.0
+	const BASE_VELOCITY: float = 60.0   # natural roll speed (px/s) before shots
+	const SHOT_BOOST: float = 130.0     # added to velocity per hit, decays
+	const VELOCITY_DECAY: float = 0.85  # per-second toward BASE
+	const STALL_THRESHOLD: float = 35.0 # if velocity drops below this for too long, stall
+	# Build the gumball: outer big circle + 5 rainbow stripe wedges inside.
+	var gumball := Node2D.new()
+	gumball.position = Vector2(540.0, START_Y)
+	add_child(gumball)
+	var outer := Polygon2D.new()
+	outer.color = Color(0.98, 0.96, 0.92, 1.0)
+	var outer_pts := PackedVector2Array()
+	for v in range(36):
+		var a: float = float(v) / 36.0 * TAU
+		outer_pts.append(Vector2(cos(a), sin(a)) * 180.0)
+	outer.polygon = outer_pts
+	gumball.add_child(outer)
+	# Rainbow wedges — 6 pie slices in candy colors.
+	for j in range(6):
+		var slice := Polygon2D.new()
+		slice.color = Color.from_hsv(float(j) / 6.0, 0.85, 1.0, 0.9)
+		var slice_pts: PackedVector2Array = PackedVector2Array()
+		slice_pts.append(Vector2.ZERO)
+		var a0: float = float(j) / 6.0 * TAU
+		var a1: float = float(j + 1) / 6.0 * TAU
+		var steps: int = 6
+		for s in range(steps + 1):
+			var a: float = lerpf(a0, a1, float(s) / float(steps))
+			slice_pts.append(Vector2(cos(a), sin(a)) * 160.0)
+		slice.polygon = slice_pts
+		gumball.add_child(slice)
+	var velocity: float = BASE_VELOCITY
+	var hit_count: int = 0
+	var reached_target: bool = false
+	while is_inside_tree() and not reached_target:
+		var dt: float = get_process_delta_time()
+		# Decay velocity toward BASE
+		velocity = lerpf(velocity, BASE_VELOCITY, VELOCITY_DECAY * dt)
+		# Move + rotate
+		gumball.position.y += velocity * dt
+		gumball.rotation += velocity * 0.012 * dt
+		# Check bullet collisions
+		for bullet in get_tree().get_nodes_in_group("bullets"):
+			if bullet.position.distance_squared_to(gumball.position) < HIT_RADIUS_SQ:
+				bullet.queue_free()
+				hit_count += 1
+				velocity += SHOT_BOOST
+				if get_node_or_null("/root/GameState"):
+					GameState.bounty += PER_HIT_BONUS
+				DamagePopup.spawn_bounty(self, gumball.position, PER_HIT_BONUS)
+				if shake and shake.has_method("add_trauma"):
+					shake.add_trauma(0.18)
+				# Scale-pop the gumball briefly for feedback
+				var pop := create_tween()
+				pop.tween_property(gumball, "scale", Vector2(1.1, 1.1), 0.08)
+				pop.tween_property(gumball, "scale", Vector2.ONE, 0.15)
+		# Reached cowboy zone?
+		if gumball.position.y >= TARGET_Y:
+			reached_target = true
+			break
+		# Stall check — if velocity stays under threshold, end early
+		# (with partial bonus). Caller measures by distance traveled.
+		if velocity < STALL_THRESHOLD and gumball.position.y > START_Y + 200.0:
+			# Give the player ~1 more second to recover with shots
+			var grace: float = 1.2
+			while grace > 0.0 and velocity < STALL_THRESHOLD:
+				var gdt: float = get_process_delta_time()
+				grace -= gdt
+				# Continue per-frame checks
+				for bullet in get_tree().get_nodes_in_group("bullets"):
+					if bullet.position.distance_squared_to(gumball.position) < HIT_RADIUS_SQ:
+						bullet.queue_free()
+						hit_count += 1
+						velocity += SHOT_BOOST
+						if get_node_or_null("/root/GameState"):
+							GameState.bounty += PER_HIT_BONUS
+						DamagePopup.spawn_bounty(self, gumball.position, PER_HIT_BONUS)
+				await get_tree().process_frame
+			if velocity < STALL_THRESHOLD:
+				break  # stalled — end the rush early
+		await get_tree().process_frame
+	# Cascade phase: rainbow burst from gumball position, bonus scaled
+	# by distance traveled. Reaching the target = full STAMPEDE finale.
+	_shooting_active = false
+	var distance_traveled: float = gumball.position.y - START_Y
+	var distance_pct: float = clampf(distance_traveled
+		/ (TARGET_Y - START_Y), 0.0, 1.0)
+	var partial_bonus: int = int(float(FINALE_FULL_BONUS) * distance_pct)
+	const FINALE_RAYS: int = 14
+	for i in range(FINALE_RAYS):
+		var ray := Polygon2D.new()
+		ray.color = Color.from_hsv(float(i) / float(FINALE_RAYS), 0.9, 1.0, 1.0)
+		ray.polygon = PackedVector2Array([
+			Vector2(-22, -7), Vector2(22, -7),
+			Vector2(22, 7), Vector2(-22, 7),
+		])
+		ray.position = gumball.position
+		add_child(ray)
+		var dir: Vector2 = Vector2.RIGHT.rotated(float(i) / float(FINALE_RAYS) * TAU)
+		var t := create_tween().set_parallel(true)
+		t.tween_property(ray, "position", gumball.position + dir * 720.0, 0.7) \
+			.set_trans(Tween.TRANS_CUBIC).set_ease(Tween.EASE_OUT)
+		t.tween_property(ray, "rotation", dir.angle(), 0.7)
+		t.tween_property(ray, "modulate:a", 0.0, 0.7)
+		t.chain().tween_callback(ray.queue_free)
+	if get_node_or_null("/root/GameState"):
+		GameState.bounty += partial_bonus
+	DamagePopup.spawn_bounty(self, gumball.position, partial_bonus)
+	if shake and shake.has_method("add_trauma"):
+		shake.add_trauma(0.6 + 0.35 * distance_pct)
 	FlourishBanner.spawn($UI, "STAMPEDE", self)
-	await _gold_rush_six_shooter_salute()
+	# Fade gumball
+	var fade := create_tween()
+	fade.tween_property(gumball, "modulate:a", 0.0, 0.6)
+	fade.tween_property(gumball, "scale", Vector2(1.4, 1.4), 0.6)
+	fade.chain().tween_callback(gumball.queue_free)
+	DebugLog.add("rush H done: %d hits, %.0f%% distance, partial=%d" % [
+		hit_count, distance_pct * 100.0, partial_bonus,
+	])
+	await get_tree().create_timer(0.8).timeout
 
 # Gold Rush A — Six-Shooter Salute.
 # Each remaining dude (leader cowboy + active followers) fires once into
