@@ -1310,8 +1310,134 @@ func _on_test_exit() -> void:
 	get_tree().change_scene_to_file("res://scenes/debug_menu.tscn")
 
 func _gold_rush_jelly_jar_cascade() -> void:
+	# Iter 48: Color-Bomb-style cascade. N glass jars (one per remaining
+	# posse member) tumble from the top, shatter on contact with the
+	# ground, and spawn 8 bouncing jelly beans each. Player passively
+	# collects beans by walking the cowboy over them. After ~3.5s of
+	# bouncing, the SUGAR CASCADE banner fires and any uncollected beans
+	# fly to the cowboy as a chain-reaction sweep (auto-collect bonus).
+	_shooting_active = false
+	const JAR_COUNT_MAX: int = 5
+	const BEANS_PER_JAR: int = 8
+	const PER_BEAN_BONUS: int = 25
+	const CASCADE_BONUS: int = 800
+	const GROUND_Y: float = 1500.0
+	const COWBOY_COLLECT_RADIUS_SQ: float = 110.0 * 110.0
+	var jar_count: int = mini(maxi(posse_count, 1), JAR_COUNT_MAX)
+	# 1) Spawn N jars tumbling from above the screen at varied x positions.
+	#    Each jar is a tall amber rectangle + lid; falls under gravity.
+	var jars: Array[Node2D] = []
+	for i in range(jar_count):
+		var jar := Node2D.new()
+		var spawn_x: float = lerpf(180.0, 900.0, float(i) / float(maxi(jar_count - 1, 1)))
+		jar.position = Vector2(spawn_x, -200.0 - float(i) * 90.0)
+		add_child(jar)
+		var body := Polygon2D.new()
+		body.color = Color(0.92, 0.78, 0.30, 0.85)  # amber glass
+		body.polygon = PackedVector2Array([
+			Vector2(-40, -60), Vector2(40, -60),
+			Vector2(50, 60), Vector2(-50, 60),
+		])
+		jar.add_child(body)
+		var lid := Polygon2D.new()
+		lid.color = Color(0.55, 0.35, 0.18, 1.0)
+		lid.polygon = PackedVector2Array([
+			Vector2(-44, -75), Vector2(44, -75),
+			Vector2(44, -55), Vector2(-44, -55),
+		])
+		jar.add_child(lid)
+		jars.append(jar)
+	# 2) Tween each jar falling to GROUND_Y, stagger spawn arrivals so they
+	#    don't all shatter on the same frame.
+	for i in range(jars.size()):
+		var j := jars[i]
+		var t := create_tween()
+		t.tween_interval(float(i) * 0.18)
+		t.tween_property(j, "position:y", GROUND_Y, 0.95) \
+			.set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_IN)
+	await get_tree().create_timer(0.95 + float(jar_count) * 0.18).timeout
+	# 3) Shatter each jar: free the body Polygon2Ds, spawn BEANS_PER_JAR
+	#    jelly beans with random velocity vectors. Track each bean.
+	var beans: Array[Dictionary] = []
+	for j in jars:
+		if not is_instance_valid(j):
+			continue
+		var burst_pos: Vector2 = j.position
+		AudioBus.play_gunfire()  # placeholder shatter SFX
+		if shake and shake.has_method("add_trauma"):
+			shake.add_trauma(0.35)
+		for k in range(BEANS_PER_JAR):
+			var bean := Polygon2D.new()
+			bean.color = Color.from_hsv(randf(), 0.85, 1.0, 1.0)
+			var pts: PackedVector2Array = PackedVector2Array()
+			for v in range(8):
+				var a: float = float(v) / 8.0 * TAU
+				pts.append(Vector2(cos(a), sin(a)) * 12.0)
+			bean.polygon = pts
+			bean.position = burst_pos
+			add_child(bean)
+			var angle: float = randf() * TAU
+			var speed: float = randf_range(180.0, 380.0)
+			beans.append({
+				"node": bean,
+				"vel": Vector2(cos(angle), sin(angle)) * speed,
+				"collected": false,
+			})
+		j.queue_free()
+	# 4) Bouncing-bean loop: gravity + ground bounce + cowboy proximity.
+	const BEAN_GRAVITY: float = 600.0
+	const BEAN_FRICTION: float = 0.78
+	var bounce_time: float = 3.2
+	while bounce_time > 0.0 and is_inside_tree():
+		var dt: float = get_process_delta_time()
+		bounce_time -= dt
+		for b in beans:
+			if b.collected:
+				continue
+			var bn: Polygon2D = b.node
+			if not is_instance_valid(bn):
+				b.collected = true
+				continue
+			# Update velocity (gravity) + position
+			b.vel.y += BEAN_GRAVITY * dt
+			bn.position += b.vel * dt
+			# Ground bounce
+			if bn.position.y >= GROUND_Y and b.vel.y > 0:
+				bn.position.y = GROUND_Y
+				b.vel.y *= -BEAN_FRICTION
+				b.vel.x *= 0.9
+			# Cowboy collect (walk over to grab)
+			if cowboy and bn.position.distance_squared_to(cowboy.position) < COWBOY_COLLECT_RADIUS_SQ:
+				b.collected = true
+				if get_node_or_null("/root/GameState"):
+					GameState.bounty += PER_BEAN_BONUS
+				DamagePopup.spawn_bounty(self, bn.position, PER_BEAN_BONUS)
+				# Quick pop-fade then free
+				var t := create_tween().set_parallel(true)
+				t.tween_property(bn, "scale", Vector2(1.6, 1.6), 0.18)
+				t.tween_property(bn, "modulate:a", 0.0, 0.18)
+				t.chain().tween_callback(bn.queue_free)
+		await get_tree().process_frame
+	# 5) Chain reaction: any uncollected beans sweep toward the cowboy and
+	#    auto-collect at +PER_BEAN_BONUS. SUGAR_CASCADE banner + bonus.
 	FlourishBanner.spawn($UI, "SUGAR_CASCADE", self)
-	await _gold_rush_six_shooter_salute()
+	for b in beans:
+		if b.collected:
+			continue
+		var bn: Polygon2D = b.node
+		if not is_instance_valid(bn):
+			continue
+		var t := create_tween().set_parallel(true)
+		t.tween_property(bn, "position", cowboy.position, 0.4) \
+			.set_trans(Tween.TRANS_CUBIC).set_ease(Tween.EASE_IN)
+		t.tween_property(bn, "modulate:a", 0.0, 0.4)
+		t.chain().tween_callback(bn.queue_free)
+		if get_node_or_null("/root/GameState"):
+			GameState.bounty += PER_BEAN_BONUS
+	if get_node_or_null("/root/GameState"):
+		GameState.bounty += CASCADE_BONUS
+	DamagePopup.spawn_bounty(self, cowboy.position, CASCADE_BONUS)
+	await get_tree().create_timer(0.6).timeout
 
 func _gold_rush_tumbleweed_roll() -> void:
 	# Iter 47: Coconut-Wheel-style ceremony. A jeweled rainbow tumbleweed
