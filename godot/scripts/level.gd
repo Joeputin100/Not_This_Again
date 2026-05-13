@@ -1531,8 +1531,156 @@ func _gold_rush_tumbleweed_roll() -> void:
 	await get_tree().create_timer(0.8).timeout
 
 func _gold_rush_candy_cart_chain() -> void:
+	# Iter 49: Striped+Wrapped combo. Covered wagon parked center. N cargo
+	# crates appear sequentially; player TAPS each to load it onto the
+	# cart (+50 BOUNTY per load). After all loaded + 1.2s countdown, the
+	# cart detonates in cascading line clears — each crate fires fireworks
+	# across one screen-row (+500 per crate). CHAIN banner.
+	_shooting_active = false
+	const PER_LOAD_BONUS: int = 50
+	const PER_LINE_BONUS: int = 500
+	const COUNTDOWN_S: float = 1.2
+	const MAX_CRATES: int = 5
+	var crate_count: int = mini(maxi(posse_count, 1), MAX_CRATES)
+	# 1) Build the wagon: brown rectangle + arched canopy + 2 wheels.
+	var wagon := Node2D.new()
+	wagon.position = Vector2(540, 1100)
+	add_child(wagon)
+	var body := Polygon2D.new()
+	body.color = Color(0.55, 0.32, 0.16, 1.0)
+	body.polygon = PackedVector2Array([
+		Vector2(-160, -40), Vector2(160, -40),
+		Vector2(160, 40), Vector2(-160, 40),
+	])
+	wagon.add_child(body)
+	var canopy := Polygon2D.new()
+	canopy.color = Color(0.96, 0.88, 0.74, 1.0)
+	var canopy_pts := PackedVector2Array()
+	for i in range(13):
+		var t: float = float(i) / 12.0
+		var x: float = lerpf(-160.0, 160.0, t)
+		var y: float = -40.0 - sin(t * PI) * 60.0
+		canopy_pts.append(Vector2(x, y))
+	canopy_pts.append(Vector2(160, -40))
+	canopy_pts.append(Vector2(-160, -40))
+	canopy.polygon = canopy_pts
+	wagon.add_child(canopy)
+	for wx in [-120, 120]:
+		var wheel := Polygon2D.new()
+		wheel.color = Color(0.32, 0.18, 0.08, 1.0)
+		var wpts := PackedVector2Array()
+		for v in range(12):
+			var a: float = float(v) / 12.0 * TAU
+			wpts.append(Vector2(cos(a), sin(a)) * 30.0)
+		wheel.polygon = wpts
+		wheel.position = Vector2(float(wx), 55)
+		wagon.add_child(wheel)
+	# 2) Spawn cargo crates around the wagon at varied positions.
+	#    Each is a Button (tap-target) styled as a brown crate. Tapping
+	#    loads it: tween into the wagon, count up bonus, free the button.
+	var loaded_count: int = 0
+	var crates: Array[Button] = []
+	for i in range(crate_count):
+		var crate := Button.new()
+		crate.custom_minimum_size = Vector2(110, 110)
+		crate.size = Vector2(110, 110)
+		# Style: solid brown box with stripe overlay via stylebox.
+		var sb := StyleBoxFlat.new()
+		sb.bg_color = Color(0.78, 0.55, 0.28, 1)
+		sb.border_color = Color(0.42, 0.26, 0.13, 1)
+		sb.border_width_left = 6
+		sb.border_width_top = 6
+		sb.border_width_right = 6
+		sb.border_width_bottom = 6
+		sb.corner_radius_top_left = 8
+		sb.corner_radius_top_right = 8
+		sb.corner_radius_bottom_right = 8
+		sb.corner_radius_bottom_left = 8
+		crate.add_theme_stylebox_override("normal", sb)
+		crate.add_theme_stylebox_override("hover", sb)
+		crate.add_theme_stylebox_override("pressed", sb)
+		crate.text = "🍬"
+		crate.add_theme_font_size_override("font_size", 48)
+		# Arrange in a horizontal row above + below the wagon.
+		var spread_x: float = lerpf(220.0, 860.0, float(i) / float(maxi(crate_count - 1, 1)))
+		crate.position = Vector2(spread_x - 55.0, 1240.0 if i % 2 == 0 else 950.0)
+		add_child(crate)
+		crates.append(crate)
+		# Pop-in tween
+		crate.scale = Vector2(0.2, 0.2)
+		var t_in := create_tween()
+		t_in.tween_interval(float(i) * 0.18)
+		t_in.tween_property(crate, "scale", Vector2.ONE, 0.22) \
+			.set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
+		# Closure for the tap handler — Godot 4 lambdas capture vars.
+		crate.pressed.connect(func():
+			if not is_instance_valid(crate):
+				return
+			loaded_count += 1
+			if get_node_or_null("/root/GameState"):
+				GameState.bounty += PER_LOAD_BONUS
+			DamagePopup.spawn_bounty(self, crate.global_position
+				+ crate.size * 0.5, PER_LOAD_BONUS)
+			# Animate the crate tweening into the wagon center then queue_free.
+			crate.disabled = true
+			var t_load := create_tween().set_parallel(true)
+			t_load.tween_property(crate, "global_position",
+				wagon.global_position - crate.size * 0.5, 0.35) \
+				.set_trans(Tween.TRANS_CUBIC).set_ease(Tween.EASE_IN)
+			t_load.tween_property(crate, "scale", Vector2(0.4, 0.4), 0.35)
+			t_load.tween_property(crate, "modulate:a", 0.0, 0.35)
+			t_load.chain().tween_callback(crate.queue_free))
+	# 3) Wait for player to load crates. Cap wait at 5 seconds OR all
+	#    crates loaded, whichever comes first.
+	var wait_time: float = 5.0
+	while loaded_count < crate_count and wait_time > 0.0:
+		await get_tree().process_frame
+		wait_time -= get_process_delta_time()
+	# Any unloaded crates: auto-collect at half rate (showing the tactical
+	# loss of slow tapping).
+	for c in crates:
+		if is_instance_valid(c) and not c.disabled:
+			c.disabled = true
+			var t := create_tween()
+			t.tween_property(c, "modulate:a", 0.0, 0.3)
+			t.chain().tween_callback(c.queue_free)
+	# 4) Countdown then detonate. Wagon flashes red, then explodes outward.
+	wagon.modulate = Color(1.0, 0.4, 0.4, 1.0)
+	await get_tree().create_timer(COUNTDOWN_S).timeout
+	# 5) Chain reaction: each loaded crate fires fireworks across one row.
+	const NUM_ROWS: int = 5
+	var actual_lines: int = mini(loaded_count, NUM_ROWS)
+	for row in range(actual_lines):
+		var row_y: float = lerpf(300.0, 1100.0, float(row) / float(maxi(NUM_ROWS - 1, 1)))
+		# Two fireworks per row sweeping outward from center.
+		for dir_sign in [-1, 1]:
+			var fw := Polygon2D.new()
+			fw.color = Color.from_hsv(float(row) / float(NUM_ROWS), 0.9, 1.0, 0.95)
+			fw.polygon = PackedVector2Array([
+				Vector2(-30, -10), Vector2(30, -10),
+				Vector2(30, 10), Vector2(-30, 10),
+			])
+			fw.position = wagon.position + Vector2(0, row_y - wagon.position.y)
+			add_child(fw)
+			var end_x: float = (1240.0 if dir_sign > 0 else -160.0)
+			var t := create_tween().set_parallel(true)
+			t.tween_property(fw, "position:x", end_x, 0.5) \
+				.set_trans(Tween.TRANS_CUBIC).set_ease(Tween.EASE_OUT)
+			t.tween_property(fw, "modulate:a", 0.0, 0.5)
+			t.chain().tween_callback(fw.queue_free)
+		if shake and shake.has_method("add_trauma"):
+			shake.add_trauma(0.30)
+		if get_node_or_null("/root/GameState"):
+			GameState.bounty += PER_LINE_BONUS
+		DamagePopup.spawn_bounty(self, wagon.position
+			+ Vector2(0, row_y - wagon.position.y), PER_LINE_BONUS)
+		await get_tree().create_timer(0.18).timeout
 	FlourishBanner.spawn($UI, "CHAIN", self)
-	await _gold_rush_six_shooter_salute()
+	# Fade wagon out
+	var fade := create_tween()
+	fade.tween_property(wagon, "modulate:a", 0.0, 0.6)
+	fade.chain().tween_callback(wagon.queue_free)
+	await get_tree().create_timer(0.8).timeout
 
 func _gold_rush_liquorice_locomotive() -> void:
 	FlourishBanner.spawn($UI, "LOCOMOTIVE", self)
