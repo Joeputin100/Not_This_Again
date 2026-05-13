@@ -439,6 +439,10 @@ func _show_fail() -> void:
 	if _failed:
 		return
 	_failed = true
+	# Iter 87: kill any lingering gunshot pool samples so the sound
+	# doesn't keep playing after the firefight ends.
+	if get_node_or_null("/root/AudioBus") and AudioBus.has_method("stop_gunfire"):
+		AudioBus.stop_gunfire()
 	# Deduct one heart from the autoloaded GameState (Murderbot voice
 	# context: 'one less posse for next time').
 	if get_node_or_null("/root/GameState"):
@@ -455,6 +459,10 @@ func _show_fail() -> void:
 # accumulated in GameState.
 func _show_win() -> void:
 	_pete_defeated = true
+	# Iter 87: stop the lingering gunshot pool so the salute (which
+	# spawns its own gunfire) doesn't fight the trailing combat audio.
+	if get_node_or_null("/root/AudioBus") and AudioBus.has_method("stop_gunfire"):
+		AudioBus.stop_gunfire()
 	info_label.text = "WIN!  Pete defeated · posse %d · hits %d" % [
 		_posse_count_3d, _hits,
 	]
@@ -585,9 +593,14 @@ func _process(delta: float) -> void:
 		_spawn_timer = OBSTACLE_SPAWN_INTERVAL
 		_spawn_obstacle()
 	# Move all obstacles toward camera (z increases since camera is at z>0).
+	# Iter 87: tumbleweeds (CSGSphere3D) rotate as they roll forward —
+	# adds life vs just sliding rigid shapes. Other shapes (barrel /
+	# cactus / bull boxes) stay rigid since they don't roll IRL.
 	for child in obstacles_root.get_children():
 		if child is Node3D:
 			child.position.z += OBSTACLE_SPEED * delta
+			if child is CSGSphere3D:
+				child.rotation.x += OBSTACLE_SPEED * delta * 0.5
 			if child.position.z > OBSTACLE_DESPAWN_Z:
 				child.queue_free()
 	# Iter 75: gates scroll like obstacles + check trigger when crossing z plane
