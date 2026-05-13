@@ -61,6 +61,9 @@ func _ready() -> void:
 	# next time it's shown. Also re-render now so the row reflects the
 	# current state on entry (e.g. after losing a level + returning).
 	GameState.hearts_changed.connect(_refresh_hearts)
+	# Iter 55: lazy heart regen — check on menu entry. If enough time
+	# has passed since the last spend, hearts will tick up.
+	GameState.apply_regen()
 	_refresh_hearts(GameState.hearts)
 	# Iter 45: DEBUG button gate. Release builds never see the button.
 	# OS.has_feature("debug") is true for editor + debug exports; release

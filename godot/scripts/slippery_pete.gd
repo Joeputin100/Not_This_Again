@@ -95,6 +95,12 @@ var _last_posse_count: int = -1
 # frame while Pete is within STAY_DISTANCE_Y).
 var _engaged: bool = false
 
+# Iter 55: speech-bubble throttle. Stores the last time we spawned a
+# bubble of each category so rapid-fire damage doesn't blanket the
+# screen in stacked Pete one-liners.
+var _last_bubble_unix_ms: int = 0
+const BUBBLE_COOLDOWN_MS: int = 800
+
 @onready var hp_label: Label = $HpLabel
 @onready var hp_bar: Control = $HpBar
 @onready var name_label: Label = $NameLabel
@@ -228,6 +234,11 @@ func _spawn_dual_bullets() -> void:
 func take_bullet_hit(damage: int = 1) -> bool:
 	if _destroyed:
 		return false
+	# Iter 55: speech bubble — random 1-line shout from the en.json
+	# corpus when Pete gets hit. Visible for ~1.5s above his head.
+	# Throttled so rapid fire doesn't spawn a stream of overlapping
+	# bubbles; only 1 per second max.
+	_maybe_spawn_dialog_bubble("when_hit")
 	DamagePopup.spawn(get_parent(), global_position, damage)
 	hp -= damage
 	_refresh_hp_label()
@@ -249,6 +260,53 @@ func take_bullet_hit(damage: int = 1) -> bool:
 
 func get_cowboy_damage() -> int:
 	return COWBOY_DAMAGE
+
+# Iter 55: spawns a floating speech bubble above Pete's head with a
+# random line from the named Text corpus. Categories from en.json:
+#   "taunts"  — boss intro / mid-fight ambient (not auto-fired here)
+#   "when_hit"— player just shot Pete (1/sec throttle in take_bullet_hit)
+#   "dying"   — health critical / on destroyed
+# Bubble = simple Label with theme override, tweens up + fades.
+func _maybe_spawn_dialog_bubble(category: String) -> void:
+	var now_ms: int = int(Time.get_ticks_msec())
+	if now_ms - _last_bubble_unix_ms < BUBBLE_COOLDOWN_MS:
+		return
+	_last_bubble_unix_ms = now_ms
+	if get_node_or_null("/root/Text") == null:
+		return
+	var key: String = "boss.slippery_pete_dialog_%s" % category
+	var line: String = Text.random(key)
+	if line == "" or line == key:
+		return  # corpus missing
+	var bubble := Label.new()
+	bubble.text = line
+	bubble.add_theme_color_override("font_color", Color(1, 0.92, 0.55, 1))
+	bubble.add_theme_color_override("font_outline_color", Color(0.18, 0.05, 0.05, 1))
+	bubble.add_theme_constant_override("outline_size", 10)
+	bubble.add_theme_font_size_override("font_size", 44)
+	bubble.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	bubble.custom_minimum_size = Vector2(680, 0)
+	bubble.z_index = 200
+	# Anchor above Pete's head (he's huge; offset accordingly).
+	bubble.position = Vector2(-340, -1400)
+	add_child(bubble)
+	# Pop + fade tween
+	bubble.scale = Vector2(0.5, 0.5)
+	bubble.modulate.a = 0.0
+	var pop := create_tween().set_parallel(true)
+	pop.tween_property(bubble, "scale", Vector2.ONE, 0.20) \
+		.set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
+	pop.tween_property(bubble, "modulate:a", 1.0, 0.12)
+	pop.tween_property(bubble, "position:y", bubble.position.y - 80.0, 1.5) \
+		.set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
+	await get_tree().create_timer(1.2).timeout
+	if not is_instance_valid(bubble):
+		return
+	var fade := create_tween()
+	fade.tween_property(bubble, "modulate:a", 0.0, 0.30)
+	await fade.finished
+	if is_instance_valid(bubble):
+		bubble.queue_free()
 
 func _refresh_hp_label() -> void:
 	if hp_label:
