@@ -156,3 +156,11 @@ theme_override_font_sizes/font_size = 32
 text = "COPIED"
 horizontal_alignment = 1
 mouse_filter = 2
+
+; Iter 65: signal connections wired DIRECTLY in the scene file so the
+; buttons work even if main_menu.gd's _ready errors out before its own
+; .connect() calls run. Belt-and-suspenders against silent script failure.
+; (The script's .is_connected guards prevent double-connect.)
+[connection signal="pressed" from="UI/PlayButton" to="." method="_on_play_pressed"]
+[connection signal="pressed" from="UI/CopyButton" to="." method="_on_copy_pressed"]
+[connection signal="pressed" from="UI/DebugButton" to="." method="_on_debug_pressed"]

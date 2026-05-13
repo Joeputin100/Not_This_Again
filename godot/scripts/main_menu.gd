@@ -42,62 +42,60 @@ var _title_idle_tween: Tween
 var _subtitle_idle_tween: Tween
 
 func _ready() -> void:
-	# Belt-and-suspenders runtime call; project.godot also sets this to false.
-	get_tree().set_quit_on_go_back(false)
-	# Third route: hook the Window's signal directly in addition to the
-	# _notification path. From the main menu we still quit on back, but
-	# logging from both paths reveals which one actually fires on the
-	# user's Android 16.
-	get_window().go_back_requested.connect(_on_back_requested_signal)
-	DebugLog.add("main_menu _ready (build=%s) quit_on_go_back=%s" % [
-		BuildInfo.SHA, str(get_tree().is_quit_on_go_back()),
-	])
-	play_button.pressed.connect(_on_play_pressed)
-	IdleNudge.idle_started.connect(_on_idle_started)
-	IdleNudge.idle_ended.connect(_on_idle_ended)
-	copy_button.pressed.connect(_on_copy_pressed)
-	# Iter 40c: hearts subscription. Re-render on every change so a fail
-	# in a level (which calls GameState.spend_heart()) updates the menu
-	# next time it's shown. Also re-render now so the row reflects the
-	# current state on entry (e.g. after losing a level + returning).
-	GameState.hearts_changed.connect(_refresh_hearts)
-	# Iter 55: lazy heart regen — check on menu entry. If enough time
-	# has passed since the last spend, hearts will tick up.
-	GameState.apply_regen()
-	_refresh_hearts(GameState.hearts)
-	# Iter 45/61/63: DEBUG button. The .tscn now ships visible=true so the
-	# button shows even if this script-side code never reaches here (was
-	# the iter 62 failure mode). The visible-set below is belt-and-suspenders.
-	if debug_button:
-		debug_button.visible = true
-		debug_button.pressed.connect(_on_debug_pressed)
-	# Iter 63: simplify build_id assignment — single unconditional path
-	# + DebugLog so we can verify in the log that it executed. Previous
-	# fallback (skip iter when "?") wasn't reaching the label in deployed
-	# builds for unknown reasons; hardcoded ITER in build_info.gd plus
-	# this simpler path should eliminate the "build: ?" display.
+	# Iter 65: hardened _ready. Each step is wrapped so a single failure
+	# can't kill subsequent setup (last iter, ALL setup past line 52
+	# silently aborted — button signals never connected → DEBUG tap did
+	# nothing). Each step logs a breadcrumb so the next sideload tells us
+	# exactly where any failure happens.
+	#
+	# CRITICAL FIRST: write the build id label so the user always sees
+	# the build identifier even if subsequent setup explodes.
 	if build_id_label:
 		build_id_label.text = "%s · %s · iter %s" % [
 			BuildInfo.SHA, BuildInfo.SHORT_DATE, BuildInfo.ITER,
 		]
-		DebugLog.add("build_id_label set: %s" % build_id_label.text)
-	else:
-		DebugLog.add("WARN: build_id_label is null at _ready")
-	# Debug-build-only triple-tap-to-crash gesture on the BuildId label,
-	# for verifying Crashlytics integration on first sideload. Release
-	# builds never wire this up — OS.crash() is a no-op there anyway,
-	# but skipping the connect saves us from any input-flooding risk.
-	# Iter 31 fix: the .tscn says mouse_filter=0 (STOP, receive input)
-	# but Label's constructor in Godot 4 overrides to MOUSE_FILTER_IGNORE
-	# (2) after the scene loads. User's iter 30 log confirmed mouse_filter
-	# read 2 at _ready time → input never reached our handler. Force-set
-	# at runtime so the .tscn value sticks.
-	build_id_label.mouse_filter = Control.MOUSE_FILTER_STOP
-	build_id_label.gui_input.connect(_on_build_id_tap)
-	DebugLog.add("crash-gesture: handler connected; has_feature(debug)=%s mouse_filter=%d" % [
-		str(OS.has_feature("debug")),
-		build_id_label.mouse_filter,
-	])
+	DebugLog.add("main_menu _ready (build=%s) iter=%s" % [BuildInfo.SHA, BuildInfo.ITER])
+	# Belt-and-suspenders runtime call; project.godot also sets this to false.
+	get_tree().set_quit_on_go_back(false)
+	# Iter 65 breadcrumb #1: back signal hookup.
+	if get_window():
+		get_window().go_back_requested.connect(_on_back_requested_signal)
+		DebugLog.add("_ready: go_back_requested connected")
+	# Iter 65 breadcrumb #2: button signals — wrapped in null-guards so
+	# a missing @onready var doesn't abort the rest of _ready. Signals
+	# connected via .tscn (iter 65) AS WELL so these are belt-and-suspenders.
+	if play_button and not play_button.pressed.is_connected(_on_play_pressed):
+		play_button.pressed.connect(_on_play_pressed)
+	if copy_button and not copy_button.pressed.is_connected(_on_copy_pressed):
+		copy_button.pressed.connect(_on_copy_pressed)
+	if debug_button:
+		debug_button.visible = true
+		if not debug_button.pressed.is_connected(_on_debug_pressed):
+			debug_button.pressed.connect(_on_debug_pressed)
+	DebugLog.add("_ready: button signals connected")
+	# Iter 65 breadcrumb #3: IdleNudge autoload signals — null-guarded.
+	if IdleNudge:
+		if not IdleNudge.idle_started.is_connected(_on_idle_started):
+			IdleNudge.idle_started.connect(_on_idle_started)
+		if not IdleNudge.idle_ended.is_connected(_on_idle_ended):
+			IdleNudge.idle_ended.connect(_on_idle_ended)
+		DebugLog.add("_ready: IdleNudge connected")
+	# Iter 65 breadcrumb #4: GameState autoload — null-guarded.
+	if GameState:
+		if not GameState.hearts_changed.is_connected(_refresh_hearts):
+			GameState.hearts_changed.connect(_refresh_hearts)
+		# Iter 55: lazy heart regen on menu entry.
+		if GameState.has_method("apply_regen"):
+			GameState.apply_regen()
+		_refresh_hearts(GameState.hearts)
+		DebugLog.add("_ready: GameState wired, hearts=%d" % GameState.hearts)
+	# Iter 65 breadcrumb #5: crash-gesture hookup. Null-guarded for the
+	# same reason as everything else — never abort _ready on a missing node.
+	if build_id_label:
+		build_id_label.mouse_filter = Control.MOUSE_FILTER_STOP
+		if not build_id_label.gui_input.is_connected(_on_build_id_tap):
+			build_id_label.gui_input.connect(_on_build_id_tap)
+	DebugLog.add("_ready: complete")
 	# Defer pivot capture so Godot's layout pass has run and sizes are real.
 	call_deferred("_finalize_setup")
 
