@@ -1314,8 +1314,95 @@ func _gold_rush_jelly_jar_cascade() -> void:
 	await _gold_rush_six_shooter_salute()
 
 func _gold_rush_tumbleweed_roll() -> void:
+	# Iter 47: Coconut-Wheel-style ceremony. A jeweled rainbow tumbleweed
+	# rolls across the screen. Player can shoot it (re-enables firing).
+	# Each hit extends lifespan + gives +200 BOUNTY. On expiration, the
+	# tumbleweed bursts into 8 candy fragments — the chain reaction.
+	_shooting_active = true
+	# Build the tumbleweed inline — a Node2D with star + rainbow stripes.
+	var tw := Node2D.new()
+	tw.position = Vector2(-160, 700)
+	add_child(tw)
+	# Outer 12-pointed star (alternating outer/inner radii for spikes).
+	var star := Polygon2D.new()
+	star.color = Color(0.96, 0.78, 0.30, 1.0)
+	var star_verts := PackedVector2Array()
+	for i in range(24):
+		var a: float = float(i) / 24.0 * TAU
+		var r: float = 84.0 if i % 2 == 0 else 54.0
+		star_verts.append(Vector2(cos(a), sin(a)) * r)
+	star.polygon = star_verts
+	tw.add_child(star)
+	# Three rainbow stripes through the middle.
+	for j in range(3):
+		var stripe := Polygon2D.new()
+		stripe.color = Color.from_hsv(float(j) / 3.0, 0.85, 1.0, 0.7)
+		stripe.rotation = float(j) * PI / 3.0
+		stripe.polygon = PackedVector2Array([
+			Vector2(-58, -12), Vector2(58, -12),
+			Vector2(58, 12), Vector2(-58, 12),
+		])
+		tw.add_child(stripe)
+	# Roll parameters: lifespan scales with posse_count so a full posse
+	# gets more time to score hits than a barely-alive one-dude survivor.
+	var lifespan: float = 3.5 + 0.4 * float(maxi(posse_count, 1))
+	var velocity := Vector2(320, 0)  # rolls right
+	var rot_speed: float = 5.0       # rad/s
+	const HIT_RADIUS_SQ: float = 110.0 * 110.0
+	const BONUS_PER_HIT: int = 200
+	const LIFESPAN_EXTENSION: float = 0.35
+	var hit_count: int = 0
+	# Per-frame loop: move + rotate + check bullet collisions.
+	# Exit early if off-screen.
+	while lifespan > 0.0 and is_inside_tree() and tw.position.x < 1240:
+		var dt: float = get_process_delta_time()
+		tw.position += velocity * dt
+		tw.rotation += rot_speed * dt
+		lifespan -= dt
+		for bullet in get_tree().get_nodes_in_group("bullets"):
+			if bullet.position.distance_squared_to(tw.position) < HIT_RADIUS_SQ:
+				bullet.queue_free()
+				hit_count += 1
+				if get_node_or_null("/root/GameState"):
+					GameState.bounty += BONUS_PER_HIT
+				DamagePopup.spawn_bounty(self, tw.position, BONUS_PER_HIT)
+				if shake and shake.has_method("add_trauma"):
+					shake.add_trauma(0.18)
+				lifespan += LIFESPAN_EXTENSION
+		await get_tree().process_frame
+	# Cascade: ROLLED banner + spawn 8 candy fragments bursting outward
+	# from the tumbleweed's final position. Each fragment is +75 BOUNTY,
+	# so the chain reaction totals 600 base regardless of hit count.
+	_shooting_active = false
+	const CASCADE_FRAGMENT_BONUS: int = 75
+	const CASCADE_FRAGMENT_COUNT: int = 8
+	var burst_pos: Vector2 = tw.position
 	FlourishBanner.spawn($UI, "ROLLED", self)
-	await _gold_rush_six_shooter_salute()
+	for i in range(CASCADE_FRAGMENT_COUNT):
+		var frag := Polygon2D.new()
+		frag.color = Color.from_hsv(float(i) / float(CASCADE_FRAGMENT_COUNT), 0.85, 1.0, 1.0)
+		frag.polygon = PackedVector2Array([
+			Vector2(-14, -8), Vector2(14, -8), Vector2(14, 8), Vector2(-14, 8),
+		])
+		frag.position = burst_pos
+		add_child(frag)
+		var dir: Vector2 = Vector2.UP.rotated(float(i) / float(CASCADE_FRAGMENT_COUNT) * TAU)
+		var t: Tween = create_tween().set_parallel(true)
+		t.tween_property(frag, "position", burst_pos + dir * 560.0, 0.7) \
+			.set_trans(Tween.TRANS_CUBIC).set_ease(Tween.EASE_OUT)
+		t.tween_property(frag, "rotation", dir.angle(), 0.7)
+		t.tween_property(frag, "modulate:a", 0.0, 0.7) \
+			.set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_IN)
+		t.chain().tween_callback(frag.queue_free)
+		if get_node_or_null("/root/GameState"):
+			GameState.bounty += CASCADE_FRAGMENT_BONUS
+	DamagePopup.spawn_bounty(self, burst_pos,
+		CASCADE_FRAGMENT_BONUS * CASCADE_FRAGMENT_COUNT)
+	tw.queue_free()
+	DebugLog.add("rush D done: %d hits, total ~%d bounty" % [
+		hit_count, hit_count * BONUS_PER_HIT + CASCADE_FRAGMENT_BONUS * CASCADE_FRAGMENT_COUNT,
+	])
+	await get_tree().create_timer(0.8).timeout
 
 func _gold_rush_candy_cart_chain() -> void:
 	FlourishBanner.spawn($UI, "CHAIN", self)
