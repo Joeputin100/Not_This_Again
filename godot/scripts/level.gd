@@ -318,6 +318,11 @@ func _process(delta: float) -> void:
 		if _frenzy_timer <= 0.0:
 			_frenzy_active = false
 			DebugLog.add("jelly frenzy ended")
+	# Iter 62: apply perspective scaling so scrolling entities don't
+	# float from the sky — they shrink toward the horizon and grow as
+	# they approach the cowboy. Skipped in test range (no scrolling).
+	if not _test_range_mode:
+		_apply_perspective_scaling()
 	# Wind drift — push target_x sideways every frame, even when the
 	# player isn't dragging. Player input still overrides instantly via
 	# _input() setting target_x to the new touch position; the wind just
@@ -1392,6 +1397,41 @@ func _on_test_remove_dude() -> void:
 	# still clamp to 1 here so the leader stays renderable.
 	posse_count = maxi(posse_count - 1, 1)
 	DebugLog.add("test range: posse=%d" % posse_count)
+
+# Iter 62: perspective scaling. The 3D Terrain SubViewport renders the
+# dirt with proper perspective, but 2D obstacles + gates + outlaws scroll
+# down in flat screen space — they read as "floating from the sky"
+# without scaling for distance. Solution: scale each scrolling entity by
+# its y position so far-away ones appear smaller. Mimics the depth feel
+# without making the entities 3D.
+#
+# At PERSPECTIVE_HORIZON_Y (top of screen / far edge of terrain),
+# entities render at PERSPECTIVE_HORIZON_SCALE.
+# At PERSPECTIVE_FOREGROUND_Y (near the cowboy), entities render at
+# 1.0× their base scale.
+const PERSPECTIVE_HORIZON_Y: float = 100.0
+const PERSPECTIVE_HORIZON_SCALE: float = 0.42
+const PERSPECTIVE_FOREGROUND_Y: float = 1500.0
+const PERSPECTIVE_GROUPS: Array[String] = [
+	"gates", "barrels", "bulls", "tumbleweeds", "cacti",
+	"barricades", "chicken_coops", "bonuses", "outlaws",
+]
+
+func _apply_perspective_scaling() -> void:
+	var span: float = PERSPECTIVE_FOREGROUND_Y - PERSPECTIVE_HORIZON_Y
+	for group_name in PERSPECTIVE_GROUPS:
+		for node in get_tree().get_nodes_in_group(group_name):
+			if not is_instance_valid(node):
+				continue
+			# Memoize base_scale on first encounter so we can MULTIPLY
+			# rather than overwrite (preserves any per-entity custom scale
+			# like Pete's 3× boss size).
+			if not node.has_meta("base_scale"):
+				node.set_meta("base_scale", node.scale)
+			var t: float = clampf((node.position.y - PERSPECTIVE_HORIZON_Y) / span, 0.0, 1.0)
+			var s: float = lerpf(PERSPECTIVE_HORIZON_SCALE, 1.0, t)
+			var base: Vector2 = node.get_meta("base_scale")
+			node.scale = base * s
 
 # Iter 57: bullet consumption helper. Centralizes the "what happens
 # when a bullet's existing collision passes detect a hit" logic so

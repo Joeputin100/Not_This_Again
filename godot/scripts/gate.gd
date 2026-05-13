@@ -62,6 +62,11 @@ var _initial_color_set: bool = false
 @onready var _right_door: ColorRect = $RightDoor
 
 func _ready() -> void:
+	# Iter 62: register for perspective scaling. Level.gd's _process
+	# iterates this group and scales gates based on their y position
+	# (far gates appear smaller, foreground gates full size) so they
+	# read as being ON the 3D terrain instead of floating from the sky.
+	add_to_group("gates")
 	# Update labels to match the @export values. Lets one gate.tscn
 	# serve every variant — caller sets left_value/right_value and the
 	# UI follows.
