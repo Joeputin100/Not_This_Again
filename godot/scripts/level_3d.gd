@@ -62,6 +62,20 @@ var _rng := RandomNumberGenerator.new()
 var _target_x: float = 0.0
 const COWBOY_LERP_SPEED: float = 8.0
 
+# Iter 72: 3D posse followers — Sprite3D billboards spawned behind the
+# leader cowboy in a trapezoid formation. Each follower tracks the
+# leader's x with lag for crowd-runner feel.
+const POSSE_FORMATION_OFFSETS: Array[Vector3] = [
+	Vector3(-0.55, 0.0, 0.55),   # row 1 left
+	Vector3( 0.55, 0.0, 0.55),   # row 1 right
+	Vector3(-1.10, 0.0, 1.10),   # row 2 left
+	Vector3( 0.00, 0.0, 1.10),   # row 2 center
+	Vector3( 1.10, 0.0, 1.10),   # row 2 right
+]
+# Per-follower x-lerp speed (lower = more lag behind leader for crowd feel)
+const FOLLOWER_LERP_SPEED: float = 5.5
+var _followers: Array[Sprite3D] = []
+
 func _ready() -> void:
 	get_tree().set_quit_on_go_back(false)
 	get_window().go_back_requested.connect(_on_back_pressed)
@@ -77,13 +91,42 @@ func _ready() -> void:
 		DebugLog.add("WARN level_3d: terrain_sprite=%s subviewport=%s" % [
 			str(terrain_sprite), str(subviewport),
 		])
+	# Iter 72: spawn posse followers at trapezoid offsets behind leader.
+	_spawn_posse_followers()
 	info_label.text = "3D PREVIEW · build %s · drag to steer" % BuildInfo.SHA
 	DebugLog.add("level_3d _ready (build=%s)" % BuildInfo.SHA)
+
+# Iter 72: create 5 Sprite3D followers (matches default posse_count=5
+# minus the leader at index 0). Each is a clone of the leader cowboy
+# sprite, positioned at COWBOY_Z + offset_z and ±x offset.
+func _spawn_posse_followers() -> void:
+	if cowboy_3d == null:
+		return
+	var leader_tex: Texture2D = cowboy_3d.texture
+	var leader_pixel: float = cowboy_3d.pixel_size
+	for offset in POSSE_FORMATION_OFFSETS:
+		var f := Sprite3D.new()
+		f.texture = leader_tex
+		f.pixel_size = leader_pixel
+		f.billboard = SpriteBase3D.BILLBOARD_ENABLED
+		f.alpha_cut = SpriteBase3D.ALPHA_CUT_DISCARD
+		f.position = Vector3(offset.x, 0.45, COWBOY_Z + offset.z)
+		f.set_meta("formation_offset", offset)
+		subviewport.add_child(f)
+		_followers.append(f)
 
 func _process(delta: float) -> void:
 	# Lerp cowboy x toward target (drag input target).
 	cowboy_3d.position.x = lerpf(cowboy_3d.position.x, _target_x,
 		clampf(COWBOY_LERP_SPEED * delta, 0.0, 1.0))
+	# Iter 72: followers track the leader's x with formation-offset lag.
+	for f in _followers:
+		if not is_instance_valid(f):
+			continue
+		var offset: Vector3 = f.get_meta("formation_offset", Vector3.ZERO)
+		var target_fx: float = cowboy_3d.position.x + offset.x
+		f.position.x = lerpf(f.position.x, target_fx,
+			clampf(FOLLOWER_LERP_SPEED * delta, 0.0, 1.0))
 	# Spawn obstacles periodically.
 	_spawn_timer -= delta
 	if _spawn_timer <= 0.0:
