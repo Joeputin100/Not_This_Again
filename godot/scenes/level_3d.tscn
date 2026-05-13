@@ -99,6 +99,10 @@ texture = ExtResource("5_cowboy")
 ; Spawned dynamically after PETE_SPAWN_DELAY into the level.
 [node name="Boss" type="Node3D" parent="Terrain3D/SubViewport"]
 
+; Iter 80: damage popups in 3D — Label3D billboards that float upward
+; and fade. Tear-down via queue_free after 0.7s lifespan.
+[node name="Popups" type="Node3D" parent="Terrain3D/SubViewport"]
+
 ; SubViewport renders into this Sprite2D which spans the full screen.
 ; Scale 1 with the 1080×1920 SubViewport means 1:1 pixel mapping.
 [node name="Sprite" type="Sprite2D" parent="Terrain3D"]

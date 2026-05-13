@@ -59,6 +59,7 @@ const BULLET_SPAWN_Y: float = 1.2  # waist-high at cowboy
 @onready var hearts_label: Label = $UI/HeartsLabel
 @onready var posse_label: Label = $UI/PosseLabel
 @onready var hits_label: Label = $UI/HitsLabel
+@onready var popups_root: Node3D = $Terrain3D/SubViewport/Popups
 
 var _spawn_timer: float = 0.0
 var _fire_timer: float = 0.0
@@ -307,6 +308,29 @@ func _pete_fire() -> void:
 		return
 	_outlaw_fire(pete)  # reuse outlaw bullet system
 
+# Iter 80: spawn a 3D damage popup at a world position. Label3D billboard
+# floats up + fades over 0.7s, then queue_frees. Sized via font_size +
+# outline. Color override via the modulate property.
+const POPUP_LIFESPAN: float = 0.7
+const POPUP_RISE: float = 2.0
+
+func _spawn_popup_3d(world_pos: Vector3, text: String, color: Color, size: int) -> void:
+	var label := Label3D.new()
+	label.text = text
+	label.font_size = size
+	label.outline_size = 12
+	label.modulate = color
+	label.billboard = BaseMaterial3D.BILLBOARD_ENABLED
+	label.no_depth_test = true
+	label.position = world_pos
+	popups_root.add_child(label)
+	var tween := create_tween().set_parallel(true)
+	tween.tween_property(label, "position:y", world_pos.y + POPUP_RISE,
+		POPUP_LIFESPAN).set_trans(Tween.TRANS_CUBIC).set_ease(Tween.EASE_OUT)
+	tween.tween_property(label, "modulate:a", 0.0, POPUP_LIFESPAN) \
+		.set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_IN)
+	tween.chain().tween_callback(label.queue_free)
+
 # Iter 79: render the 3-label HUD from current state. Called after any
 # event that changes hearts/posse/hits (gate pass, outlaw kill, posse
 # damage). Hearts read from GameState if available.
@@ -457,6 +481,8 @@ func _process(delta: float) -> void:
 			if dx * dx + dz * dz < OUTLAW_HIT_RADIUS_SQ:
 				var hp: int = outlaw.get_meta("hp", 1) - 1
 				outlaw.set_meta("hp", hp)
+				_spawn_popup_3d(outlaw.position + Vector3(0, 1.2, 0),
+					"-1", Color(1, 0.32, 0.22, 1), 56)
 				bullet.queue_free()
 				if hp <= 0:
 					outlaw.queue_free()
@@ -504,6 +530,8 @@ func _process(delta: float) -> void:
 				if dx * dx + dz * dz < PETE_HIT_RADIUS_SQ:
 					var hp: int = pete.get_meta("hp", PETE_HP) - 1
 					pete.set_meta("hp", hp)
+					_spawn_popup_3d(pete.position + Vector3(0, 1.5, 0),
+						"-1", Color(1, 0.45, 0.25, 1), 72)
 					bullet.queue_free()
 					_hits += 1
 					_refresh_hud()
@@ -536,6 +564,8 @@ func _process(delta: float) -> void:
 			var dx: float = bullet.position.x - obstacle.position.x
 			var dz: float = bullet.position.z - obstacle.position.z
 			if dx * dx + dz * dz < BULLET_COLLISION_DIST_SQ:
+				_spawn_popup_3d(obstacle.position + Vector3(0, 1, 0),
+					"-1", Color(1, 0.32, 0.22, 1), 56)
 				obstacle.queue_free()
 				bullet.queue_free()
 				_hits += 1
