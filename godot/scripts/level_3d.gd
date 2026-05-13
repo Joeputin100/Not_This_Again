@@ -191,22 +191,54 @@ func _input(event: InputEvent) -> void:
 		var t: float = clampf(sx / 1080.0, 0.0, 1.0)
 		_target_x = lerpf(-COWBOY_X_BOUND, COWBOY_X_BOUND, t)
 
-# Iter 64: spawn a placeholder obstacle far away on a random lane.
-# Uses a colored CSGBox3D for now — iter 65 will swap to proper
-# 3D meshes per entity type (barrel, bull, etc.).
+# Iter 74: spawn a typed obstacle. Random pick from 4 entity flavors,
+# each with proper proportions + color palette matching their 2D
+# counterparts in the gameplay scene.
+#   barrel:     short brown cylinder (CSGCylinder3D)
+#   cactus:     tall green box (CSGBox3D)
+#   tumbleweed: brown sphere (CSGSphere3D, rolls)
+#   bull:       wide dark-brown box (CSGBox3D)
+enum ObstacleType { BARREL, CACTUS, TUMBLEWEED, BULL }
+
 func _spawn_obstacle() -> void:
-	var box := CSGBox3D.new()
-	box.size = Vector3(2.0, 2.0, 2.0)
-	# Random tan/brown color so it reads as a barrel-equivalent.
-	var mat := StandardMaterial3D.new()
-	mat.albedo_color = Color.from_hsv(_rng.randf_range(0.05, 0.12),
-		0.65, _rng.randf_range(0.55, 0.85), 1.0)
-	box.material = mat
-	# Lane: random x in cowboy bounds
 	var lane_x: float = _rng.randf_range(-COWBOY_X_BOUND * 0.85,
 		COWBOY_X_BOUND * 0.85)
-	box.position = Vector3(lane_x, 1.0, OBSTACLE_SPAWN_Z)
-	obstacles_root.add_child(box)
+	var pick: int = _rng.randi() % 4
+	var obstacle: Node3D
+	var mat := StandardMaterial3D.new()
+	match pick:
+		ObstacleType.BARREL:
+			var b := CSGCylinder3D.new()
+			b.radius = 0.8
+			b.height = 1.4
+			mat.albedo_color = Color(0.42, 0.26, 0.13, 1)
+			b.material = mat
+			b.position = Vector3(lane_x, 0.7, OBSTACLE_SPAWN_Z)
+			obstacle = b
+		ObstacleType.CACTUS:
+			var c := CSGBox3D.new()
+			c.size = Vector3(0.7, 2.4, 0.7)
+			mat.albedo_color = Color(0.22, 0.45, 0.18, 1)
+			c.material = mat
+			c.position = Vector3(lane_x, 1.2, OBSTACLE_SPAWN_Z)
+			obstacle = c
+		ObstacleType.TUMBLEWEED:
+			var t := CSGSphere3D.new()
+			t.radius = 0.9
+			t.radial_segments = 8
+			t.rings = 6
+			mat.albedo_color = Color(0.55, 0.36, 0.18, 1)
+			t.material = mat
+			t.position = Vector3(lane_x, 0.9, OBSTACLE_SPAWN_Z)
+			obstacle = t
+		_:  # BULL
+			var bull := CSGBox3D.new()
+			bull.size = Vector3(2.5, 1.6, 1.8)
+			mat.albedo_color = Color(0.32, 0.18, 0.10, 1)
+			bull.material = mat
+			bull.position = Vector3(lane_x, 0.8, OBSTACLE_SPAWN_Z)
+			obstacle = bull
+	obstacles_root.add_child(obstacle)
 
 # Iter 66/73: spawn jelly-bean-colored bullets at the cowboy's position
 # AND at every follower's position (iter 73). One AudioBus.play_gunfire
