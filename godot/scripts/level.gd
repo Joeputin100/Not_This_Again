@@ -1303,17 +1303,19 @@ func _mount_test_range_sidebar() -> void:
 	ui_layer.add_child(panel)
 
 	var actions: Array = [
-		["EQUIP RIFLE",        "_on_test_equip_rifle"],
-		["EQUIP DEFAULT",      "_on_test_equip_default"],
-		["LIQUORICE WHIP",     "_on_test_equip_liquorice_whip"],
-		["JAWBREAKERS",        "_on_test_equip_jawbreaker"],
-		["COTTON CANDY RIFLE", "_on_test_equip_cotton_candy_rifle"],
-		["GUMDROP GATLING",    "_on_test_equip_gatling"],
-		["JELLY FRENZY",       "_on_test_jelly_frenzy"],
-		["+1 DUDE",            "_on_test_add_dude"],
-		["−1 DUDE",            "_on_test_remove_dude"],
-		["RESET CACTI",        "_on_test_reset_cacti"],
-		["EXIT RANGE",         "_on_test_exit"],
+		["EQUIP RIFLE",         "_on_test_equip_rifle"],
+		["EQUIP DEFAULT",       "_on_test_equip_default"],
+		["LIQUORICE WHIP",      "_on_test_equip_liquorice_whip"],
+		["JAWBREAKERS",         "_on_test_equip_jawbreaker"],
+		["COTTON CANDY RIFLE",  "_on_test_equip_cotton_candy_rifle"],
+		["GUMDROP GATLING",     "_on_test_equip_gatling"],
+		["MARSHMALLOW SHERIFF", "_on_test_equip_marshmallow_sheriff"],
+		["LAUGHING HORSE",      "_on_test_equip_laughing_horse"],
+		["JELLY FRENZY",        "_on_test_jelly_frenzy"],
+		["+1 DUDE",             "_on_test_add_dude"],
+		["−1 DUDE",             "_on_test_remove_dude"],
+		["RESET CACTI",         "_on_test_reset_cacti"],
+		["EXIT RANGE",          "_on_test_exit"],
 	]
 	for entry in actions:
 		var btn := Button.new()
@@ -1463,6 +1465,58 @@ func _on_test_equip_cotton_candy_rifle() -> void:
 
 func _on_test_equip_gatling() -> void:
 	_equip_bonus("gumdrop_gatling")
+
+# Iter 59-60: hero spawn helpers + visual marker. The hero marker is a
+# simple Polygon2D group floating above the leader cowboy as a "this is
+# special" tag. Stays visible for the rest of the level. Body color +
+# accent color picked per hero.
+func _spawn_hero_marker(hero_name: String, body_color: Color, accent_color: Color) -> void:
+	if cowboy == null:
+		return
+	var marker := Node2D.new()
+	marker.position = Vector2(0, -260)  # above cowboy's head
+	cowboy.add_child(marker)
+	# Hero body: chunky rounded blob (Polygon2D circle approximation)
+	var body := Polygon2D.new()
+	body.color = body_color
+	var pts := PackedVector2Array()
+	for i in range(16):
+		var a: float = float(i) / 16.0 * TAU
+		pts.append(Vector2(cos(a), sin(a)) * 36.0)
+	body.polygon = pts
+	marker.add_child(body)
+	# Accent ring (sheriff badge / mane stripe)
+	var accent := Polygon2D.new()
+	accent.color = accent_color
+	var accent_pts := PackedVector2Array()
+	for i in range(16):
+		var a: float = float(i) / 16.0 * TAU
+		accent_pts.append(Vector2(cos(a), sin(a)) * 28.0)
+		accent_pts.append(Vector2(cos(a), sin(a)) * 32.0)
+	accent.polygon = accent_pts
+	marker.add_child(accent)
+	# Hero name label below the body
+	var label := Label.new()
+	label.text = hero_name
+	label.position = Vector2(-100, 40)
+	label.custom_minimum_size = Vector2(200, 40)
+	label.add_theme_color_override("font_color", accent_color)
+	label.add_theme_color_override("font_outline_color", Color(0.08, 0.05, 0.05, 1))
+	label.add_theme_constant_override("outline_size", 6)
+	label.add_theme_font_size_override("font_size", 24)
+	label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	marker.add_child(label)
+	# Pop-in tween
+	marker.scale = Vector2(0.2, 0.2)
+	var t := create_tween().set_parallel(true)
+	t.tween_property(marker, "scale", Vector2.ONE, 0.4) \
+		.set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
+
+func _on_test_equip_marshmallow_sheriff() -> void:
+	_equip_bonus("marshmallow_sheriff")
+
+func _on_test_equip_laughing_horse() -> void:
+	_equip_bonus("laughing_horse")
 
 func _on_test_reset_cacti() -> void:
 	# Tear down current cacti + spawn a fresh grid (use case: stress-test
