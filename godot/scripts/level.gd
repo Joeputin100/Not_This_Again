@@ -555,9 +555,8 @@ func _resolve_bullet_gate_collisions() -> void:
 				var side: int = GateHelper.SIDE_LEFT if bullet.position.x < gate.position.x else GateHelper.SIDE_RIGHT
 				var consumed: bool = gate.take_bullet_hit(bullet.damage, side)
 				if consumed:
-					bullet.remove_from_group("bullets")
-					bullet.queue_free()
-					break
+					if _consume_bullet(bullet, bullet.position):
+						break
 
 func _resolve_bullet_obstacle_collisions(group_name: String, obstacle_size: Vector2) -> void:
 	# Generic bullet-vs-group collision pass. Each obstacle (tumbleweed,
@@ -1345,6 +1344,73 @@ func _on_test_remove_dude() -> void:
 	# still clamp to 1 here so the leader stays renderable.
 	posse_count = maxi(posse_count - 1, 1)
 	DebugLog.add("test range: posse=%d" % posse_count)
+
+# Iter 57: bullet consumption helper. Centralizes the "what happens
+# when a bullet's existing collision passes detect a hit" logic so
+# AOE + pierce behaviors compose with existing per-enemy hit handlers.
+# Returns true if the bullet was consumed (caller should `break`);
+# false if the bullet survives (pierce_remaining > 0, caller continues).
+#
+# Order of operations:
+#   1. AOE splash: damage all enemies within bullet.aoe_radius of hit_pos
+#   2. AOE flash visual
+#   3. Pierce check: if remaining > 0, decrement and survive
+#   4. Otherwise: remove from group + queue_free
+const _AOE_GROUPS: Array[String] = [
+	"barrels", "bulls", "outlaws", "prospectors", "tumbleweeds", "cacti",
+]
+
+func _consume_bullet(bullet: Node, hit_pos: Vector2) -> bool:
+	if not is_instance_valid(bullet):
+		return true
+	# AOE splash + flash, but only ON the consuming hit (so pierce-shots
+	# don't repeatedly splash at every passthrough).
+	var pierce: int = bullet.pierce_remaining if "pierce_remaining" in bullet else 0
+	var aoe_r: float = bullet.aoe_radius if "aoe_radius" in bullet else 0.0
+	var bdmg: int = bullet.damage if "damage" in bullet else 1
+	if pierce > 0:
+		bullet.pierce_remaining = pierce - 1
+		return false  # survives
+	if aoe_r > 0.0:
+		_aoe_splash(hit_pos, aoe_r, bdmg)
+		_spawn_aoe_flash(hit_pos, aoe_r)
+	bullet.remove_from_group("bullets")
+	bullet.queue_free()
+	return true
+
+# Splash AOE damage to every enemy within radius of center. Skips the
+# enemy that triggered the consume (caller already damaged it directly).
+func _aoe_splash(center: Vector2, radius: float, damage: int) -> void:
+	var r2: float = radius * radius
+	for group_name in _AOE_GROUPS:
+		for enemy in get_tree().get_nodes_in_group(group_name):
+			if not is_instance_valid(enemy):
+				continue
+			if enemy.position.distance_squared_to(center) > r2:
+				continue
+			if enemy.has_method("take_bullet_hit"):
+				enemy.take_bullet_hit(damage)
+			elif enemy.has_method("take_damage"):
+				enemy.take_damage(damage)
+
+# Visual flash for AOE splashes — short-lived expanding ring polygon.
+func _spawn_aoe_flash(center: Vector2, radius: float) -> void:
+	var flash := Polygon2D.new()
+	flash.color = Color(1.0, 0.78, 0.30, 0.55)
+	var pts: PackedVector2Array = PackedVector2Array()
+	for i in range(24):
+		var a: float = float(i) / 24.0 * TAU
+		pts.append(Vector2(cos(a), sin(a)) * radius)
+	flash.polygon = pts
+	flash.position = center
+	flash.z_index = 50
+	add_child(flash)
+	var t: Tween = create_tween().set_parallel(true)
+	t.tween_property(flash, "scale", Vector2(1.35, 1.35), 0.32) \
+		.set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
+	t.tween_property(flash, "modulate:a", 0.0, 0.32) \
+		.set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_IN)
+	t.chain().tween_callback(flash.queue_free)
 
 # Iter 56: test-range weapon equip helpers. Each calls _equip_bonus
 # with the matching slug so the weapon factory dispatches normally.
