@@ -299,14 +299,48 @@ func _spawn_pete() -> void:
 	pete.add_child(label)
 	info_label.text = "BOSS APPEARS — SHOOT PETE"
 
-# Iter 77: Pete fires a red bullet at the cowboy (same as outlaw fire).
+# Iter 77/83: Pete fires a red bullet at the cowboy. Iter 83 adds a
+# random taunt shout above his head every 3rd-4th fire — pulls from
+# the existing en.json corpus via the Text autoload.
+var _pete_fire_count: int = 0
+const PETE_TAUNT_INTERVAL: int = 3  # taunt every Nth shot
+
 func _pete_fire() -> void:
 	if boss_root.get_child_count() == 0:
 		return
 	var pete: Node3D = boss_root.get_child(0)
 	if not (pete is Node3D):
 		return
-	_outlaw_fire(pete)  # reuse outlaw bullet system
+	_outlaw_fire(pete)
+	_pete_fire_count += 1
+	if _pete_fire_count % PETE_TAUNT_INTERVAL == 0:
+		_pete_spawn_taunt(pete)
+
+# Iter 83: spawn a Label3D speech bubble above Pete with a random taunt
+# from the en.json dialog corpus (boss.slippery_pete_dialog_taunts).
+# Tweens up + fades out over 1.8s like the iter 55 2D speech bubble.
+func _pete_spawn_taunt(pete: Node3D) -> void:
+	if get_node_or_null("/root/Text") == null:
+		return
+	var line: String = Text.random("boss.slippery_pete_dialog_taunts")
+	if line == "" or line == "boss.slippery_pete_dialog_taunts":
+		return
+	var bubble := Label3D.new()
+	bubble.text = line
+	bubble.font_size = 56
+	bubble.outline_size = 12
+	bubble.modulate = Color(1, 0.92, 0.55, 1)
+	bubble.billboard = BaseMaterial3D.BILLBOARD_ENABLED
+	bubble.no_depth_test = true
+	bubble.position = pete.position + Vector3(0, 4.0, 0)
+	popups_root.add_child(bubble)
+	var t := create_tween().set_parallel(true)
+	t.tween_property(bubble, "position:y",
+		bubble.position.y + 2.0, 1.8) \
+		.set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
+	t.tween_property(bubble, "modulate:a", 0.0, 1.8) \
+		.set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_IN)
+	t.chain().tween_callback(bubble.queue_free)
 
 # Iter 80: spawn a 3D damage popup at a world position. Label3D billboard
 # floats up + fades over 0.7s, then queue_frees. Sized via font_size +
