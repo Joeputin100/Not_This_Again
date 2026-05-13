@@ -65,7 +65,7 @@ material_override = SubResource("StandardMaterial3D_dirt")
 ; sprite reads ~2 world units tall (matches the dirt scale).
 [node name="Cowboy3D" type="Sprite3D" parent="Terrain3D/SubViewport"]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.5, 1.5)
-pixel_size = 0.006
+pixel_size = 0.0003
 billboard = 1
 alpha_cut = 1
 texture = ExtResource("5_cowboy")
