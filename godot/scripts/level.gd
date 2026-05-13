@@ -1358,9 +1358,13 @@ func _setup_test_range() -> void:
 func _mount_test_range_sidebar() -> void:
 	var ui_layer: CanvasLayer = $UI
 	var panel := VBoxContainer.new()
-	panel.position = Vector2(840, 460)
-	panel.custom_minimum_size = Vector2(220, 0)
-	panel.add_theme_constant_override("separation", 14)
+	# Iter 68: shifted left (840 → 740) so the buttons aren't clipped on
+	# devices where the safe area is tighter than the 1080 base width
+	# (user reported right-side clipping). Panel width 280; right edge
+	# now at x=1020, leaving 60px margin from the 1080 screen edge.
+	panel.position = Vector2(740, 460)
+	panel.custom_minimum_size = Vector2(280, 0)
+	panel.add_theme_constant_override("separation", 12)
 	ui_layer.add_child(panel)
 
 	var actions: Array = [
@@ -1382,8 +1386,10 @@ func _mount_test_range_sidebar() -> void:
 	for entry in actions:
 		var btn := Button.new()
 		btn.text = entry[0]
-		btn.custom_minimum_size = Vector2(220, 70)
-		btn.add_theme_font_size_override("font_size", 26)
+		# Iter 68: width 220 → 280 to match the widened panel, height
+		# 70 → 60 so 14 buttons fit vertically without overflowing.
+		btn.custom_minimum_size = Vector2(280, 60)
+		btn.add_theme_font_size_override("font_size", 24)
 		btn.pressed.connect(Callable(self, entry[1]))
 		panel.add_child(btn)
 
