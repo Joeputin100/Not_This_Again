@@ -756,6 +756,7 @@ func _equip_bonus(type: String) -> void:
 		"laughing_horse":
 			# Iter 60: hero unlock. Horse joins (+1 dude), cowboy swaps to
 			# the Stun Whinny (caliber 0, 2s freeze on hit, rainbow tint).
+			# Rainbow-mane marker with whinny SFX (audible giddyup).
 			posse_count += 1
 			_gun = WeaponFactoryScript.gun_for_slug("stun_whinny")
 			if _gun:
@@ -763,8 +764,20 @@ func _equip_bonus(type: String) -> void:
 			_spawn_hero_marker("LAUGHING HORSE",
 				Color(0.85, 0.55, 0.25, 1.0),
 				Color(1.0, 0.55, 0.85, 1.0))
+			_spawn_rainbow_mane()
 			FlourishBanner.spawn($UI, "MEGA!", self)
 			DebugLog.add("bonus equipped: laughing_horse → Stun Whinny")
+		"scarecrow":
+			# Iter 60: hero unlock. Scarecrow joins as a 200%-size posse
+			# member with melee-only attack. No weapon swap — the cowboy
+			# keeps current gun. Scarecrow contributes via melee range.
+			# Visual marker uses tan + dark green palette (straw + jacket).
+			posse_count += 1
+			_spawn_hero_marker("SCARECROW",
+				Color(0.85, 0.72, 0.45, 1.0),
+				Color(0.18, 0.45, 0.22, 1.0))
+			FlourishBanner.spawn($UI, "MEGA!", self)
+			DebugLog.add("bonus equipped: scarecrow → melee dude")
 		"rifle":
 			# Tradeoff weapon: caliber 3 (triple damage), 900px range
 			# (50% longer), but only 4 rounds, 1.3s reload, 0.30s
@@ -1335,6 +1348,7 @@ func _mount_test_range_sidebar() -> void:
 		["GUMDROP GATLING",     "_on_test_equip_gatling"],
 		["MARSHMALLOW SHERIFF", "_on_test_equip_marshmallow_sheriff"],
 		["LAUGHING HORSE",      "_on_test_equip_laughing_horse"],
+		["SCARECROW",           "_on_test_equip_scarecrow"],
 		["JELLY FRENZY",        "_on_test_jelly_frenzy"],
 		["+1 DUDE",             "_on_test_add_dude"],
 		["−1 DUDE",             "_on_test_remove_dude"],
@@ -1541,6 +1555,36 @@ func _on_test_equip_marshmallow_sheriff() -> void:
 
 func _on_test_equip_laughing_horse() -> void:
 	_equip_bonus("laughing_horse")
+
+func _on_test_equip_scarecrow() -> void:
+	_equip_bonus("scarecrow")
+
+# Iter 60: rainbow-mane accent for the Laughing Horse hero. Spawns 6 small
+# rainbow stripes that fan out behind the leader cowboy + slowly cycle hue
+# via a continuous tween. Hero marker (the orb above head) is shared with
+# Sheriff; this is the horse-specific add-on visual.
+func _spawn_rainbow_mane() -> void:
+	if cowboy == null:
+		return
+	var mane := Node2D.new()
+	mane.position = Vector2(0, -80)
+	cowboy.add_child(mane)
+	for i in range(6):
+		var stripe := Polygon2D.new()
+		stripe.color = Color.from_hsv(float(i) / 6.0, 0.85, 1.0, 0.85)
+		var angle: float = lerpf(-PI * 0.45, PI * 0.45, float(i) / 5.0)
+		stripe.rotation = angle + PI * 0.5  # fan upward
+		stripe.polygon = PackedVector2Array([
+			Vector2(-6, 0), Vector2(6, 0),
+			Vector2(8, -50), Vector2(-8, -50),
+		])
+		mane.add_child(stripe)
+	# Subtle bobbing tween — gives the mane life.
+	var bob := create_tween().set_loops()
+	bob.tween_property(mane, "position:y", -86.0, 0.9) \
+		.set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN_OUT)
+	bob.tween_property(mane, "position:y", -74.0, 0.9) \
+		.set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN_OUT)
 
 func _on_test_reset_cacti() -> void:
 	# Tear down current cacti + spawn a fresh grid (use case: stress-test
