@@ -208,29 +208,45 @@ func _spawn_obstacle() -> void:
 	box.position = Vector3(lane_x, 1.0, OBSTACLE_SPAWN_Z)
 	obstacles_root.add_child(box)
 
-# Iter 66: spawn a single jelly-bean-colored bullet at the cowboy's
-# position, traveling along -z toward the far edge of the plane.
+# Iter 66/73: spawn jelly-bean-colored bullets at the cowboy's position
+# AND at every follower's position (iter 73). One AudioBus.play_gunfire
+# call per fire trigger (not per bullet) so a 5-dude posse doesn't
+# overlap-stack 5 gunshot samples.
+const CANDY_BULLET_COLORS: Array[Color] = [
+	Color(1.00, 0.32, 0.42, 1),
+	Color(1.00, 0.84, 0.30, 1),
+	Color(0.42, 0.92, 0.68, 1),
+	Color(0.78, 0.48, 0.92, 1),
+	Color(1.00, 0.62, 0.30, 1),
+	Color(0.95, 0.55, 0.78, 1),
+]
+
 func _spawn_bullet() -> void:
+	# Iter 73: gunfire SFX. Single call so multi-dude firing doesn't
+	# stack 5 layered samples per shot.
+	if get_node_or_null("/root/AudioBus"):
+		AudioBus.play_gunfire()
+	# Spawn one bullet at leader.
+	_spawn_bullet_at(cowboy_3d.position.x, cowboy_3d.position.z)
+	# Iter 73: also spawn a bullet at each posse follower's position so
+	# the full posse fires (matches 2D level.gd's iter 61 multi-shooter).
+	for f in _followers:
+		if is_instance_valid(f):
+			_spawn_bullet_at(f.position.x, f.position.z)
+
+# Iter 73: factored out per-position bullet spawner. Same candy-color
+# palette + emissive material + -z velocity as iter 66.
+func _spawn_bullet_at(world_x: float, world_z: float) -> void:
 	var bullet := CSGSphere3D.new()
 	bullet.radius = BULLET_PIXEL_SIZE
 	bullet.radial_segments = 12
 	bullet.rings = 8
-	# Candy-color palette from iter 40e jelly bean bullets, picked at random
-	var candy: Array[Color] = [
-		Color(1.00, 0.32, 0.42, 1),
-		Color(1.00, 0.84, 0.30, 1),
-		Color(0.42, 0.92, 0.68, 1),
-		Color(0.78, 0.48, 0.92, 1),
-		Color(1.00, 0.62, 0.30, 1),
-		Color(0.95, 0.55, 0.78, 1),
-	]
 	var mat := StandardMaterial3D.new()
-	mat.albedo_color = candy[_rng.randi() % candy.size()]
+	mat.albedo_color = CANDY_BULLET_COLORS[_rng.randi() % CANDY_BULLET_COLORS.size()]
 	mat.emission_enabled = true
 	mat.emission = mat.albedo_color * 0.4
 	bullet.material = mat
-	bullet.position = Vector3(cowboy_3d.position.x,
-		BULLET_SPAWN_Y, cowboy_3d.position.z - 0.5)
+	bullet.position = Vector3(world_x, BULLET_SPAWN_Y, world_z - 0.5)
 	bullets_root.add_child(bullet)
 
 func _on_back_pressed() -> void:
