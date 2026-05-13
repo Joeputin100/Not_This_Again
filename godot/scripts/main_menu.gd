@@ -21,6 +21,9 @@ const BuildInfo = preload("res://scripts/build_info.gd")
 # Iter 40c: hearts row — 5 slots, each ♥ when full, faded for spent.
 # Subscribes to GameState.hearts_changed in _ready and re-renders.
 @onready var hearts_label: Label = $UI/Hearts
+# Iter 45: DEBUG button — visible only in debug builds. _ready toggles
+# its visibility from OS.has_feature("debug").
+@onready var debug_button: Button = $UI/DebugButton
 
 # Captured after initial layout so idle_ended can restore exact positions.
 var _subtitle_base_y: float = 0.0
@@ -59,6 +62,12 @@ func _ready() -> void:
 	# current state on entry (e.g. after losing a level + returning).
 	GameState.hearts_changed.connect(_refresh_hearts)
 	_refresh_hearts(GameState.hearts)
+	# Iter 45: DEBUG button gate. Release builds never see the button.
+	# OS.has_feature("debug") is true for editor + debug exports; release
+	# exports strip it.
+	if debug_button:
+		debug_button.visible = OS.has_feature("debug")
+		debug_button.pressed.connect(_on_debug_pressed)
 	# Build identifier in the bottom-right corner — proves which build is
 	# actually installed when sideloading repeatedly.
 	build_id_label.text = "%s  %s  iter %s" % [BuildInfo.SHA, BuildInfo.SHORT_DATE, BuildInfo.ITER]
@@ -79,6 +88,11 @@ func _ready() -> void:
 	])
 	# Defer pivot capture so Godot's layout pass has run and sizes are real.
 	call_deferred("_finalize_setup")
+
+func _on_debug_pressed() -> void:
+	AudioBus.play_tap()
+	DebugLog.add("DEBUG button pressed → loading debug_menu")
+	get_tree().change_scene_to_file("res://scenes/debug_menu.tscn")
 
 func _on_copy_pressed() -> void:
 	AudioBus.play_tap()

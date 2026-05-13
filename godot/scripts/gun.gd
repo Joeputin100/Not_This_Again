@@ -5,10 +5,13 @@ extends Resource
 # Designed so future variants (rifle, shotgun, gatling, bow) are just new
 # .tres files with different exported values.
 #
-# Defaults below describe the starting Six-Shooter:
-#   short range, ~5.5 shots/sec, 6-round cylinder, 1 sec reload.
+# Defaults below describe the starting Jelly Bean Six-Shooter (iter 45):
+#   short range, ~5.5 shots/sec, 6-jelly-bean cylinder, 1 sec reload.
+# All other weapons (Liquorice Whip, Jawbreaker Grenades, etc.) ship
+# as their own .gd builders or future .tres resources in the same
+# format — see memory/project_weapons_catalog.md for the catalog.
 
-@export var display_name: String = "Six-Shooter"
+@export var display_name: String = "Jelly Bean Six-Shooter"
 
 # Max distance (in pixels) a bullet from this gun travels before it
 # despawns. 600 = "short range" on a 1920-tall playfield: bullets die

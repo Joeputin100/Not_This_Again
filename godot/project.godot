@@ -32,6 +32,7 @@ AudioBus="*res://scripts/audio_bus.gd"
 DebugLog="*res://scripts/debug_log.gd"
 Text="*res://scripts/text.gd"
 WorldSpeed="*res://scripts/world_speed.gd"
+DebugPreview="*res://scripts/debug_preview.gd"
 
 [audio]
 

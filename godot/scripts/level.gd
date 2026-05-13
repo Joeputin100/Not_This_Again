@@ -250,6 +250,24 @@ func _ready() -> void:
 		in_level_menu_button.pressed.connect(_on_in_level_menu_pressed)
 	# Pivot for the win panel scale-in animation
 	win_panel.pivot_offset = Vector2(440, 280)
+	# Iter 45: debug-menu preview — if the menu set a pending rush or
+	# sugar rush before changing scene here, honor it now. Pending rush
+	# fast-paths the level to the WIN flow with the named rush; pending
+	# sugar rush activates Jelly Bean Frenzy after a short delay.
+	if get_node_or_null("/root/DebugPreview") and DebugPreview.has_pending():
+		if DebugPreview.pending_rush != "":
+			_debug_override_rush = DebugPreview.pending_rush
+			DebugLog.add("debug preview: rush %s" % _debug_override_rush)
+			DebugPreview.clear()
+			# Suppress normal gate/boss flow — go straight to win.
+			_gates_complete = true
+			_boss_defeated = true
+			call_deferred("_show_win")
+		elif DebugPreview.pending_sugar_rush:
+			DebugPreview.clear()
+			DebugLog.add("debug preview: sugar rush")
+			# Brief delay so the level visibly starts before frenzy kicks in
+			call_deferred("_deferred_debug_sugar_rush")
 	# Iter 41: subscribe to every killable entity's `destroyed` signal so
 	# we can run kill-streak detection (JUICY/RAMPAGE banners) from one
 	# place. Group memberships were registered in each entity's _ready,
@@ -1075,7 +1093,16 @@ whatever that's worth." % posse_count
 
 # Dispatch table per the memory's matrix. Returns the rush ID to play.
 # "A"/"B"/"D"/"E"/"F"/"G"/"H" map to _gold_rush_* methods below.
+# Iter 45: debug-menu override. If non-empty, _gold_rush_for() returns
+# this directly, bypassing the difficulty/terrain matrix. Set by
+# DebugPreview when launching from the debug menu's "Preview Rush X"
+# buttons. Cleared after first use.
+var _debug_override_rush: String = ""
+
 func _gold_rush_for(difficulty: int, terrain: String) -> String:
+	# Iter 45: debug-menu override wins over the matrix.
+	if _debug_override_rush != "":
+		return _debug_override_rush
 	# Extreme (4) — chain-reaction-heavy rushes
 	if difficulty == 4:
 		match terrain:
@@ -1134,6 +1161,13 @@ func _play_gold_rush() -> void:
 # the player gets SOMETHING on a non-Frontier-Easy level. Real mechanics
 # land in iters 45+. The dispatch architecture is in place; only the
 # innards need filling in per rush.
+# Iter 45: deferred-call wrapper that activates Jelly Bean Frenzy after
+# a short delay so the player can see the level briefly before the burst
+# kicks in. Used by debug-menu preview only.
+func _deferred_debug_sugar_rush() -> void:
+	await get_tree().create_timer(1.0).timeout
+	_equip_bonus("jelly_frenzy")
+
 func _gold_rush_jelly_jar_cascade() -> void:
 	FlourishBanner.spawn($UI, "SUGAR_CASCADE", self)
 	await _gold_rush_six_shooter_salute()

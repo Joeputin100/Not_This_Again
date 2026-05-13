@@ -109,6 +109,25 @@ horizontal_alignment = 1
 vertical_alignment = 1
 mouse_filter = 2
 
+; Iter 45: DEBUG button — visible ONLY in debug builds via main_menu.gd
+; _ready setting .visible = OS.has_feature("debug"). Tap → loads
+; debug_menu.tscn (preview Gold Rushes, Sugar Rush, flourishes, etc.).
+[node name="DebugButton" type="Button" parent="UI"]
+anchors_preset = -1
+anchor_left = 1.0
+anchor_right = 1.0
+anchor_top = 1.0
+anchor_bottom = 1.0
+offset_left = -260.0
+offset_top = -210.0
+offset_right = -20.0
+offset_bottom = -150.0
+theme = ExtResource("2_theme")
+theme_override_font_sizes/font_size = 28
+theme_override_colors/font_color = Color(1, 0.5, 0.5, 0.9)
+text = "DEBUG"
+visible = false
+
 [node name="CopyButton" type="Button" parent="UI"]
 anchors_preset = -1
 anchor_left = 0.5
