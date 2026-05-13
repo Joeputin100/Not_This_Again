@@ -32,7 +32,7 @@ func _ready() -> void:
 func _process(delta: float) -> void:
 	if _destroyed:
 		return
-	position.y += SCROLL_SPEED * delta
+	position.y += SCROLL_SPEED * WorldSpeed.mult * delta
 	if position.y > 2200.0:
 		queue_free()
 

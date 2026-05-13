@@ -103,7 +103,7 @@ func _process(delta: float) -> void:
 	if _cowboy:
 		position.x = lerpf(position.x, _cowboy.position.x, clampf(TRACK_SPEED * delta, 0.0, 1.0))
 	var dy: float = (_cowboy.position.y - position.y) if _cowboy else 1000.0
-	position.y += (SCROLL_SPEED if dy > STAY_DISTANCE_Y else STAY_SCROLL_SPEED) * delta
+	position.y += (SCROLL_SPEED if dy > STAY_DISTANCE_Y else STAY_SCROLL_SPEED) * WorldSpeed.mult * delta
 	if position.y > 2200.0:
 		queue_free()
 		return

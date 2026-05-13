@@ -44,7 +44,7 @@ static func letter_for(type: String) -> String:
 		_: return "?"
 
 func _process(delta: float) -> void:
-	position.y += SCROLL_SPEED * delta
+	position.y += SCROLL_SPEED * WorldSpeed.mult * delta
 	# Safety net: a bonus the cowboy missed scrolls off the bottom.
 	if position.y > DESPAWN_Y:
 		queue_free()

@@ -43,7 +43,7 @@ func set_scroll_active(active: bool) -> void:
 func _process(delta: float) -> void:
 	if not _scroll_active:
 		return
-	_uv_offset += SCROLL_SPEED * delta
+	_uv_offset += SCROLL_SPEED * WorldSpeed.mult * delta
 	# Wrap to keep the offset bounded — UV repeat makes any whole-tile
 	# offset visually equivalent, but unbounded floats could lose
 	# precision after long sessions.

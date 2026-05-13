@@ -162,7 +162,7 @@ func _pulse_labels() -> void:
 			.set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN_OUT)
 
 func _process(delta: float) -> void:
-	position.y += scroll_speed * delta
+	position.y += scroll_speed * WorldSpeed.mult * delta
 	if not _fired and position.y >= fire_y:
 		_fired = true
 		triggered.emit(position.x)

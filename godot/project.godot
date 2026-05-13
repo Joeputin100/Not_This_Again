@@ -31,6 +31,7 @@ IdleNudge="*res://scripts/idle_nudge.gd"
 AudioBus="*res://scripts/audio_bus.gd"
 DebugLog="*res://scripts/debug_log.gd"
 Text="*res://scripts/text.gd"
+WorldSpeed="*res://scripts/world_speed.gd"
 
 [audio]
 

@@ -47,7 +47,7 @@ func _ready() -> void:
 func _process(delta: float) -> void:
 	if _destroyed:
 		return
-	position.y += scroll_speed * delta
+	position.y += scroll_speed * WorldSpeed.mult * delta
 	# Despawn if it scrolled past the bottom — safety net so unfought
 	# barrels don't accumulate forever.
 	if position.y > 2200.0:

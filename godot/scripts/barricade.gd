@@ -13,7 +13,7 @@ func _ready() -> void:
 	add_to_group("barricades")
 
 func _process(delta: float) -> void:
-	position.y += SCROLL_SPEED * delta
+	position.y += SCROLL_SPEED * WorldSpeed.mult * delta
 	if position.y > 2200.0:
 		queue_free()
 

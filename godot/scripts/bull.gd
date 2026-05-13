@@ -77,12 +77,12 @@ func _ready() -> void:
 
 func _process(delta: float) -> void:
 	if _state == STATE_CHARGING:
-		position.y += CHARGING_SPEED * delta
+		position.y += CHARGING_SPEED * WorldSpeed.mult * delta
 		# Despawn if scrolled past the bottom.
 		if position.y > 2200.0:
 			queue_free()
 	else:  # STATE_CONFUSED
-		position += _drift_velocity * delta
+		position += _drift_velocity * WorldSpeed.mult * delta
 		_confused_timer -= delta
 		if _confused_timer <= 0.0:
 			# Drift phase finished — commit to 60° escape vector toward

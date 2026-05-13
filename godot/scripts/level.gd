@@ -182,6 +182,10 @@ func _ready() -> void:
 	get_window().go_back_requested.connect(_on_back_requested_signal)
 	DebugLog.add("level: quit_on_go_back=%s" % str(get_tree().is_quit_on_go_back()))
 	target_x = cowboy.position.x
+	# Iter 42b: reset world scroll speed to neutral on each level entry,
+	# so the player's finger position from the previous level/menu doesn't
+	# carry over and a fresh level starts at the documented baseline.
+	WorldSpeed.reset()
 	progress = LevelProgressScript.new()
 	shake = ScreenShakeScript.new()
 	combos = CombosCounterScript.new()
@@ -473,6 +477,12 @@ func _resolve_bullet_barrel_collisions() -> void:
 				var was_destroyed: bool = barrel.take_damage(bullet.damage)
 				if was_destroyed:
 					_barrels_destroyed += 1
+					# Iter 42a: TASTY!/ACCEPTABLE. flourish on the loot
+					# reveal — only barrels carrying a bonus trigger this,
+					# so it reads as "good shot, payoff appearing." Plain
+					# (no-bonus) barrels stay on the kill-streak path.
+					if barrel.bonus_type != "":
+						FlourishBanner.spawn($UI, "TASTY!", self)
 					shake.add_trauma(0.4)
 				# Bullet is consumed on hit. Remove from group so the
 				# next iteration of this pass doesn't see it again.
@@ -717,26 +727,47 @@ func _input(event: InputEvent) -> void:
 	# touch-flavored ones.
 	_last_event_class = event.get_class()
 	var new_x := -1.0
+	var new_y := -1.0
 	if event is InputEventScreenDrag:
 		new_x = (event as InputEventScreenDrag).position.x
+		new_y = (event as InputEventScreenDrag).position.y
 		_last_input_type = "DRAG"
 		_input_event_count += 1
 	elif event is InputEventScreenTouch and (event as InputEventScreenTouch).pressed:
 		new_x = (event as InputEventScreenTouch).position.x
+		new_y = (event as InputEventScreenTouch).position.y
 		_last_input_type = "TOUCH"
 		_input_event_count += 1
+	elif event is InputEventScreenTouch and not (event as InputEventScreenTouch).pressed:
+		# Iter 42b: finger lifted — drift speed back to neutral. Tests
+		# that hold a touch (sprint mode) shouldn't be stuck there once
+		# the touch ends.
+		WorldSpeed.set_target(WorldSpeed.NEUTRAL_MULT)
 	elif event is InputEventMouseMotion and ((event as InputEventMouseMotion).button_mask & MOUSE_BUTTON_MASK_LEFT) != 0:
 		new_x = (event as InputEventMouseMotion).position.x
+		new_y = (event as InputEventMouseMotion).position.y
 		_last_input_type = "MOUSE_MOTION"
 		_input_event_count += 1
 	elif event is InputEventMouseButton:
 		var mb := event as InputEventMouseButton
 		if mb.button_index == MOUSE_BUTTON_LEFT and mb.pressed:
 			new_x = mb.position.x
+			new_y = mb.position.y
 			_last_input_type = "MOUSE_BUTTON"
 			_input_event_count += 1
+		elif mb.button_index == MOUSE_BUTTON_LEFT and not mb.pressed:
+			WorldSpeed.set_target(WorldSpeed.NEUTRAL_MULT)
 	if new_x >= 0.0:
 		target_x = MovementBounds.clamp_x(new_x)
+	# Iter 42b: vertical finger position controls the world's forward
+	# scroll speed. Top of screen = sprint, bottom = slow crawl, middle =
+	# neutral. WorldSpeed.set_target lerps from current mult to this
+	# target over ~150ms so mid-drag adjustments don't snap-feel jittery.
+	# Screen height is the viewport height, hardcoded to match project's
+	# 1080×1920 base; if the project later supports landscape this needs
+	# to read from get_viewport_rect() instead.
+	if new_y >= 0.0:
+		WorldSpeed.set_target(WorldSpeed.target_from_touch_y(new_y, 1920.0))
 
 func _notification(what: int) -> void:
 	if what == NOTIFICATION_WM_GO_BACK_REQUEST:
@@ -758,6 +789,11 @@ func _go_back_to_menu() -> void:
 	get_tree().change_scene_to_file("res://scenes/main_menu.tscn")
 
 func _on_gate_triggered(gate_center_x: float, gate: Node) -> void:
+	# Iter 42a: snapshot posse_count BEFORE the gate fires so we can
+	# detect SWEET! (gate passed at full STARTING_POSSE) cleanly. The
+	# apply_effect below changes posse_count immediately, so a post-
+	# check would see the new value, not the pre-gate state.
+	var posse_was_full: bool = (posse_count >= STARTING_POSSE)
 	# Combo escalates per consecutive gate. Particle amount and screen
 	# trauma both scale via CombosCounter's curves; over combo 3 we get
 	# the "MEGA!" floating banner (Candy-Crush-style escalation).
@@ -794,10 +830,23 @@ func _on_gate_triggered(gate_center_x: float, gate: Node) -> void:
 	if gate.gate_type == GateHelper.TYPE_MULTIPLICATIVE:
 		FlourishBanner.spawn($UI, "YEEHAW!", self)
 
+	# Iter 42a: SWEET! ("ADEQUATE.") when a gate is cleared with a full
+	# starting posse. The narrator weighing in on "you didn't lose anyone
+	# yet, fine." Only fires while posse_count was still maxed BEFORE the
+	# gate applied — once you've taken a hit, this stays silent.
+	if posse_was_full and posse_count >= STARTING_POSSE:
+		FlourishBanner.spawn($UI, "SWEET!", self)
+
 	progress.record_pass()
 	if progress.is_complete():
 		_gates_complete = true
 		DebugLog.add("gates done — waiting for boss to fall")
+		# Iter 42a: FLAWLESS! ("RELUCTANTLY COMPETENT.") when ALL gates
+		# clear with the starting posse intact. Murderbot is grudgingly
+		# acknowledging "no casualties at the math part." Bigger banner,
+		# longer text — the rarest flourish in the game.
+		if posse_count >= STARTING_POSSE:
+			FlourishBanner.spawn($UI, "FLAWLESS!", self)
 		_maybe_show_win()
 
 # Iter 37: boss-defeated handler. When the SlipperyPete (or any

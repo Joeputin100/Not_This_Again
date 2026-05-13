@@ -37,15 +37,27 @@ const SHOCK_RING_DURATION: float = 0.45
 # presets follow the same trailing-bang convention. JELLY_FRENZY (no bang)
 # is the exception — Sugar Rush has its own activation flow, not a combo
 # step.
+# Iter 42a: preset keys stay stable (gameplay code references them by
+# bang-suffix string), but displayed text is now in the Murderbot
+# narrator voice per the design.md tone bible — dry, world-weary,
+# slightly insulting in the affectionate way. Period punctuation (not
+# bang) reinforces the deadpan read. The bigger the achievement, the
+# more grudging the praise. This decouples gameplay triggers from
+# voice — future tone passes only touch the text field.
+#
+# Cowboy-voice keys (DOUBLE!, MEGA!, YEEHAW!, RAMPAGE!) are kept loud
+# and exclamatory because they're objective cause-and-effect feedback
+# (gate-passed magnitude, kill-streak), not narrator commentary.
+# Murderbot only weighs in on quality/precision events.
 const PRESETS: Dictionary = {
 	"DOUBLE!":     {"text": "DOUBLE!",      "color": Color(1.00, 0.95, 0.40, 1), "size": 156, "ring": Color(1.00, 0.85, 0.30, 0.7), "trauma": 0.55},
 	"MEGA!":       {"text": "MEGA!",        "color": Color(1.00, 0.55, 0.95, 1), "size": 200, "ring": Color(1.00, 0.45, 0.95, 0.7), "trauma": 0.75},
-	"TASTY!":      {"text": "TASTY!",       "color": Color(1.00, 0.40, 0.50, 1), "size": 180, "ring": Color(1.00, 0.30, 0.45, 0.7), "trauma": 0.60},
-	"JUICY!":      {"text": "JUICY!",       "color": Color(0.45, 1.00, 0.65, 1), "size": 180, "ring": Color(0.35, 1.00, 0.55, 0.7), "trauma": 0.60},
+	"TASTY!":      {"text": "ACCEPTABLE.",  "color": Color(1.00, 0.40, 0.50, 1), "size": 132, "ring": Color(1.00, 0.30, 0.45, 0.7), "trauma": 0.45},
+	"JUICY!":      {"text": "EFFICIENT.",   "color": Color(0.45, 1.00, 0.65, 1), "size": 132, "ring": Color(0.35, 1.00, 0.55, 0.7), "trauma": 0.50},
 	"YEEHAW!":     {"text": "YEEHAW!",      "color": Color(1.00, 0.80, 0.30, 1), "size": 200, "ring": Color(1.00, 0.70, 0.20, 0.7), "trauma": 0.65},
 	"RAMPAGE!":    {"text": "RAMPAGE!",     "color": Color(1.00, 0.35, 0.30, 1), "size": 220, "ring": Color(1.00, 0.25, 0.20, 0.75), "trauma": 0.85},
-	"SWEET!":      {"text": "SWEET!",       "color": Color(1.00, 0.65, 0.95, 1), "size": 170, "ring": Color(1.00, 0.55, 0.95, 0.7), "trauma": 0.55},
-	"FLAWLESS!":   {"text": "FLAWLESS!",    "color": Color(0.50, 0.95, 1.00, 1), "size": 200, "ring": Color(0.40, 0.85, 1.00, 0.7), "trauma": 0.70},
+	"SWEET!":      {"text": "ADEQUATE.",    "color": Color(1.00, 0.65, 0.95, 1), "size": 128, "ring": Color(1.00, 0.55, 0.95, 0.7), "trauma": 0.45},
+	"FLAWLESS!":   {"text": "RELUCTANTLY COMPETENT.", "color": Color(0.50, 0.95, 1.00, 1), "size": 96, "ring": Color(0.40, 0.85, 1.00, 0.7), "trauma": 0.65},
 	"JELLY_FRENZY":{"text": "JELLY BEAN FRENZY!", "color": Color(1.00, 0.55, 0.85, 1), "size": 144, "ring": Color(1.00, 0.85, 0.40, 0.8), "trauma": 0.95},
 }
 
