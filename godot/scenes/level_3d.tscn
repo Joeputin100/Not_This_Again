@@ -95,6 +95,10 @@ texture = ExtResource("5_cowboy")
 ; checks can distinguish 'incoming' vs 'outgoing'.
 [node name="OutlawBullets" type="Node3D" parent="Terrain3D/SubViewport"]
 
+; Iter 77: boss container. Slippery Pete (or future bosses) lives here.
+; Spawned dynamically after PETE_SPAWN_DELAY into the level.
+[node name="Boss" type="Node3D" parent="Terrain3D/SubViewport"]
+
 ; SubViewport renders into this Sprite2D which spans the full screen.
 ; Scale 1 with the 1080×1920 SubViewport means 1:1 pixel mapping.
 [node name="Sprite" type="Sprite2D" parent="Terrain3D"]
@@ -125,3 +129,42 @@ offset_right = 230.0
 offset_bottom = 110.0
 theme_override_font_sizes/font_size = 32
 text = "← DEBUG"
+
+; Iter 77: WIN overlay — pops when Pete is defeated. Mirrors 2D
+; level.tscn's WinOverlay structure.
+[node name="WinOverlay" type="ColorRect" parent="UI"]
+anchor_right = 1.0
+anchor_bottom = 1.0
+offset_right = 1080.0
+offset_bottom = 1920.0
+color = Color(0.226, 0.157, 0.078, 0.88)
+visible = false
+mouse_filter = 2
+
+[node name="WinLabel" type="Label" parent="UI/WinOverlay"]
+anchor_left = 0.5
+anchor_right = 0.5
+anchor_top = 0.5
+anchor_bottom = 0.5
+offset_left = -400.0
+offset_top = -160.0
+offset_right = 400.0
+offset_bottom = 100.0
+theme_override_font_sizes/font_size = 110
+theme_override_colors/font_color = Color(0.95, 0.78, 0.35, 1)
+text = "BOUNTY!"
+horizontal_alignment = 1
+vertical_alignment = 1
+mouse_filter = 2
+
+[node name="RetryButton" type="Button" parent="UI/WinOverlay"]
+anchor_left = 0.5
+anchor_right = 0.5
+anchor_top = 0.5
+anchor_bottom = 0.5
+offset_left = -200.0
+offset_top = 160.0
+offset_right = 200.0
+offset_bottom = 260.0
+theme_override_font_sizes/font_size = 48
+text = "RETRY"

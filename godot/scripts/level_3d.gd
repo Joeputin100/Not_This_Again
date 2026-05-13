@@ -48,6 +48,7 @@ const BULLET_SPAWN_Y: float = 1.2  # waist-high at cowboy
 @onready var gates_root: Node3D = $Terrain3D/SubViewport/Gates
 @onready var outlaws_root: Node3D = $Terrain3D/SubViewport/Outlaws
 @onready var outlaw_bullets_root: Node3D = $Terrain3D/SubViewport/OutlawBullets
+@onready var boss_root: Node3D = $Terrain3D/SubViewport/Boss
 # Iter 69: terrain_3d.gd script wasn't attached to the inline Terrain3D
 # node in level_3d.tscn, so the SubViewport→Sprite2D texture wiring
 # never ran. Reference + manual hookup in _ready below.
@@ -83,6 +84,22 @@ const OUTLAW_BULLET_DESPAWN_Z: float = 4.0
 const OUTLAW_HIT_RADIUS_SQ: float = 1.5 * 1.5
 const OUTLAW_HP: int = 3
 var _outlaw_spawn_timer: float = 0.0
+
+# Iter 77: Slippery Pete boss. Appears at PETE_SPAWN_DELAY into the
+# level. Slow approach, much higher HP, drops the WIN modal on defeat.
+const PETE_SPAWN_DELAY: float = 25.0
+const PETE_HP: int = 40
+const PETE_SPEED: float = 1.6
+const PETE_FIRE_INTERVAL: float = 1.0
+const PETE_HIT_RADIUS_SQ: float = 2.6 * 2.6
+const PETE_STAY_Z: float = -6.0  # stops here for the duel
+var _pete_spawned: bool = false
+var _pete_defeated: bool = false
+var _level_elapsed: float = 0.0
+var _pete_fire_timer: float = 0.0
+@onready var win_overlay: ColorRect = $UI/WinOverlay
+@onready var win_label: Label = $UI/WinOverlay/WinLabel
+@onready var retry_button: Button = $UI/WinOverlay/RetryButton
 
 # Target cowboy x in world units, lerped each frame. Set by drag input
 # which converts screen-x to world-x via the camera-plane projection.
@@ -122,6 +139,9 @@ func _ready() -> void:
 	_spawn_posse_followers()
 	info_label.text = "3D PREVIEW · build %s · drag to steer" % BuildInfo.SHA
 	DebugLog.add("level_3d _ready (build=%s)" % BuildInfo.SHA)
+	# Iter 77: win-modal Retry button.
+	if retry_button:
+		retry_button.pressed.connect(_on_retry_pressed)
 
 # Iter 72: create 5 Sprite3D followers (matches default posse_count=5
 # minus the leader at index 0). Each is a clone of the leader cowboy
@@ -241,6 +261,50 @@ func _check_gate_trigger(gate: Node3D) -> void:
 	]
 	AudioBus.play_gate_pass()
 
+# Iter 77: spawn the Slippery Pete boss. Big yellow CSGBox3D with an
+# HP meta field + state machine. Stops at PETE_STAY_Z for the duel.
+func _spawn_pete() -> void:
+	var pete := CSGBox3D.new()
+	pete.size = Vector3(2.4, 4.2, 1.2)
+	var mat := StandardMaterial3D.new()
+	mat.albedo_color = Color(0.92, 0.78, 0.22, 1)  # mustard yellow
+	mat.emission_enabled = true
+	mat.emission = Color(0.40, 0.30, 0.05, 1)
+	pete.material = mat
+	pete.position = Vector3(0.0, 2.1, OBSTACLE_SPAWN_Z + 4.0)
+	pete.set_meta("hp", PETE_HP)
+	boss_root.add_child(pete)
+	# Big "BOSS" label floating above him
+	var label := Label3D.new()
+	label.text = "SLIPPERY PETE"
+	label.font_size = 80
+	label.outline_size = 14
+	label.modulate = Color(1, 0.45, 0.30, 1)
+	label.position = Vector3(0, 3.2, 0)
+	pete.add_child(label)
+	info_label.text = "BOSS APPEARS — SHOOT PETE"
+
+# Iter 77: Pete fires a red bullet at the cowboy (same as outlaw fire).
+func _pete_fire() -> void:
+	if boss_root.get_child_count() == 0:
+		return
+	var pete: Node3D = boss_root.get_child(0)
+	if not (pete is Node3D):
+		return
+	_outlaw_fire(pete)  # reuse outlaw bullet system
+
+# Iter 77: trigger the win flow. Pop the WIN overlay; player can retry.
+func _show_win() -> void:
+	_pete_defeated = true
+	info_label.text = "WIN!  Pete defeated · posse %d · hits %d" % [
+		_posse_count_3d, _hits,
+	]
+	if win_label:
+		win_label.text = "BOUNTY!\nposse %d · hits %d" % [_posse_count_3d, _hits]
+	if win_overlay:
+		win_overlay.visible = true
+	AudioBus.play_gate_pass()  # placeholder fanfare
+
 # Iter 76: spawn a red outlaw at a random lane position at far z.
 func _spawn_outlaw() -> void:
 	var outlaw := CSGBox3D.new()
@@ -278,6 +342,9 @@ func _outlaw_fire(outlaw: Node3D) -> void:
 	outlaw_bullets_root.add_child(b)
 
 func _process(delta: float) -> void:
+	if _pete_defeated:
+		return
+	_level_elapsed += delta
 	# Lerp cowboy x toward target (drag input target).
 	cowboy_3d.position.x = lerpf(cowboy_3d.position.x, _target_x,
 		clampf(COWBOY_LERP_SPEED * delta, 0.0, 1.0))
@@ -357,6 +424,38 @@ func _process(delta: float) -> void:
 			info_label.text = "POSSE %d  ·  hits %d" % [_posse_count_3d, _hits]
 		elif ob.position.z > OUTLAW_BULLET_DESPAWN_Z or absf(ob.position.x) > 25.0:
 			ob.queue_free()
+	# Iter 77: spawn Pete after PETE_SPAWN_DELAY.
+	if not _pete_spawned and _level_elapsed >= PETE_SPAWN_DELAY:
+		_pete_spawned = true
+		_spawn_pete()
+	# Iter 77: Pete behavior — approach to PETE_STAY_Z, fire periodically,
+	# check bullet hits.
+	if _pete_spawned and boss_root.get_child_count() > 0:
+		var pete: Node3D = boss_root.get_child(0)
+		if is_instance_valid(pete) and pete is Node3D:
+			# Approach until STAY_Z
+			if pete.position.z < PETE_STAY_Z:
+				pete.position.z += PETE_SPEED * delta
+			# Fire periodically
+			_pete_fire_timer -= delta
+			if _pete_fire_timer <= 0.0:
+				_pete_fire_timer = PETE_FIRE_INTERVAL
+				_pete_fire()
+			# Bullet hit check
+			for bullet in bullets_root.get_children():
+				if not (bullet is Node3D):
+					continue
+				var dx: float = bullet.position.x - pete.position.x
+				var dz: float = bullet.position.z - pete.position.z
+				if dx * dx + dz * dz < PETE_HIT_RADIUS_SQ:
+					var hp: int = pete.get_meta("hp", PETE_HP) - 1
+					pete.set_meta("hp", hp)
+					bullet.queue_free()
+					_hits += 1
+					if hp <= 0:
+						pete.queue_free()
+						_show_win()
+					break
 	# Iter 66: auto-fire bullets. Cowboy emits bullets along the -z axis
 	# every BULLET_FIRE_INTERVAL seconds. Bullets are CSGSphere3Ds for
 	# simplicity (no texture needed, gets the candy-colored material).
@@ -503,3 +602,8 @@ func _spawn_bullet_at(world_x: float, world_z: float) -> void:
 func _on_back_pressed() -> void:
 	AudioBus.play_tap()
 	get_tree().change_scene_to_file("res://scenes/debug_menu.tscn")
+
+# Iter 77: retry button on the WIN modal reloads the level_3d scene.
+func _on_retry_pressed() -> void:
+	AudioBus.play_tap()
+	get_tree().reload_current_scene()
