@@ -46,6 +46,8 @@ const BULLET_SPAWN_Y: float = 1.2  # waist-high at cowboy
 @onready var obstacles_root: Node3D = $Terrain3D/SubViewport/Obstacles
 @onready var bullets_root: Node3D = $Terrain3D/SubViewport/Bullets
 @onready var gates_root: Node3D = $Terrain3D/SubViewport/Gates
+@onready var outlaws_root: Node3D = $Terrain3D/SubViewport/Outlaws
+@onready var outlaw_bullets_root: Node3D = $Terrain3D/SubViewport/OutlawBullets
 # Iter 69: terrain_3d.gd script wasn't attached to the inline Terrain3D
 # node in level_3d.tscn, so the SubViewport→Sprite2D texture wiring
 # never ran. Reference + manual hookup in _ready below.
@@ -69,6 +71,18 @@ const GATE_TRIGGER_Z: float = 0.5   # gates fire when their z passes this
 var _gate_spawn_timer: float = 0.0
 var _posse_count_3d: int = 5
 const STARTING_POSSE_3D: int = 5
+
+# Iter 76: outlaw enemies. Spawn red boxes periodically at far z that
+# scroll toward camera + fire red bullets at the cowboy.
+const OUTLAW_SPAWN_INTERVAL: float = 3.0
+const OUTLAW_SPEED: float = 4.0  # slower than obstacles — they're shooters
+const OUTLAW_FIRE_INTERVAL: float = 1.8
+const OUTLAW_BULLET_SPEED: float = 14.0
+const OUTLAW_BULLET_RADIUS: float = 0.35
+const OUTLAW_BULLET_DESPAWN_Z: float = 4.0
+const OUTLAW_HIT_RADIUS_SQ: float = 1.5 * 1.5
+const OUTLAW_HP: int = 3
+var _outlaw_spawn_timer: float = 0.0
 
 # Target cowboy x in world units, lerped each frame. Set by drag input
 # which converts screen-x to world-x via the camera-plane projection.
@@ -227,6 +241,42 @@ func _check_gate_trigger(gate: Node3D) -> void:
 	]
 	AudioBus.play_gate_pass()
 
+# Iter 76: spawn a red outlaw at a random lane position at far z.
+func _spawn_outlaw() -> void:
+	var outlaw := CSGBox3D.new()
+	outlaw.size = Vector3(0.9, 2.0, 0.6)
+	var mat := StandardMaterial3D.new()
+	mat.albedo_color = Color(0.78, 0.18, 0.18, 1)
+	outlaw.material = mat
+	var lane_x: float = _rng.randf_range(-COWBOY_X_BOUND * 0.75,
+		COWBOY_X_BOUND * 0.75)
+	outlaw.position = Vector3(lane_x, 1.0, OBSTACLE_SPAWN_Z + 4.0)
+	outlaw.set_meta("hp", OUTLAW_HP)
+	outlaw.set_meta("fire_timer", _rng.randf() * OUTLAW_FIRE_INTERVAL)
+	outlaws_root.add_child(outlaw)
+
+# Iter 76: outlaw fires a red bullet aimed at the cowboy.
+func _outlaw_fire(outlaw: Node3D) -> void:
+	var b := CSGSphere3D.new()
+	b.radius = OUTLAW_BULLET_RADIUS
+	b.radial_segments = 8
+	b.rings = 6
+	var mat := StandardMaterial3D.new()
+	mat.albedo_color = Color(1.0, 0.3, 0.2, 1)
+	mat.emission_enabled = true
+	mat.emission = mat.albedo_color * 0.5
+	b.material = mat
+	b.position = outlaw.position
+	# Velocity: from outlaw toward cowboy, normalized × speed
+	var to_cowboy: Vector3 = cowboy_3d.position - outlaw.position
+	to_cowboy.y = 0.0  # keep bullets level
+	if to_cowboy.length() > 0.001:
+		to_cowboy = to_cowboy.normalized() * OUTLAW_BULLET_SPEED
+	else:
+		to_cowboy = Vector3(0, 0, OUTLAW_BULLET_SPEED)
+	b.set_meta("velocity", to_cowboy)
+	outlaw_bullets_root.add_child(b)
+
 func _process(delta: float) -> void:
 	# Lerp cowboy x toward target (drag input target).
 	cowboy_3d.position.x = lerpf(cowboy_3d.position.x, _target_x,
@@ -261,6 +311,52 @@ func _process(delta: float) -> void:
 			_check_gate_trigger(gate)
 			if gate.position.z > OBSTACLE_DESPAWN_Z:
 				gate.queue_free()
+	# Iter 76: outlaws — spawn / scroll / fire / despawn.
+	_outlaw_spawn_timer -= delta
+	if _outlaw_spawn_timer <= 0.0:
+		_outlaw_spawn_timer = OUTLAW_SPAWN_INTERVAL
+		_spawn_outlaw()
+	for outlaw in outlaws_root.get_children():
+		if not (outlaw is Node3D):
+			continue
+		outlaw.position.z += OUTLAW_SPEED * delta
+		var ft: float = outlaw.get_meta("fire_timer", 0.0)
+		ft -= delta
+		if ft <= 0.0:
+			ft = OUTLAW_FIRE_INTERVAL
+			_outlaw_fire(outlaw)
+		outlaw.set_meta("fire_timer", ft)
+		if outlaw.position.z > OBSTACLE_DESPAWN_Z:
+			outlaw.queue_free()
+		# Bullet-vs-outlaw collision (use posse bullets)
+		for bullet in bullets_root.get_children():
+			if not (bullet is Node3D):
+				continue
+			var dx: float = bullet.position.x - outlaw.position.x
+			var dz: float = bullet.position.z - outlaw.position.z
+			if dx * dx + dz * dz < OUTLAW_HIT_RADIUS_SQ:
+				var hp: int = outlaw.get_meta("hp", 1) - 1
+				outlaw.set_meta("hp", hp)
+				bullet.queue_free()
+				if hp <= 0:
+					outlaw.queue_free()
+					_hits += 1
+				break
+	# Iter 76: outlaw bullets move along their stored velocity vector.
+	# Despawn off-screen or after reaching cowboy.
+	for ob in outlaw_bullets_root.get_children():
+		if not (ob is Node3D):
+			continue
+		var vel: Vector3 = ob.get_meta("velocity", Vector3.ZERO)
+		ob.position += vel * delta
+		# Posse-hit: if bullet reaches cowboy's near plane, decrement
+		# posse and kill the bullet.
+		if ob.position.z > cowboy_3d.position.z - 0.3:
+			ob.queue_free()
+			_posse_count_3d = maxi(0, _posse_count_3d - 1)
+			info_label.text = "POSSE %d  ·  hits %d" % [_posse_count_3d, _hits]
+		elif ob.position.z > OUTLAW_BULLET_DESPAWN_Z or absf(ob.position.x) > 25.0:
+			ob.queue_free()
 	# Iter 66: auto-fire bullets. Cowboy emits bullets along the -z axis
 	# every BULLET_FIRE_INTERVAL seconds. Bullets are CSGSphere3Ds for
 	# simplicity (no texture needed, gets the candy-colored material).
