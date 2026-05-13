@@ -11,6 +11,16 @@ size = Vector2(40, 60)
 subdivide_width = 32
 subdivide_depth = 64
 
+; Iter 86: mountain palette — two muted purple-brown shades for
+; alternating silhouettes (creates depth via slight color variation).
+[sub_resource type="StandardMaterial3D" id="MountainMat_A"]
+albedo_color = Color(0.35, 0.22, 0.32, 1)
+roughness = 1.0
+
+[sub_resource type="StandardMaterial3D" id="MountainMat_B"]
+albedo_color = Color(0.42, 0.28, 0.36, 1)
+roughness = 1.0
+
 [sub_resource type="StandardMaterial3D" id="StandardMaterial3D_dirt"]
 albedo_texture = ExtResource("2_dirt")
 normal_enabled = true
@@ -102,6 +112,29 @@ texture = ExtResource("5_cowboy")
 ; Iter 80: damage popups in 3D — Label3D billboards that float upward
 ; and fade. Tear-down via queue_free after 0.7s lifespan.
 [node name="Popups" type="Node3D" parent="Terrain3D/SubViewport"]
+
+; Iter 86: distance scenery — 5 mountain-silhouette boxes spread along
+; the far horizon at z=-32. Wide, low, dark-purple tinted to suggest
+; atmospheric haze. Gives the dirt plane a horizon to recede toward.
+[node name="MountainA" type="CSGBox3D" parent="Terrain3D/SubViewport"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -16, 3, -32)
+size = Vector3(12, 7, 1)
+material = SubResource("MountainMat_A")
+
+[node name="MountainB" type="CSGBox3D" parent="Terrain3D/SubViewport"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -6, 4, -33)
+size = Vector3(10, 9, 1)
+material = SubResource("MountainMat_B")
+
+[node name="MountainC" type="CSGBox3D" parent="Terrain3D/SubViewport"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 4, 3.5, -32)
+size = Vector3(11, 8, 1)
+material = SubResource("MountainMat_A")
+
+[node name="MountainD" type="CSGBox3D" parent="Terrain3D/SubViewport"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 14, 4.5, -33)
+size = Vector3(10, 10, 1)
+material = SubResource("MountainMat_B")
 
 ; SubViewport renders into this Sprite2D which spans the full screen.
 ; Scale 1 with the 1080×1920 SubViewport means 1:1 pixel mapping.
