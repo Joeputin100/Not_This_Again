@@ -1687,8 +1687,124 @@ func _gold_rush_liquorice_locomotive() -> void:
 	await _gold_rush_six_shooter_salute()
 
 func _gold_rush_avalanche_bonanza() -> void:
+	# Iter 50: Cascading combos. Liquorice boulders + giant jelly beans
+	# rain from the top of the screen. Player shoots them. Each hit:
+	# +100 BOUNTY × multiplier (starts ×1, increments ×1 per consecutive
+	# hit, caps at ×5). Miss any boulder reaching the cowboy → multiplier
+	# resets to ×1. After 5s of raining, the final boulder bursts into
+	# screen-shake chain explosion → AVALANCHE banner + +1200 bonus.
+	_shooting_active = true
+	const RUSH_DURATION: float = 5.0
+	const SPAWN_INTERVAL: float = 0.30
+	const BASE_HIT_BONUS: int = 100
+	const MULTI_CAP: int = 5
+	const CASCADE_BONUS: int = 1200
+	const BOULDER_GRAVITY: float = 380.0
+	const HIT_RADIUS_SQ: float = 80.0 * 80.0
+	const COWBOY_ZONE_Y: float = 1620.0  # below this = "reached cowboy" = miss
+	# Boulder pool: each entry is {node, vel, hp}
+	var boulders: Array[Dictionary] = []
+	var spawn_timer: float = 0.0
+	var rush_timer: float = RUSH_DURATION
+	var multi: int = 1
+	var rng := RandomNumberGenerator.new()
+	rng.seed = 5050
+	var hit_total_count: int = 0
+	while rush_timer > 0.0 and is_inside_tree():
+		var dt: float = get_process_delta_time()
+		rush_timer -= dt
+		spawn_timer -= dt
+		# Spawn a new boulder
+		if spawn_timer <= 0.0:
+			spawn_timer = SPAWN_INTERVAL
+			var b := Polygon2D.new()
+			# Mix liquorice (black) and jelly bean (random hue) boulders
+			if rng.randf() < 0.5:
+				b.color = Color(0.10, 0.07, 0.06, 1.0)
+			else:
+				b.color = Color.from_hsv(rng.randf(), 0.85, 1.0, 1.0)
+			var pts: PackedVector2Array = PackedVector2Array()
+			var sides: int = 6 + rng.randi() % 3  # 6-8 sided
+			for k in range(sides):
+				var a: float = float(k) / float(sides) * TAU
+				var r: float = rng.randf_range(34.0, 52.0)
+				pts.append(Vector2(cos(a), sin(a)) * r)
+			b.polygon = pts
+			b.position = Vector2(rng.randf_range(120.0, 960.0), -80.0)
+			add_child(b)
+			boulders.append({
+				"node": b,
+				"vel": Vector2(0, rng.randf_range(280.0, 380.0)),
+				"hp": 1,
+			})
+		# Update each boulder
+		for i in range(boulders.size() - 1, -1, -1):
+			var entry: Dictionary = boulders[i]
+			var node: Polygon2D = entry.node
+			if not is_instance_valid(node):
+				boulders.remove_at(i)
+				continue
+			entry.vel.y += BOULDER_GRAVITY * dt
+			node.position += entry.vel * dt
+			node.rotation += 1.5 * dt
+			# Bullet hit check
+			var was_hit: bool = false
+			for bullet in get_tree().get_nodes_in_group("bullets"):
+				if bullet.position.distance_squared_to(node.position) < HIT_RADIUS_SQ:
+					bullet.queue_free()
+					was_hit = true
+					break
+			if was_hit:
+				hit_total_count += 1
+				var bonus: int = BASE_HIT_BONUS * multi
+				if get_node_or_null("/root/GameState"):
+					GameState.bounty += bonus
+				DamagePopup.spawn_bounty(self, node.position, bonus)
+				multi = mini(multi + 1, MULTI_CAP)
+				if shake and shake.has_method("add_trauma"):
+					shake.add_trauma(0.20)
+				# Burst the boulder
+				var burst := create_tween().set_parallel(true)
+				burst.tween_property(node, "scale", Vector2(1.8, 1.8), 0.2)
+				burst.tween_property(node, "modulate:a", 0.0, 0.2)
+				burst.chain().tween_callback(node.queue_free)
+				boulders.remove_at(i)
+				continue
+			# Reached cowboy zone = miss → reset multiplier
+			if node.position.y > COWBOY_ZONE_Y:
+				multi = 1
+				node.queue_free()
+				boulders.remove_at(i)
+		await get_tree().process_frame
+	# Chain reaction: cascade finale. Big rainbow explosion at center +
+	# AVALANCHE banner + flat bonus.
+	_shooting_active = false
+	const FINALE_RAY_COUNT: int = 12
+	var finale_center := Vector2(540, 900)
+	for i in range(FINALE_RAY_COUNT):
+		var ray := Polygon2D.new()
+		ray.color = Color.from_hsv(float(i) / float(FINALE_RAY_COUNT), 0.9, 1.0, 1.0)
+		ray.polygon = PackedVector2Array([
+			Vector2(-22, -6), Vector2(22, -6),
+			Vector2(22, 6), Vector2(-22, 6),
+		])
+		ray.position = finale_center
+		add_child(ray)
+		var dir: Vector2 = Vector2.RIGHT.rotated(float(i) / float(FINALE_RAY_COUNT) * TAU)
+		var t := create_tween().set_parallel(true)
+		t.tween_property(ray, "position", finale_center + dir * 700.0, 0.65) \
+			.set_trans(Tween.TRANS_CUBIC).set_ease(Tween.EASE_OUT)
+		t.tween_property(ray, "rotation", dir.angle(), 0.65)
+		t.tween_property(ray, "modulate:a", 0.0, 0.65)
+		t.chain().tween_callback(ray.queue_free)
+	if shake and shake.has_method("add_trauma"):
+		shake.add_trauma(0.95)
+	if get_node_or_null("/root/GameState"):
+		GameState.bounty += CASCADE_BONUS
 	FlourishBanner.spawn($UI, "AVALANCHE", self)
-	await _gold_rush_six_shooter_salute()
+	DamagePopup.spawn_bounty(self, finale_center, CASCADE_BONUS)
+	DebugLog.add("rush G done: %d hits, final multi=%d" % [hit_total_count, multi])
+	await get_tree().create_timer(0.85).timeout
 
 func _gold_rush_gumball_runaway() -> void:
 	FlourishBanner.spawn($UI, "STAMPEDE", self)
