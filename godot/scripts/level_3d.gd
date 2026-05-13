@@ -55,6 +55,10 @@ const BULLET_SPAWN_Y: float = 1.2  # waist-high at cowboy
 @onready var terrain_sprite: Sprite2D = $Terrain3D/Sprite
 @onready var back_button: Button = $UI/BackButton
 @onready var info_label: Label = $UI/InfoLabel
+# Iter 79: dedicated HUD labels.
+@onready var hearts_label: Label = $UI/HeartsLabel
+@onready var posse_label: Label = $UI/PosseLabel
+@onready var hits_label: Label = $UI/HitsLabel
 
 var _spawn_timer: float = 0.0
 var _fire_timer: float = 0.0
@@ -143,6 +147,8 @@ func _ready() -> void:
 	_spawn_posse_followers()
 	info_label.text = "3D PREVIEW · build %s · drag to steer" % BuildInfo.SHA
 	DebugLog.add("level_3d _ready (build=%s)" % BuildInfo.SHA)
+	# Iter 79: initial HUD render.
+	_refresh_hud()
 	# Iter 77: win-modal Retry button.
 	if retry_button:
 		retry_button.pressed.connect(_on_retry_pressed)
@@ -263,10 +269,11 @@ func _check_gate_trigger(gate: Node3D) -> void:
 	else:
 		_posse_count_3d += value
 	_posse_count_3d = maxi(0, _posse_count_3d)
-	info_label.text = "POSSE %d (was %d)  ·  hits %d" % [
-		_posse_count_3d, before, _hits,
+	info_label.text = "gate passed: %s%d  (posse %d→%d)" % [
+		op, value, before, _posse_count_3d,
 	]
 	AudioBus.play_gate_pass()
+	_refresh_hud()
 
 # Iter 77: spawn the Slippery Pete boss. Big yellow CSGBox3D with an
 # HP meta field + state machine. Stops at PETE_STAY_Z for the duel.
@@ -299,6 +306,25 @@ func _pete_fire() -> void:
 	if not (pete is Node3D):
 		return
 	_outlaw_fire(pete)  # reuse outlaw bullet system
+
+# Iter 79: render the 3-label HUD from current state. Called after any
+# event that changes hearts/posse/hits (gate pass, outlaw kill, posse
+# damage). Hearts read from GameState if available.
+func _refresh_hud() -> void:
+	if hearts_label:
+		var max_h: int = 5
+		var current: int = 5
+		if get_node_or_null("/root/GameState"):
+			max_h = GameState.MAX_HEARTS
+			current = GameState.hearts
+		var parts: PackedStringArray = PackedStringArray()
+		for i in range(max_h):
+			parts.append("♥" if i < current else "·")
+		hearts_label.text = " ".join(parts)
+	if posse_label:
+		posse_label.text = "POSSE: %d" % _posse_count_3d
+	if hits_label:
+		hits_label.text = "HITS: %d" % _hits
 
 # Iter 78: trigger the FAIL flow on posse=0. Deduct a heart, pop the
 # FailOverlay, freeze the game (skip _process via _failed flag).
@@ -435,6 +461,7 @@ func _process(delta: float) -> void:
 				if hp <= 0:
 					outlaw.queue_free()
 					_hits += 1
+					_refresh_hud()
 				break
 	# Iter 76: outlaw bullets move along their stored velocity vector.
 	# Despawn off-screen or after reaching cowboy.
@@ -448,7 +475,7 @@ func _process(delta: float) -> void:
 		if ob.position.z > cowboy_3d.position.z - 0.3:
 			ob.queue_free()
 			_posse_count_3d = maxi(0, _posse_count_3d - 1)
-			info_label.text = "POSSE %d  ·  hits %d" % [_posse_count_3d, _hits]
+			_refresh_hud()
 		elif ob.position.z > OUTLAW_BULLET_DESPAWN_Z or absf(ob.position.x) > 25.0:
 			ob.queue_free()
 	# Iter 77: spawn Pete after PETE_SPAWN_DELAY.
@@ -479,6 +506,7 @@ func _process(delta: float) -> void:
 					pete.set_meta("hp", hp)
 					bullet.queue_free()
 					_hits += 1
+					_refresh_hud()
 					if hp <= 0:
 						pete.queue_free()
 						_show_win()
@@ -511,7 +539,7 @@ func _process(delta: float) -> void:
 				obstacle.queue_free()
 				bullet.queue_free()
 				_hits += 1
-				info_label.text = "3D PREVIEW · hits: %d" % _hits
+				_refresh_hud()
 				break
 
 func _input(event: InputEvent) -> void:
