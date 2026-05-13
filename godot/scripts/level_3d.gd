@@ -366,17 +366,74 @@ func _show_fail() -> void:
 	if fail_overlay:
 		fail_overlay.visible = true
 
-# Iter 77: trigger the win flow. Pop the WIN overlay; player can retry.
+# Iter 77/81: trigger the win flow. Pop the WIN overlay AFTER playing
+# the iter 81 Gold Rush salute ceremony — each remaining posse member
+# fires a celebratory shot + spawns a +50 BOUNTY popup. Total bounty
+# accumulated in GameState.
 func _show_win() -> void:
 	_pete_defeated = true
 	info_label.text = "WIN!  Pete defeated · posse %d · hits %d" % [
 		_posse_count_3d, _hits,
 	]
+	await _gold_rush_salute_3d()
 	if win_label:
 		win_label.text = "BOUNTY!\nposse %d · hits %d" % [_posse_count_3d, _hits]
 	if win_overlay:
 		win_overlay.visible = true
-	AudioBus.play_gate_pass()  # placeholder fanfare
+	AudioBus.play_gate_pass()
+
+# Iter 81: Gold Rush A — Six-Shooter Salute, ported to 3D.
+# Each remaining posse member (leader + active followers) fires a
+# bright bullet straight up + spawns a +50 BOUNTY 3D popup at their
+# position. Staggered 280ms per shot. GameState.bounty incremented.
+const SALUTE_PER_SHOT: int = 50
+const SALUTE_STAGGER_S: float = 0.28
+const SALUTE_CASCADE_BONUS: int = 500
+
+func _gold_rush_salute_3d() -> void:
+	# Collect firing positions: leader + all active followers.
+	var positions: Array[Vector3] = []
+	if cowboy_3d:
+		positions.append(cowboy_3d.position)
+	for f in _followers:
+		if is_instance_valid(f):
+			positions.append(f.position)
+	for pos in positions:
+		await get_tree().create_timer(SALUTE_STAGGER_S).timeout
+		if not is_inside_tree():
+			return
+		# Salute bullet — fired straight up, bright yellow.
+		var b := CSGSphere3D.new()
+		b.radius = 0.4
+		b.radial_segments = 8
+		b.rings = 6
+		var mat := StandardMaterial3D.new()
+		mat.albedo_color = Color(1.0, 0.9, 0.3, 1)
+		mat.emission_enabled = true
+		mat.emission = Color(0.8, 0.6, 0.1, 1)
+		b.material = mat
+		b.position = pos + Vector3(0, 1.0, 0)
+		bullets_root.add_child(b)
+		# Tween straight up + fade
+		var t := create_tween().set_parallel(true)
+		t.tween_property(b, "position:y", pos.y + 5.0, 0.6) \
+			.set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
+		t.tween_property(b, "scale", Vector3(0.2, 0.2, 0.2), 0.6) \
+			.set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_IN)
+		t.chain().tween_callback(b.queue_free)
+		_spawn_popup_3d(pos + Vector3(0, 2.0, 0),
+			"+%d" % SALUTE_PER_SHOT, Color(1.0, 0.92, 0.30, 1), 64)
+		AudioBus.play_gunfire()
+		if get_node_or_null("/root/GameState"):
+			GameState.bounty += SALUTE_PER_SHOT
+	# Cascade beat — central +500 popup
+	await get_tree().create_timer(0.3).timeout
+	_spawn_popup_3d(Vector3(0, 3.0, cowboy_3d.position.z),
+		"+%d PERFECT" % SALUTE_CASCADE_BONUS,
+		Color(1.0, 0.92, 0.30, 1), 88)
+	if get_node_or_null("/root/GameState"):
+		GameState.bounty += SALUTE_CASCADE_BONUS
+	await get_tree().create_timer(0.5).timeout
 
 # Iter 76: spawn a red outlaw at a random lane position at far z.
 func _spawn_outlaw() -> void:
