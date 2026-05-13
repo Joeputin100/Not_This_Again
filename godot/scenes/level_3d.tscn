@@ -63,9 +63,12 @@ material_override = SubResource("StandardMaterial3D_dirt")
 ; Iter 64: 3D cowboy lives INSIDE the SubViewport's 3D scene — it's a
 ; Sprite3D billboard always facing the camera. Pixel-size tuned so the
 ; sprite reads ~2 world units tall (matches the dirt scale).
+; Iter 71: pixel_size 0.0003 → 0.002 (sprite ~0.68×0.89 world units —
+; visible but not dominant). y from 0.5 → 0.45 so the sprite's bottom
+; sits at y≈0 (on the dirt plane) instead of floating above.
 [node name="Cowboy3D" type="Sprite3D" parent="Terrain3D/SubViewport"]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.5, 1.5)
-pixel_size = 0.0003
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.45, 1.5)
+pixel_size = 0.002
 billboard = 1
 alpha_cut = 1
 texture = ExtResource("5_cowboy")
