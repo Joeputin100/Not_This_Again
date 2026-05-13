@@ -45,6 +45,10 @@ const BULLET_SPAWN_Y: float = 1.2  # waist-high at cowboy
 @onready var cowboy_3d: Sprite3D = $Terrain3D/SubViewport/Cowboy3D
 @onready var obstacles_root: Node3D = $Terrain3D/SubViewport/Obstacles
 @onready var bullets_root: Node3D = $Terrain3D/SubViewport/Bullets
+# Iter 69: terrain_3d.gd script wasn't attached to the inline Terrain3D
+# node in level_3d.tscn, so the SubViewport→Sprite2D texture wiring
+# never ran. Reference + manual hookup in _ready below.
+@onready var terrain_sprite: Sprite2D = $Terrain3D/Sprite
 @onready var back_button: Button = $UI/BackButton
 @onready var info_label: Label = $UI/InfoLabel
 
@@ -63,6 +67,16 @@ func _ready() -> void:
 	get_window().go_back_requested.connect(_on_back_pressed)
 	back_button.pressed.connect(_on_back_pressed)
 	_rng.seed = 6464
+	# Iter 69: bind the SubViewport's render output to the Sprite2D.
+	# Without this, the Sprite2D has no texture and the Background
+	# ColorRect (dark brown) shows through — exactly what user reported.
+	if terrain_sprite and subviewport:
+		terrain_sprite.texture = subviewport.get_texture()
+		DebugLog.add("level_3d: subviewport→sprite texture bound")
+	else:
+		DebugLog.add("WARN level_3d: terrain_sprite=%s subviewport=%s" % [
+			str(terrain_sprite), str(subviewport),
+		])
 	info_label.text = "3D PREVIEW · build %s · drag to steer" % BuildInfo.SHA
 	DebugLog.add("level_3d _ready (build=%s)" % BuildInfo.SHA)
 
