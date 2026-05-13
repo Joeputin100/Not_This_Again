@@ -865,7 +865,11 @@ func _input(event: InputEvent) -> void:
 	# Screen height is the viewport height, hardcoded to match project's
 	# 1080×1920 base; if the project later supports landscape this needs
 	# to read from get_viewport_rect() instead.
-	if new_y >= 0.0:
+	# Iter 66: don't let touch input re-target world speed when in test
+	# range — the user-iter-65 log showed cacti drifting toward cowboy
+	# every time the user touched the screen (touch-y → mult → cactus
+	# scroll). Test range should keep cacti pinned at their spawn pos.
+	if new_y >= 0.0 and not _test_range_mode:
 		WorldSpeed.set_target(WorldSpeed.target_from_touch_y(new_y, 1920.0))
 
 func _notification(what: int) -> void:
@@ -1300,6 +1304,9 @@ func _deferred_debug_sugar_rush() -> void:
 const _TEST_RANGE_GROUPS: Array[String] = [
 	"barrels", "bulls", "outlaws", "prospectors", "tumbleweeds", "cacti",
 	"bosses", "bonuses",
+	# Iter 66: gates + barricades + chicken_coops missed previously,
+	# causing test range to still fire gate combos / barricade hits.
+	"gates", "barricades", "chicken_coops",
 ]
 const _TEST_RANGE_GRID_ROWS: int = 6
 const _TEST_RANGE_GRID_COLS: int = 6

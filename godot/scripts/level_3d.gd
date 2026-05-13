@@ -29,14 +29,28 @@ const OBSTACLE_DESPAWN_Z: float = 3.5   # past the cowboy
 const OBSTACLE_SPEED: float = 8.0    # world units per second
 const OBSTACLE_SPAWN_INTERVAL: float = 1.2
 
+# Iter 66: 3D bullets — small bright spheres that travel from cowboy
+# along -z axis (away from camera toward the far end of the plane).
+# Auto-fire at FIRE_INTERVAL while game is active. Collision: simple
+# distance-squared check between each bullet and each obstacle.
+const BULLET_SPEED: float = 28.0  # world units per second
+const BULLET_FIRE_INTERVAL: float = 0.20
+const BULLET_DESPAWN_Z: float = -32.0
+const BULLET_COLLISION_DIST_SQ: float = 1.5 * 1.5  # 1.5 world unit radius
+const BULLET_PIXEL_SIZE: float = 0.5  # CSGSphere3D radius
+const BULLET_SPAWN_Y: float = 1.2  # waist-high at cowboy
+
 @onready var subviewport: SubViewport = $Terrain3D/SubViewport
 @onready var camera: Camera3D = $Terrain3D/SubViewport/Camera3D
 @onready var cowboy_3d: Sprite3D = $Terrain3D/SubViewport/Cowboy3D
 @onready var obstacles_root: Node3D = $Terrain3D/SubViewport/Obstacles
+@onready var bullets_root: Node3D = $Terrain3D/SubViewport/Bullets
 @onready var back_button: Button = $UI/BackButton
 @onready var info_label: Label = $UI/InfoLabel
 
 var _spawn_timer: float = 0.0
+var _fire_timer: float = 0.0
+var _hits: int = 0
 var _rng := RandomNumberGenerator.new()
 
 # Target cowboy x in world units, lerped each frame. Set by drag input
@@ -67,6 +81,36 @@ func _process(delta: float) -> void:
 			child.position.z += OBSTACLE_SPEED * delta
 			if child.position.z > OBSTACLE_DESPAWN_Z:
 				child.queue_free()
+	# Iter 66: auto-fire bullets. Cowboy emits bullets along the -z axis
+	# every BULLET_FIRE_INTERVAL seconds. Bullets are CSGSphere3Ds for
+	# simplicity (no texture needed, gets the candy-colored material).
+	_fire_timer -= delta
+	if _fire_timer <= 0.0:
+		_fire_timer = BULLET_FIRE_INTERVAL
+		_spawn_bullet()
+	# Move + collision-check each bullet.
+	for bullet in bullets_root.get_children():
+		if not (bullet is Node3D):
+			continue
+		bullet.position.z -= BULLET_SPEED * delta
+		# Despawn off the far end.
+		if bullet.position.z < BULLET_DESPAWN_Z:
+			bullet.queue_free()
+			continue
+		# Collision check: any obstacle within BULLET_COLLISION_DIST_SQ.
+		for obstacle in obstacles_root.get_children():
+			if not (obstacle is Node3D):
+				continue
+			# Quick AABB-ish check using squared distance in x,z plane
+			# (y is roughly the same — both at ground level).
+			var dx: float = bullet.position.x - obstacle.position.x
+			var dz: float = bullet.position.z - obstacle.position.z
+			if dx * dx + dz * dz < BULLET_COLLISION_DIST_SQ:
+				obstacle.queue_free()
+				bullet.queue_free()
+				_hits += 1
+				info_label.text = "3D PREVIEW · hits: %d" % _hits
+				break
 
 func _input(event: InputEvent) -> void:
 	# Translate drag x to cowboy world-x via the screen-to-plane mapping.
@@ -106,6 +150,31 @@ func _spawn_obstacle() -> void:
 		COWBOY_X_BOUND * 0.85)
 	box.position = Vector3(lane_x, 1.0, OBSTACLE_SPAWN_Z)
 	obstacles_root.add_child(box)
+
+# Iter 66: spawn a single jelly-bean-colored bullet at the cowboy's
+# position, traveling along -z toward the far edge of the plane.
+func _spawn_bullet() -> void:
+	var bullet := CSGSphere3D.new()
+	bullet.radius = BULLET_PIXEL_SIZE
+	bullet.radial_segments = 12
+	bullet.rings = 8
+	# Candy-color palette from iter 40e jelly bean bullets, picked at random
+	var candy: Array[Color] = [
+		Color(1.00, 0.32, 0.42, 1),
+		Color(1.00, 0.84, 0.30, 1),
+		Color(0.42, 0.92, 0.68, 1),
+		Color(0.78, 0.48, 0.92, 1),
+		Color(1.00, 0.62, 0.30, 1),
+		Color(0.95, 0.55, 0.78, 1),
+	]
+	var mat := StandardMaterial3D.new()
+	mat.albedo_color = candy[_rng.randi() % candy.size()]
+	mat.emission_enabled = true
+	mat.emission = mat.albedo_color * 0.4
+	bullet.material = mat
+	bullet.position = Vector3(cowboy_3d.position.x,
+		BULLET_SPAWN_Y, cowboy_3d.position.z - 0.5)
+	bullets_root.add_child(bullet)
 
 func _on_back_pressed() -> void:
 	AudioBus.play_tap()
