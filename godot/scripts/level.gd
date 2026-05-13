@@ -741,6 +741,30 @@ func _equip_bonus(type: String) -> void:
 			_frenzy_timer = FRENZY_DURATION
 			FlourishBanner.spawn($UI, "JELLY_FRENZY", self)
 			DebugLog.add("bonus equipped: jelly_frenzy → %ss burst" % FRENZY_DURATION)
+		"marshmallow_sheriff":
+			# Iter 59: hero unlock. Sheriff joins as a special posse
+			# member (+2 dudes), cowboy swaps to the Marshmallow Cannon.
+			posse_count += 2
+			_gun = WeaponFactoryScript.gun_for_slug("marshmallow_cannon")
+			if _gun:
+				_gun_state = GunStateScript.new(_gun)
+			_spawn_hero_marker("MARSHMALLOW SHERIFF",
+				Color(1.0, 1.0, 0.95, 1.0),
+				Color(0.95, 0.55, 0.20, 1.0))
+			FlourishBanner.spawn($UI, "MEGA!", self)
+			DebugLog.add("bonus equipped: marshmallow_sheriff → Marshmallow Cannon")
+		"laughing_horse":
+			# Iter 60: hero unlock. Horse joins (+1 dude), cowboy swaps to
+			# the Stun Whinny (caliber 0, 2s freeze on hit, rainbow tint).
+			posse_count += 1
+			_gun = WeaponFactoryScript.gun_for_slug("stun_whinny")
+			if _gun:
+				_gun_state = GunStateScript.new(_gun)
+			_spawn_hero_marker("LAUGHING HORSE",
+				Color(0.85, 0.55, 0.25, 1.0),
+				Color(1.0, 0.55, 0.85, 1.0))
+			FlourishBanner.spawn($UI, "MEGA!", self)
+			DebugLog.add("bonus equipped: laughing_horse → Stun Whinny")
 		"rifle":
 			# Tradeoff weapon: caliber 3 (triple damage), 900px range
 			# (50% longer), but only 4 rounds, 1.3s reload, 0.30s
