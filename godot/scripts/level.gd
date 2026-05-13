@@ -526,11 +526,11 @@ func _resolve_bullet_barrel_collisions() -> void:
 					if barrel.bonus_type != "":
 						FlourishBanner.spawn($UI, "TASTY!", self)
 					shake.add_trauma(0.4)
-				# Bullet is consumed on hit. Remove from group so the
-				# next iteration of this pass doesn't see it again.
-				bullet.remove_from_group("bullets")
-				bullet.queue_free()
-				break  # this bullet is done; move to next bullet
+				# Iter 57: route through _consume_bullet so pierce+AOE
+				# weapons compose. Returns true if the bullet was truly
+				# despawned; false if it pierced through and survives.
+				if _consume_bullet(bullet, bullet.position):
+					break  # this bullet is done; move to next bullet
 
 func _resolve_bullet_gate_collisions() -> void:
 	# Discover gates via _gather_gates (same duck-type check used in
@@ -573,11 +573,11 @@ func _resolve_bullet_obstacle_collisions(group_name: String, obstacle_size: Vect
 			if Collision2D.rects_overlap(
 					bullet.position, BulletScript.SIZE,
 					obstacle.position, obstacle_size):
-				var consumed: bool = obstacle.take_bullet_hit(bullet.damage)
-				if consumed:
-					bullet.remove_from_group("bullets")
-					bullet.queue_free()
-					break  # this bullet is done
+				var hit: bool = obstacle.take_bullet_hit(bullet.damage)
+				if hit:
+					# Iter 57: same pierce/AOE composition as barrel pass.
+					if _consume_bullet(bullet, bullet.position):
+						break  # this bullet is done
 
 func _resolve_obstacle_cowboy_collisions(group_name: String, obstacle_size: Vector2) -> void:
 	# Cowboy-vs-group collision pass. On contact: posse takes the
