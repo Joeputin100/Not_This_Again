@@ -31,6 +31,7 @@ const WeatherScript = preload("res://scripts/weather.gd")
 const WeatherManagerScript = preload("res://scripts/weather_manager.gd")
 const MuzzleFlashScene = preload("res://scenes/muzzle_flash.tscn")
 const FlourishBanner = preload("res://scripts/flourish_banner.gd")
+const DamagePopup = preload("res://scripts/damage_popup.gd")
 
 const FOLLOW_SPEED: float = 12.0
 const STARTING_POSSE: int = 5
@@ -1046,12 +1047,85 @@ whatever that's worth." % posse_count
 	# Short additional beat after stopping fire so the gunfire silence
 	# registers before the overlay covers everything.
 	await get_tree().create_timer(0.55).timeout
+	# Iter 43b: Gold Rush ceremony. Dispatches by level difficulty —
+	# only level 1 (Easy/Peppermint) is currently wired, plays the
+	# Six-Shooter Salute (A). Medium/Hard/Extreme implementations
+	# deferred to future iters; they no-op to the existing flow.
+	await _play_gold_rush()
 	win_overlay.visible = true
 	win_panel.scale = Vector2(0.55, 0.55)
 	var tween := create_tween().set_parallel(true)
 	tween.tween_property(win_panel, "scale", Vector2.ONE, 0.32) \
 		.set_trans(Tween.TRANS_BACK) \
 		.set_ease(Tween.EASE_OUT)
+
+# Iter 43b: returns the Gold Rush flavor for this level's difficulty.
+# Currently hardcoded to "A" because the only playable level is level 1
+# (Easy/Peppermint). Future: read from a per-level difficulty resource
+# tied to the level_select tile that spawned this scene. The dispatch
+# logic flows: GameState.current_level → difficulty → rush flavor.
+#   Easy    → "A" (Six-Shooter Salute)
+#   Medium  → "D" (Tumbleweed Bonus Roll) — not yet implemented
+#   Hard    → "B" (Jelly Jar Cascade) — not yet implemented
+#   Extreme → TBD
+func _gold_rush_flavor() -> String:
+	# Single-level v1 always plays A.
+	return "A"
+
+# Top-level dispatcher. Awaitable: caller can chain `await` for ordering.
+func _play_gold_rush() -> void:
+	match _gold_rush_flavor():
+		"A":
+			await _gold_rush_six_shooter_salute()
+		_:
+			# Future B/D/extreme implementations land here; for now we
+			# just skip the ceremony and proceed straight to the modal.
+			pass
+
+# Gold Rush A — Six-Shooter Salute.
+# Each remaining dude (leader cowboy + active followers) fires once into
+# the sky, staggered 300ms apart. Each shot spawns:
+#   - muzzle flash above their head
+#   - gunfire SFX (rolls through the existing 6-player pool)
+#   - +50 BOUNTY popup
+#   - GameState.bounty incremented by 50
+# Caller awaits this so the WinOverlay slides in AFTER the salute
+# completes. Ceremony length ~ posse_count × 300ms (max 1.5s at 5 dudes).
+const SALUTE_BONUS_PER_SHOT: int = 50
+const SALUTE_STAGGER_S: float = 0.30
+const SALUTE_END_HOLD_S: float = 0.35
+
+func _gold_rush_six_shooter_salute() -> void:
+	# Build the salute roster: leader's position + each follower.
+	var positions: Array[Vector2] = []
+	if cowboy:
+		positions.append(cowboy.global_position)
+	if posse_renderer:
+		for follower_pos in posse_renderer.get_dude_world_positions():
+			positions.append(follower_pos)
+	DebugLog.add("gold rush: six-shooter salute, %d dudes" % positions.size())
+	var total_earned: int = 0
+	for i in range(positions.size()):
+		await get_tree().create_timer(SALUTE_STAGGER_S).timeout
+		if not is_inside_tree():
+			return
+		# Anchor effects ~100px above each dude's spawn point so the
+		# shot reads as "fired upward into the air".
+		var spot: Vector2 = positions[i] + Vector2(0, -110)
+		var flash := MuzzleFlashScene.instantiate()
+		flash.position = spot
+		add_child(flash)
+		AudioBus.play_gunfire()
+		DamagePopup.spawn_bounty(self, spot, SALUTE_BONUS_PER_SHOT)
+		total_earned += SALUTE_BONUS_PER_SHOT
+		if get_node_or_null("/root/GameState"):
+			GameState.bounty += SALUTE_BONUS_PER_SHOT
+	# Final beat — the silence between the last shot and the modal sells
+	# "ceremony complete." Shake camera once on the final shot for punch.
+	if shake and shake.has_method("add_trauma"):
+		shake.add_trauma(0.45)
+	await get_tree().create_timer(SALUTE_END_HOLD_S).timeout
+	DebugLog.add("gold rush salute done, earned=%d" % total_earned)
 
 # Iter 25+: switch leader cowboy + every follower in PosseRenderer from
 # run_shoot to idle. Called on win so the crowd visibly relaxes once

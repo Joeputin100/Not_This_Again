@@ -55,6 +55,33 @@ static func _size_for_damage(damage: int) -> int:
 	else:
 		return 112
 
+# Spawn a BOUNTY popup at world_pos. Gold color, "+" prefix instead of
+# "-", uses the same scale + lifespan as damage. Iter 43b: used by the
+# end-of-level Gold Rush ceremony where each remaining dude fires their
+# gun and a +50 BOUNTY popup floats up from their position. Visually
+# distinct from damage popups (different color, different prefix) so
+# the player reads "bonus earned" vs "enemy hurt" at a glance.
+static func spawn_bounty(parent: Node, world_pos: Vector2, amount: int) -> void:
+	if parent == null or not is_instance_valid(parent):
+		return
+	if amount <= 0:
+		return
+	var popup: Label = SPAWN_SCENE.instantiate()
+	parent.add_child(popup)
+	popup.text = "+%d" % amount
+	# Gold color override — the popup scene defaults to red damage tint.
+	popup.add_theme_color_override("font_color", Color(1.00, 0.92, 0.30, 1.0))
+	popup.add_theme_font_size_override("font_size", _size_for_damage(amount))
+	var jitter_x: float = randf_range(-X_JITTER, X_JITTER)
+	popup.global_position = world_pos + Vector2(jitter_x - 160.0, -60.0)
+	var tween: Tween = popup.create_tween().set_parallel(true)
+	tween.tween_property(popup, "global_position:y",
+		popup.global_position.y - RISE_DISTANCE, LIFESPAN) \
+		.set_trans(Tween.TRANS_CUBIC).set_ease(Tween.EASE_OUT)
+	tween.tween_property(popup, "modulate:a", 0.0, LIFESPAN) \
+		.set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_IN)
+	tween.chain().tween_callback(popup.queue_free)
+
 # Spawn a damage popup at world_pos. parent should typically be the
 # level (so the popup outlives the killed enemy). damage drives both
 # the text content and the font size.
