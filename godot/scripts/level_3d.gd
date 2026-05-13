@@ -60,6 +60,7 @@ const BULLET_SPAWN_Y: float = 1.2  # waist-high at cowboy
 @onready var posse_label: Label = $UI/PosseLabel
 @onready var hits_label: Label = $UI/HitsLabel
 @onready var popups_root: Node3D = $Terrain3D/SubViewport/Popups
+@onready var bonuses_root: Node3D = $Terrain3D/SubViewport/Bonuses
 
 var _spawn_timer: float = 0.0
 var _fire_timer: float = 0.0
@@ -98,6 +99,19 @@ const PETE_SPEED: float = 1.6
 const PETE_FIRE_INTERVAL: float = 1.0
 const PETE_HIT_RADIUS_SQ: float = 2.6 * 2.6
 const PETE_STAY_Z: float = -6.0  # stops here for the duel
+
+# Iter 88: bonus pickup spawn parameters. Pickups appear periodically
+# at a random lane x, hover with sine y-bob, scroll toward cowboy.
+# Collision with cowboy → BulletFireMode change for the rest of level.
+const BONUS_SPAWN_INTERVAL: float = 7.0
+const BONUS_PICKUP_RADIUS_SQ: float = 1.6 * 1.6
+const BONUS_SPEED: float = OBSTACLE_SPEED  # match obstacle scroll
+var _bonus_spawn_timer: float = 0.0
+
+# Iter 88: bullet fire modes. Each pickup changes how _spawn_bullet
+# colors / sizes its bullets. Default = candy palette random.
+enum FireMode { CANDY, RIFLE, FROSTBITE, FRENZY }
+var _fire_mode: int = FireMode.CANDY
 var _pete_spawned: bool = false
 var _pete_defeated: bool = false
 var _level_elapsed: float = 0.0
@@ -282,6 +296,56 @@ func _check_gate_trigger(gate: Node3D) -> void:
 	]
 	AudioBus.play_gate_pass()
 	_refresh_hud()
+
+# Iter 88: spawn a bonus pickup. Tall thin floating Sprite3D-style box
+# with a math-symbol Label3D billboard above it. Cowboy collides to
+# collect; pickup_type meta drives the FireMode swap.
+const BONUS_TYPES: Array[String] = ["rifle", "frostbite", "frenzy"]
+const BONUS_COLORS: Dictionary = {
+	"rifle":     Color(0.55, 0.32, 0.16, 1),    # brown wood-stock
+	"frostbite": Color(0.55, 0.85, 1.00, 1),    # icy cyan
+	"frenzy":    Color(1.00, 0.55, 0.85, 1),    # pink frenzy
+}
+const BONUS_LABELS: Dictionary = {
+	"rifle":     "R",
+	"frostbite": "❄",
+	"frenzy":    "J!",
+}
+
+func _spawn_bonus() -> void:
+	var t: String = BONUS_TYPES[_rng.randi() % BONUS_TYPES.size()]
+	var bonus := CSGBox3D.new()
+	bonus.size = Vector3(1.0, 1.0, 1.0)
+	var mat := StandardMaterial3D.new()
+	mat.albedo_color = BONUS_COLORS[t]
+	mat.emission_enabled = true
+	mat.emission = mat.albedo_color * 0.6
+	bonus.material = mat
+	var lane_x: float = _rng.randf_range(-COWBOY_X_BOUND * 0.65,
+		COWBOY_X_BOUND * 0.65)
+	bonus.position = Vector3(lane_x, 1.5, OBSTACLE_SPAWN_Z + 2.0)
+	bonus.set_meta("bonus_type", t)
+	bonus.set_meta("spawn_time", _level_elapsed)
+	# Floating type label above the box
+	var lbl := Label3D.new()
+	lbl.text = BONUS_LABELS[t]
+	lbl.font_size = 64
+	lbl.outline_size = 8
+	lbl.modulate = Color(1, 1, 1, 1)
+	lbl.position = Vector3(0, 1.0, 0)
+	bonus.add_child(lbl)
+	bonuses_root.add_child(bonus)
+
+# Iter 88: cowboy collects a bonus → swap FireMode + show feedback popup.
+func _collect_bonus(bonus: Node3D) -> void:
+	var t: String = bonus.get_meta("bonus_type", "candy")
+	match t:
+		"rifle":     _fire_mode = FireMode.RIFLE
+		"frostbite": _fire_mode = FireMode.FROSTBITE
+		"frenzy":    _fire_mode = FireMode.FRENZY
+	_spawn_popup_3d(bonus.position + Vector3(0, 2.0, 0),
+		t.to_upper(), BONUS_COLORS[t], 56)
+	bonus.queue_free()
 
 # Iter 77: spawn the Slippery Pete boss. Big yellow CSGBox3D with an
 # HP meta field + state machine. Stops at PETE_STAY_Z for the duel.
@@ -663,6 +727,26 @@ func _process(delta: float) -> void:
 			_refresh_hud()
 		elif ob.position.z > OUTLAW_BULLET_DESPAWN_Z or absf(ob.position.x) > 25.0:
 			ob.queue_free()
+	# Iter 88: bonus pickup spawn / scroll / collect.
+	_bonus_spawn_timer -= delta
+	if _bonus_spawn_timer <= 0.0:
+		_bonus_spawn_timer = BONUS_SPAWN_INTERVAL
+		_spawn_bonus()
+	for bonus in bonuses_root.get_children():
+		if not (bonus is Node3D):
+			continue
+		bonus.position.z += BONUS_SPEED * delta
+		# Sine y-bob for floating feel
+		var st: float = bonus.get_meta("spawn_time", 0.0)
+		bonus.position.y = 1.5 + sin((_level_elapsed - st) * 4.0) * 0.2
+		bonus.rotation.y += 2.0 * delta  # slow spin
+		# Cowboy collision check
+		var bdx: float = bonus.position.x - cowboy_3d.position.x
+		var bdz: float = bonus.position.z - cowboy_3d.position.z
+		if bdx * bdx + bdz * bdz < BONUS_PICKUP_RADIUS_SQ:
+			_collect_bonus(bonus)
+		elif bonus.position.z > OBSTACLE_DESPAWN_Z:
+			bonus.queue_free()
 	# Iter 77: spawn Pete after PETE_SPAWN_DELAY.
 	if not _pete_spawned and _level_elapsed >= PETE_SPAWN_DELAY:
 		_pete_spawned = true
@@ -829,17 +913,31 @@ func _spawn_bullet() -> void:
 		if is_instance_valid(f):
 			_spawn_bullet_at(f.position.x, f.position.z)
 
-# Iter 73: factored out per-position bullet spawner. Same candy-color
-# palette + emissive material + -z velocity as iter 66.
+# Iter 73/88: per-position bullet spawner — bullet visual + size now
+# depends on _fire_mode set by iter 88 bonus pickups.
 func _spawn_bullet_at(world_x: float, world_z: float) -> void:
 	var bullet := CSGSphere3D.new()
-	bullet.radius = BULLET_PIXEL_SIZE
+	var mat := StandardMaterial3D.new()
+	match _fire_mode:
+		FireMode.RIFLE:
+			# Bigger, faster, brown rifle round
+			bullet.radius = BULLET_PIXEL_SIZE * 1.4
+			mat.albedo_color = Color(0.75, 0.55, 0.25, 1)
+		FireMode.FROSTBITE:
+			# Cyan icy bullet
+			bullet.radius = BULLET_PIXEL_SIZE * 1.1
+			mat.albedo_color = Color(0.55, 0.85, 1.00, 1)
+		FireMode.FRENZY:
+			# Bright pink frenzy
+			bullet.radius = BULLET_PIXEL_SIZE
+			mat.albedo_color = Color(1.00, 0.45, 0.85, 1)
+		_:  # CANDY (default)
+			bullet.radius = BULLET_PIXEL_SIZE
+			mat.albedo_color = CANDY_BULLET_COLORS[_rng.randi() % CANDY_BULLET_COLORS.size()]
 	bullet.radial_segments = 12
 	bullet.rings = 8
-	var mat := StandardMaterial3D.new()
-	mat.albedo_color = CANDY_BULLET_COLORS[_rng.randi() % CANDY_BULLET_COLORS.size()]
 	mat.emission_enabled = true
-	mat.emission = mat.albedo_color * 0.4
+	mat.emission = mat.albedo_color * 0.5
 	bullet.material = mat
 	bullet.position = Vector3(world_x, BULLET_SPAWN_Y, world_z - 0.5)
 	bullets_root.add_child(bullet)

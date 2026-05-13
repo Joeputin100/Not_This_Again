@@ -113,6 +113,10 @@ texture = ExtResource("5_cowboy")
 ; and fade. Tear-down via queue_free after 0.7s lifespan.
 [node name="Popups" type="Node3D" parent="Terrain3D/SubViewport"]
 
+; Iter 88: bonus pickup spawns. Each = a small floating gold Sprite3D
+; or CSG above the dirt; cowboy collides → weapon variant change.
+[node name="Bonuses" type="Node3D" parent="Terrain3D/SubViewport"]
+
 ; Iter 86: distance scenery — 5 mountain-silhouette boxes spread along
 ; the far horizon at z=-32. Wide, low, dark-purple tinted to suggest
 ; atmospheric haze. Gives the dirt plane a horizon to recede toward.
