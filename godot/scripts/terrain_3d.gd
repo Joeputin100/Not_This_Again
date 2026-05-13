@@ -60,11 +60,12 @@ func nudge_uv(delta_y: float) -> void:
 func _process(delta: float) -> void:
 	if not _scroll_active or not auto_scroll:
 		return
-	_uv_offset += SCROLL_SPEED * WorldSpeed.mult * delta
-	# Wrap to keep the offset bounded — UV repeat makes any whole-tile
-	# offset visually equivalent, but unbounded floats could lose
-	# precision after long sessions.
-	if _uv_offset > 1.0:
-		_uv_offset -= 1.0
+	# Iter 67: NEGATED — previous direction made the cowboy appear to
+	# run backwards (dirt scrolled away from him toward the camera).
+	# Subtracting moves the texture in the opposite UV direction so the
+	# dirt now appears to move FROM the horizon TOWARD the camera —
+	# matches the perception of "running forward into the scene."
+	# Using fposmod for robust wrap-around in both directions.
+	_uv_offset = fposmod(_uv_offset - SCROLL_SPEED * WorldSpeed.mult * delta, 1.0)
 	if _material:
 		_material.uv1_offset = Vector3(0.0, _uv_offset, 0.0)
