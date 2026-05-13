@@ -96,6 +96,27 @@ static func spawn(parent: Node, preset_name: String, shake_source: Node = null) 
 			and shake_source.shake.has_method("add_trauma"):
 		shake_source.shake.add_trauma(data.trauma)
 
+# Iter 89: max horizontal width the banner text should occupy. 1000px
+# leaves 40px margin on each side of the 1080-wide screen so we don't
+# clip on Android devices with rounded corners or notches.
+const MAX_TEXT_WIDTH: float = 1000.0
+
+# Iter 89: rough character-width-per-pt ratio for Western text in the
+# project's theme font. Empirical; tuned so 18 chars × 144pt × 0.55 =
+# 1425 → scales down to ~100pt to fit 1000px width.
+const APPROX_CHAR_WIDTH_RATIO: float = 0.55
+
+# Iter 89: heuristically scale font_size down when text would overflow
+# MAX_TEXT_WIDTH. Short presets keep their punchy size; long ones
+# ('JELLY BEAN FRENZY!', 'RELUCTANTLY COMPETENT.', 'PERFECT VOLLEY!')
+# auto-shrink. Returns max(base, 32) to avoid microscopic text.
+static func _fit_font_size(text: String, base: int) -> int:
+	var approx_w: float = float(text.length()) * float(base) * APPROX_CHAR_WIDTH_RATIO
+	if approx_w <= MAX_TEXT_WIDTH:
+		return base
+	var scaled: int = int(float(base) * (MAX_TEXT_WIDTH / approx_w))
+	return maxi(scaled, 32)
+
 # Plays the banner. Static spawn() calls this on the freshly-instantiated
 # node; can also be called directly if the caller wants custom text
 # outside the preset library.
@@ -103,7 +124,9 @@ func play(text: String, color: Color, font_size: int, ring_color: Color) -> void
 	# ---- Label setup ----
 	label.text = text
 	label.add_theme_color_override("font_color", color)
-	label.add_theme_font_size_override("font_size", font_size)
+	# Iter 89: auto-fit font_size so long banners don't overflow the
+	# 1080px screen width.
+	label.add_theme_font_size_override("font_size", _fit_font_size(text, font_size))
 	# pivot for scale-pop tween — center of the label's bounding box.
 	label.pivot_offset = label.size / 2.0
 	label.scale = Vector2(0.35, 0.35)
