@@ -1683,8 +1683,154 @@ func _gold_rush_candy_cart_chain() -> void:
 	await get_tree().create_timer(0.8).timeout
 
 func _gold_rush_liquorice_locomotive() -> void:
+	# Iter 51: Color Bomb chain. A black liquorice steam train chuffs
+	# across the bottom of the screen pulling N candy cars (one per
+	# remaining posse member). Player taps each car as it passes through
+	# the tap zone. Tapping in sequence builds a multiplier (×2,×3,×4).
+	# Last car (caboose) tap triggers the LOCOMOTIVE finale with all
+	# previous multiplier value compounded.
+	_shooting_active = false
+	const PER_CAR_BONUS: int = 200
+	const LAST_CAR_FINALE: int = 1500
+	const TRAIN_Y: float = 1380.0
+	const MAX_CARS: int = 5
+	var car_count: int = mini(maxi(posse_count, 1), MAX_CARS)
+	# Train assembly: engine + N cars. All move together left→right.
+	var train := Node2D.new()
+	train.position = Vector2(-380.0, TRAIN_Y)  # off-screen left
+	add_child(train)
+	# Engine (steam locomotive — black with red wheels + smokestack)
+	var engine_body := Polygon2D.new()
+	engine_body.color = Color(0.08, 0.06, 0.05, 1.0)
+	engine_body.polygon = PackedVector2Array([
+		Vector2(0, -60), Vector2(140, -60),
+		Vector2(140, 30), Vector2(0, 30),
+	])
+	train.add_child(engine_body)
+	var stack := Polygon2D.new()
+	stack.color = Color(0.18, 0.14, 0.10, 1.0)
+	stack.polygon = PackedVector2Array([
+		Vector2(20, -100), Vector2(60, -100),
+		Vector2(60, -60), Vector2(20, -60),
+	])
+	train.add_child(stack)
+	for wx in [20, 80, 130]:
+		var w := Polygon2D.new()
+		w.color = Color(0.78, 0.18, 0.18, 1.0)
+		var pts := PackedVector2Array()
+		for v in range(10):
+			var a: float = float(v) / 10.0 * TAU
+			pts.append(Vector2(cos(a), sin(a)) * 24.0)
+		w.polygon = pts
+		w.position = Vector2(float(wx), 40)
+		train.add_child(w)
+	# Cars — Buttons (tap targets) following the engine.
+	var cars: Array[Button] = []
+	for i in range(car_count):
+		var car := Button.new()
+		car.custom_minimum_size = Vector2(140, 95)
+		car.size = Vector2(140, 95)
+		car.position = Vector2(170.0 + float(i) * 155.0, -55.0)
+		# Candy-themed colors per car, cycling rainbow
+		var hue: float = float(i) / float(car_count)
+		var sb := StyleBoxFlat.new()
+		sb.bg_color = Color.from_hsv(hue, 0.85, 0.95, 1.0)
+		sb.border_color = Color(0.18, 0.05, 0.10, 1.0)
+		sb.border_width_left = 5
+		sb.border_width_top = 5
+		sb.border_width_right = 5
+		sb.border_width_bottom = 5
+		sb.corner_radius_top_left = 12
+		sb.corner_radius_top_right = 12
+		sb.corner_radius_bottom_right = 12
+		sb.corner_radius_bottom_left = 12
+		car.add_theme_stylebox_override("normal", sb)
+		car.add_theme_stylebox_override("hover", sb)
+		car.add_theme_stylebox_override("pressed", sb)
+		car.text = "🍭" if i < car_count - 1 else "🎆"
+		car.add_theme_font_size_override("font_size", 44)
+		train.add_child(car)
+		cars.append(car)
+	# Connector polygons between cars (visual coupling).
+	for i in range(car_count):
+		var conn := Polygon2D.new()
+		conn.color = Color(0.12, 0.08, 0.06, 1.0)
+		conn.polygon = PackedVector2Array([
+			Vector2(150.0 + float(i) * 155.0, -8),
+			Vector2(170.0 + float(i) * 155.0, -8),
+			Vector2(170.0 + float(i) * 155.0, 8),
+			Vector2(150.0 + float(i) * 155.0, 8),
+		])
+		train.add_child(conn)
+	# Counters
+	var taps: int = 0
+	var current_multi: int = 1
+	# Wire each car's pressed signal (closure captures i + car).
+	for i in range(car_count):
+		var car := cars[i]
+		var car_index: int = i
+		car.pressed.connect(func():
+			if not is_instance_valid(car) or car.disabled:
+				return
+			car.disabled = true
+			taps += 1
+			# Building chain — multiplier grows for sequential taps
+			current_multi = mini(taps + 1, 4)
+			var car_bonus: int = PER_CAR_BONUS * current_multi
+			if get_node_or_null("/root/GameState"):
+				GameState.bounty += car_bonus
+			# Tap visual: car flashes white + +bounty popup at car center
+			var center: Vector2 = car.global_position + car.size * 0.5
+			DamagePopup.spawn_bounty(self, center, car_bonus)
+			var flash := create_tween()
+			flash.tween_property(car, "modulate", Color(2.0, 2.0, 2.0, 1.0), 0.06)
+			flash.tween_property(car, "modulate", Color(1, 1, 1, 0.2), 0.45)
+			if shake and shake.has_method("add_trauma"):
+				shake.add_trauma(0.25))
+	# Slide the train across the screen over ~4 seconds.
+	const TRAIN_TRAVEL_S: float = 4.0
+	var slide := create_tween()
+	slide.tween_property(train, "position:x", 1400.0, TRAIN_TRAVEL_S) \
+		.set_trans(Tween.TRANS_LINEAR)
+	# Wait for the slide to complete OR all cars tapped, whichever first.
+	var elapsed: float = 0.0
+	while elapsed < TRAIN_TRAVEL_S and taps < car_count and is_inside_tree():
+		await get_tree().process_frame
+		elapsed += get_process_delta_time()
+	# Cascade: finale. If the player tapped the caboose (last car), give
+	# the full LAST_CAR_FINALE bonus + screen-clearing fireworks. Even
+	# without finale tap, fire the LOCOMOTIVE banner so the rush ends
+	# cleanly.
+	if taps >= car_count and get_node_or_null("/root/GameState"):
+		GameState.bounty += LAST_CAR_FINALE
+		var finale_center := Vector2(540, 1100)
+		DamagePopup.spawn_bounty(self, finale_center, LAST_CAR_FINALE)
+		# Burst rainbow rays from the caboose position
+		for i in range(16):
+			var ray := Polygon2D.new()
+			ray.color = Color.from_hsv(float(i) / 16.0, 0.9, 1.0, 1.0)
+			ray.polygon = PackedVector2Array([
+				Vector2(-20, -5), Vector2(20, -5),
+				Vector2(20, 5), Vector2(-20, 5),
+			])
+			ray.position = finale_center
+			add_child(ray)
+			var dir: Vector2 = Vector2.RIGHT.rotated(float(i) / 16.0 * TAU)
+			var t := create_tween().set_parallel(true)
+			t.tween_property(ray, "position", finale_center + dir * 800.0, 0.7) \
+				.set_trans(Tween.TRANS_CUBIC).set_ease(Tween.EASE_OUT)
+			t.tween_property(ray, "rotation", dir.angle(), 0.7)
+			t.tween_property(ray, "modulate:a", 0.0, 0.7)
+			t.chain().tween_callback(ray.queue_free)
+		if shake and shake.has_method("add_trauma"):
+			shake.add_trauma(0.95)
 	FlourishBanner.spawn($UI, "LOCOMOTIVE", self)
-	await _gold_rush_six_shooter_salute()
+	# Fade train out
+	var fade := create_tween()
+	fade.tween_property(train, "modulate:a", 0.0, 0.6)
+	fade.chain().tween_callback(train.queue_free)
+	DebugLog.add("rush F done: %d/%d cars tapped, multi=%d" % [taps, car_count, current_multi])
+	await get_tree().create_timer(0.8).timeout
 
 func _gold_rush_avalanche_bonanza() -> void:
 	# Iter 50: Cascading combos. Liquorice boulders + giant jelly beans
