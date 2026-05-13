@@ -151,9 +151,17 @@ const BOB_FREQUENCY: float = 4.5
 var _bob_time: float = 0.0
 
 func _ready() -> void:
+	# Iter 91: breadcrumbs after every step so a freeze post-PREVIEW-3D
+	# pinpoints the failing line in the COPY log.
+	DebugLog.add("level_3d _ready start (build=%s iter=%s)" % [
+		BuildInfo.SHA, BuildInfo.ITER,
+	])
 	get_tree().set_quit_on_go_back(false)
-	get_window().go_back_requested.connect(_on_back_pressed)
-	back_button.pressed.connect(_on_back_pressed)
+	if get_window():
+		get_window().go_back_requested.connect(_on_back_pressed)
+	if back_button:
+		back_button.pressed.connect(_on_back_pressed)
+	DebugLog.add("level_3d: back signals wired")
 	_rng.seed = 6464
 	# Iter 69: bind the SubViewport's render output to the Sprite2D.
 	# Without this, the Sprite2D has no texture and the Background

@@ -96,10 +96,13 @@ static func spawn(parent: Node, preset_name: String, shake_source: Node = null) 
 			and shake_source.shake.has_method("add_trauma"):
 		shake_source.shake.add_trauma(data.trauma)
 
-# Iter 89: max horizontal width the banner text should occupy. 1000px
-# leaves 40px margin on each side of the 1080-wide screen so we don't
-# clip on Android devices with rounded corners or notches.
-const MAX_TEXT_WIDTH: float = 1000.0
+# Iter 89/91: max horizontal width the banner text should occupy. The
+# iter 44 scale-pop tween briefly overshoots to scale 1.15× before
+# settling at 1.0×, so the EFFECTIVE peak width is text_width × 1.15.
+# To make the peak fit a 1000px target area, we measure against
+# 1000 / 1.15 ≈ 870px instead. User report iter 90: 'text starts too
+# large for the screen then shrinks' — that overshoot was the cause.
+const MAX_TEXT_WIDTH: float = 870.0
 
 # Iter 90: use the ACTUAL theme font's measurement via
 # Font.get_string_size rather than a character-width heuristic. Iter 89's
