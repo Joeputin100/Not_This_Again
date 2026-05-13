@@ -1,0 +1,11 @@
+[gd_resource type="Resource" script_class="LevelDef" load_steps=2 format=3 uid="uid://b0nttg_lvldef_2"]
+
+[ext_resource type="Script" path="res://scripts/level_def.gd" id="1_def"]
+
+[resource]
+script = ExtResource("1_def")
+difficulty = 2
+terrain = "mine"
+display_name = "MINE SHAFT MAYHEM"
+seed = 2
+weather_type = ""

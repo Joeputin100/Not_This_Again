@@ -1,0 +1,11 @@
+[gd_resource type="Resource" script_class="LevelDef" load_steps=2 format=3 uid="uid://b0nttg_lvldef_3"]
+
+[ext_resource type="Script" path="res://scripts/level_def.gd" id="1_def"]
+
+[resource]
+script = ExtResource("1_def")
+difficulty = 3
+terrain = "farm"
+display_name = "FARM ROAD FRACAS"
+seed = 3
+weather_type = ""

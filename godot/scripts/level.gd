@@ -185,6 +185,10 @@ func _ready() -> void:
 	get_window().go_back_requested.connect(_on_back_requested_signal)
 	DebugLog.add("level: quit_on_go_back=%s" % str(get_tree().is_quit_on_go_back()))
 	target_x = cowboy.position.x
+	# Iter 54: load per-level resource based on GameState.current_level.
+	# Falls back to the @export defaults if the resource is missing
+	# (handles first-launch + dev-time scene execution).
+	_load_level_def()
 	# Iter 42b: reset world scroll speed to neutral on each level entry,
 	# so the player's finger position from the previous level/menu doesn't
 	# carry over and a fresh level starts at the documented baseline.
@@ -1098,6 +1102,12 @@ whatever that's worth." % posse_count
 @export var level_difficulty: int = 1
 @export var level_terrain: String = "frontier"
 
+# Iter 54: optional per-level definition resource. If assigned, overrides
+# the @export defaults above. Loaded in _ready from GameState.current_level
+# → "res://resources/levels/level_{n}.tres". Allows the same level.tscn
+# to drive every level with only the resource swapping.
+@export var level_def: LevelDef
+
 # Dispatch table per the memory's matrix. Returns the rush ID to play.
 # "A"/"B"/"D"/"E"/"F"/"G"/"H" map to _gold_rush_* methods below.
 # Iter 46: when true, this scene is running as a TEST RANGE — posse
@@ -1111,6 +1121,32 @@ var _test_range_mode: bool = false
 # DebugPreview when launching from the debug menu's "Preview Rush X"
 # buttons. Cleared after first use.
 var _debug_override_rush: String = ""
+
+# Iter 54: load level definition based on GameState.current_level. The
+# resource file maps level # → {difficulty, terrain, display_name, seed}.
+# Falls back gracefully when the resource doesn't exist yet (e.g., a
+# level number with no .tres committed).
+func _load_level_def() -> void:
+	if get_node_or_null("/root/GameState") == null:
+		return
+	var n: int = GameState.current_level
+	var path := "res://resources/levels/level_%d.tres" % n
+	if not ResourceLoader.exists(path):
+		DebugLog.add("level %d: no resource at %s — using @export defaults" % [n, path])
+		return
+	var def: Resource = ResourceLoader.load(path)
+	if def == null:
+		return
+	# Copy resource fields onto the scene's runtime properties so
+	# everything downstream (_gold_rush_for, banners, etc.) reads from
+	# the same flat fields.
+	if "difficulty" in def:
+		level_difficulty = def.difficulty
+	if "terrain" in def:
+		level_terrain = def.terrain
+	DebugLog.add("level %d: loaded def difficulty=%d terrain=%s" % [
+		n, level_difficulty, level_terrain,
+	])
 
 func _gold_rush_for(difficulty: int, terrain: String) -> String:
 	# Iter 45: debug-menu override wins over the matrix.
