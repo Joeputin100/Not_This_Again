@@ -1,4 +1,4 @@
-[gd_scene load_steps=12 format=3 uid="uid://b0nttg_lvl3d_001"]
+[gd_scene load_steps=14 format=3 uid="uid://b0nttg_lvl3d_001"]
 
 [ext_resource type="Script" path="res://scripts/level_3d.gd" id="1_lvl3d"]
 [ext_resource type="Texture2D" path="res://assets/textures/dirt_2k.png" id="2_dirt"]
@@ -20,6 +20,12 @@ roughness = 1.0
 [sub_resource type="StandardMaterial3D" id="MountainMat_B"]
 albedo_color = Color(0.42, 0.28, 0.36, 1)
 roughness = 1.0
+
+; Iter 92: shared unit-cube BoxMesh used by all 4 mountains. Each
+; instance scales it via transform basis to its desired size, avoiding
+; the per-node CSG mesh recompute on the mobile renderer.
+[sub_resource type="BoxMesh" id="MountainBoxMesh"]
+size = Vector3(1, 1, 1)
 
 [sub_resource type="StandardMaterial3D" id="StandardMaterial3D_dirt"]
 albedo_texture = ExtResource("2_dirt")
@@ -117,28 +123,30 @@ texture = ExtResource("5_cowboy")
 ; or CSG above the dirt; cowboy collides → weapon variant change.
 [node name="Bonuses" type="Node3D" parent="Terrain3D/SubViewport"]
 
-; Iter 86: distance scenery — 5 mountain-silhouette boxes spread along
-; the far horizon at z=-32. Wide, low, dark-purple tinted to suggest
-; atmospheric haze. Gives the dirt plane a horizon to recede toward.
-[node name="MountainA" type="CSGBox3D" parent="Terrain3D/SubViewport"]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -16, 3, -32)
-size = Vector3(12, 7, 1)
-material = SubResource("MountainMat_A")
+; Iter 86/92: distance scenery — 4 horizon silhouettes at z=-32. Iter 92
+; converted CSGBox3D → MeshInstance3D + shared BoxMesh subresource +
+; transform.scale to vary size. CSG nodes were the likely cause of the
+; user-reported 3D preview freeze on Android (mobile GPU stalls when
+; combining CSG mesh compute + 1080×1920 SubViewport).
+[node name="MountainA" type="MeshInstance3D" parent="Terrain3D/SubViewport"]
+transform = Transform3D(12, 0, 0, 0, 7, 0, 0, 0, 1, -16, 3, -32)
+mesh = SubResource("MountainBoxMesh")
+material_override = SubResource("MountainMat_A")
 
-[node name="MountainB" type="CSGBox3D" parent="Terrain3D/SubViewport"]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -6, 4, -33)
-size = Vector3(10, 9, 1)
-material = SubResource("MountainMat_B")
+[node name="MountainB" type="MeshInstance3D" parent="Terrain3D/SubViewport"]
+transform = Transform3D(10, 0, 0, 0, 9, 0, 0, 0, 1, -6, 4, -33)
+mesh = SubResource("MountainBoxMesh")
+material_override = SubResource("MountainMat_B")
 
-[node name="MountainC" type="CSGBox3D" parent="Terrain3D/SubViewport"]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 4, 3.5, -32)
-size = Vector3(11, 8, 1)
-material = SubResource("MountainMat_A")
+[node name="MountainC" type="MeshInstance3D" parent="Terrain3D/SubViewport"]
+transform = Transform3D(11, 0, 0, 0, 8, 0, 0, 0, 1, 4, 3.5, -32)
+mesh = SubResource("MountainBoxMesh")
+material_override = SubResource("MountainMat_A")
 
-[node name="MountainD" type="CSGBox3D" parent="Terrain3D/SubViewport"]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 14, 4.5, -33)
-size = Vector3(10, 10, 1)
-material = SubResource("MountainMat_B")
+[node name="MountainD" type="MeshInstance3D" parent="Terrain3D/SubViewport"]
+transform = Transform3D(10, 0, 0, 0, 10, 0, 0, 0, 1, 14, 4.5, -33)
+mesh = SubResource("MountainBoxMesh")
+material_override = SubResource("MountainMat_B")
 
 ; SubViewport renders into this Sprite2D which spans the full screen.
 ; Scale 1 with the 1080×1920 SubViewport means 1:1 pixel mapping.
