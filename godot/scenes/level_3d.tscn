@@ -82,6 +82,11 @@ texture = ExtResource("5_cowboy")
 ; jelly beans — replaceable with proper bullet meshes in a future iter.
 [node name="Bullets" type="Node3D" parent="Terrain3D/SubViewport"]
 
+; Iter 75: gates spawn here. Each gate = two side-by-side colored door
+; quads, each with a Label3D math value. Cowboy walks through one of
+; the two doors to apply that effect.
+[node name="Gates" type="Node3D" parent="Terrain3D/SubViewport"]
+
 ; SubViewport renders into this Sprite2D which spans the full screen.
 ; Scale 1 with the 1080×1920 SubViewport means 1:1 pixel mapping.
 [node name="Sprite" type="Sprite2D" parent="Terrain3D"]

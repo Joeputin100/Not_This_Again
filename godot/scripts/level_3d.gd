@@ -45,6 +45,7 @@ const BULLET_SPAWN_Y: float = 1.2  # waist-high at cowboy
 @onready var cowboy_3d: Sprite3D = $Terrain3D/SubViewport/Cowboy3D
 @onready var obstacles_root: Node3D = $Terrain3D/SubViewport/Obstacles
 @onready var bullets_root: Node3D = $Terrain3D/SubViewport/Bullets
+@onready var gates_root: Node3D = $Terrain3D/SubViewport/Gates
 # Iter 69: terrain_3d.gd script wasn't attached to the inline Terrain3D
 # node in level_3d.tscn, so the SubViewport→Sprite2D texture wiring
 # never ran. Reference + manual hookup in _ready below.
@@ -56,6 +57,18 @@ var _spawn_timer: float = 0.0
 var _fire_timer: float = 0.0
 var _hits: int = 0
 var _rng := RandomNumberGenerator.new()
+
+# Iter 75: gate spawn parameters. Gates are 2 colored door quads
+# straddling the lane center, math values painted on as Label3D.
+# Posse count starts at STARTING_POSSE (5) and modifies as cowboy
+# walks through gates.
+const GATE_SPAWN_INTERVAL: float = 4.5
+const GATE_WIDTH: float = 8.0       # each door is 4.0 wide
+const GATE_HEIGHT: float = 4.0
+const GATE_TRIGGER_Z: float = 0.5   # gates fire when their z passes this
+var _gate_spawn_timer: float = 0.0
+var _posse_count_3d: int = 5
+const STARTING_POSSE_3D: int = 5
 
 # Target cowboy x in world units, lerped each frame. Set by drag input
 # which converts screen-x to world-x via the camera-plane projection.
@@ -115,6 +128,105 @@ func _spawn_posse_followers() -> void:
 		subviewport.add_child(f)
 		_followers.append(f)
 
+# Iter 75: spawn a gate with two random door effects. Each door is a
+# semi-transparent ColorRect-style 3D quad (CSGBox3D, very thin in z)
+# with a math value Label3D billboard above it.
+func _spawn_gate() -> void:
+	var gate := Node3D.new()
+	gate.position = Vector3(0, GATE_HEIGHT * 0.5, OBSTACLE_SPAWN_Z + 2.0)
+	# Two random effects: ±[1..5] additive, or x[2..3] multiplicative.
+	# Pick one side good, one side mediocre so the player has a choice.
+	var values: Array[int] = []
+	var operators: Array[String] = []
+	for side in range(2):
+		if _rng.randf() < 0.65:
+			# Additive
+			var v: int = _rng.randi_range(-5, 8)
+			values.append(v)
+			operators.append("+" if v > 0 else "")  # negative sign included in value
+		else:
+			# Multiplicative
+			values.append(_rng.randi_range(2, 3))
+			operators.append("×")
+	gate.set_meta("left_value", values[0])
+	gate.set_meta("left_op", operators[0])
+	gate.set_meta("right_value", values[1])
+	gate.set_meta("right_op", operators[1])
+	gate.set_meta("triggered", false)
+	# Left door (red if value would shrink, blue if grow)
+	var left_door := CSGBox3D.new()
+	left_door.size = Vector3(GATE_WIDTH * 0.5, GATE_HEIGHT, 0.15)
+	left_door.position = Vector3(-GATE_WIDTH * 0.25, 0, 0)
+	var lmat := StandardMaterial3D.new()
+	lmat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	lmat.albedo_color = _gate_color_for(values[0], operators[0])
+	left_door.material = lmat
+	gate.add_child(left_door)
+	# Right door
+	var right_door := CSGBox3D.new()
+	right_door.size = Vector3(GATE_WIDTH * 0.5, GATE_HEIGHT, 0.15)
+	right_door.position = Vector3(GATE_WIDTH * 0.25, 0, 0)
+	var rmat := StandardMaterial3D.new()
+	rmat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	rmat.albedo_color = _gate_color_for(values[1], operators[1])
+	right_door.material = rmat
+	gate.add_child(right_door)
+	# Math value labels (Label3D billboards above each door)
+	var llabel := Label3D.new()
+	llabel.text = "%s%d" % [operators[0], values[0]]
+	llabel.position = Vector3(-GATE_WIDTH * 0.25, GATE_HEIGHT * 0.55, 0)
+	llabel.font_size = 96
+	llabel.outline_size = 12
+	llabel.modulate = Color.WHITE
+	gate.add_child(llabel)
+	var rlabel := Label3D.new()
+	rlabel.text = "%s%d" % [operators[1], values[1]]
+	rlabel.position = Vector3(GATE_WIDTH * 0.25, GATE_HEIGHT * 0.55, 0)
+	rlabel.font_size = 96
+	rlabel.outline_size = 12
+	rlabel.modulate = Color.WHITE
+	gate.add_child(rlabel)
+	gates_root.add_child(gate)
+
+# Gate door color helper. Blue = "growing" (good), red = "shrinking" (bad).
+func _gate_color_for(value: int, op: String) -> Color:
+	var growing: bool
+	if op == "×":
+		growing = value >= 2  # all multipliers grow in this prototype
+	else:
+		growing = value > 0
+	return Color(0.25, 0.55, 1.0, 0.6) if growing else Color(1.0, 0.30, 0.30, 0.6)
+
+# Iter 75: check whether the cowboy has crossed the gate's z plane.
+# When triggered, apply the side's effect based on cowboy.x.
+func _check_gate_trigger(gate: Node3D) -> void:
+	if gate.get_meta("triggered", false):
+		return
+	if gate.position.z < GATE_TRIGGER_Z:
+		return
+	gate.set_meta("triggered", true)
+	# Cowboy passed through which side?
+	var x: float = cowboy_3d.position.x
+	var value: int
+	var op: String
+	if x < 0:
+		value = gate.get_meta("left_value")
+		op = gate.get_meta("left_op")
+	else:
+		value = gate.get_meta("right_value")
+		op = gate.get_meta("right_op")
+	# Apply effect
+	var before: int = _posse_count_3d
+	if op == "×":
+		_posse_count_3d *= value
+	else:
+		_posse_count_3d += value
+	_posse_count_3d = maxi(0, _posse_count_3d)
+	info_label.text = "POSSE %d (was %d)  ·  hits %d" % [
+		_posse_count_3d, before, _hits,
+	]
+	AudioBus.play_gate_pass()
+
 func _process(delta: float) -> void:
 	# Lerp cowboy x toward target (drag input target).
 	cowboy_3d.position.x = lerpf(cowboy_3d.position.x, _target_x,
@@ -138,6 +250,17 @@ func _process(delta: float) -> void:
 			child.position.z += OBSTACLE_SPEED * delta
 			if child.position.z > OBSTACLE_DESPAWN_Z:
 				child.queue_free()
+	# Iter 75: gates scroll like obstacles + check trigger when crossing z plane
+	_gate_spawn_timer -= delta
+	if _gate_spawn_timer <= 0.0:
+		_gate_spawn_timer = GATE_SPAWN_INTERVAL
+		_spawn_gate()
+	for gate in gates_root.get_children():
+		if gate is Node3D:
+			gate.position.z += OBSTACLE_SPEED * delta
+			_check_gate_trigger(gate)
+			if gate.position.z > OBSTACLE_DESPAWN_Z:
+				gate.queue_free()
 	# Iter 66: auto-fire bullets. Cowboy emits bullets along the -z axis
 	# every BULLET_FIRE_INTERVAL seconds. Bullets are CSGSphere3Ds for
 	# simplicity (no texture needed, gets the candy-colored material).
