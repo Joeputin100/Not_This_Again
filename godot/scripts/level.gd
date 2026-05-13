@@ -1368,6 +1368,13 @@ func _consume_bullet(bullet: Node, hit_pos: Vector2) -> bool:
 	var pierce: int = bullet.pierce_remaining if "pierce_remaining" in bullet else 0
 	var aoe_r: float = bullet.aoe_radius if "aoe_radius" in bullet else 0.0
 	var bdmg: int = bullet.damage if "damage" in bullet else 1
+	var freeze_s: float = bullet.freeze_duration_s if "freeze_duration_s" in bullet else 0.0
+	var slow_s: float = bullet.slow_duration_s if "slow_duration_s" in bullet else 0.0
+	# Iter 58: apply freeze/slow debuffs to the hit-position-nearby enemies
+	# (single radius for both effects; same as AOE radius if present, else 80px).
+	if freeze_s > 0.0 or slow_s > 0.0:
+		var debuff_r: float = aoe_r if aoe_r > 0.0 else 80.0
+		_apply_debuff_to_nearby(hit_pos, debuff_r, freeze_s, slow_s)
 	if pierce > 0:
 		bullet.pierce_remaining = pierce - 1
 		return false  # survives
@@ -1377,6 +1384,37 @@ func _consume_bullet(bullet: Node, hit_pos: Vector2) -> bool:
 	bullet.remove_from_group("bullets")
 	bullet.queue_free()
 	return true
+
+# Iter 58: apply freeze/slow debuffs to nearby enemies. Each enemy needs
+# to support a `freeze_until_ms` / `slow_until_ms` meta field — read by
+# its _process to halve/zero its scroll velocity. Set via Object.set_meta
+# so no schema changes to barrel/bull/etc.gd required.
+func _apply_debuff_to_nearby(center: Vector2, radius: float, freeze_s: float, slow_s: float) -> void:
+	var r2: float = radius * radius
+	var now_ms: int = int(Time.get_ticks_msec())
+	var freeze_until: int = now_ms + int(freeze_s * 1000.0)
+	var slow_until: int = now_ms + int(slow_s * 1000.0)
+	for group_name in _AOE_GROUPS:
+		for enemy in get_tree().get_nodes_in_group(group_name):
+			if not is_instance_valid(enemy):
+				continue
+			if enemy.position.distance_squared_to(center) > r2:
+				continue
+			if freeze_s > 0.0:
+				enemy.set_meta("freeze_until_ms", freeze_until)
+				# Visual tint: cyan flash + slowly fade back
+				if "modulate" in enemy:
+					enemy.modulate = Color(0.55, 0.85, 1.20, 1.0)
+					var t := create_tween()
+					t.tween_property(enemy, "modulate", Color(1, 1, 1, 1), freeze_s) \
+						.set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
+			if slow_s > 0.0:
+				enemy.set_meta("slow_until_ms", slow_until)
+				if "modulate" in enemy:
+					enemy.modulate = Color(0.85, 0.95, 1.10, 1.0)
+					var t := create_tween()
+					t.tween_property(enemy, "modulate", Color(1, 1, 1, 1), slow_s) \
+						.set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
 
 # Splash AOE damage to every enemy within radius of center. Skips the
 # enemy that triggered the consume (caller already damaged it directly).
