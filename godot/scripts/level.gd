@@ -162,7 +162,9 @@ var posse_count: int = STARTING_POSSE:
 			posse_renderer.posse_count = posse_count
 		# Iter 40c: catch the death moment. _failed latch prevents
 		# re-triggering if more damage lands in the same frame.
-		if posse_count == 0 and not _failed:
+		# Iter 46: skip the fail flow entirely in test range mode so
+		# the user can stress-test weapons + posse without restarts.
+		if posse_count == 0 and not _failed and not _test_range_mode:
 			_failed = true
 			_show_fail()
 
@@ -250,12 +252,17 @@ func _ready() -> void:
 		in_level_menu_button.pressed.connect(_on_in_level_menu_pressed)
 	# Pivot for the win panel scale-in animation
 	win_panel.pivot_offset = Vector2(440, 280)
-	# Iter 45: debug-menu preview — if the menu set a pending rush or
-	# sugar rush before changing scene here, honor it now. Pending rush
-	# fast-paths the level to the WIN flow with the named rush; pending
-	# sugar rush activates Jelly Bean Frenzy after a short delay.
+	# Iter 45-46: debug-menu preview — if the menu set a pending rush,
+	# sugar rush, or test_range flag before changing scene here, honor
+	# it now. Test range strips all gates/enemies and rebuilds the scene
+	# as a stationary 6×6 cactus field for weapon/posse experimentation.
 	if get_node_or_null("/root/DebugPreview") and DebugPreview.has_pending():
-		if DebugPreview.pending_rush != "":
+		if DebugPreview.pending_test_range:
+			_test_range_mode = true
+			DebugPreview.clear()
+			DebugLog.add("debug preview: TEST RANGE (cactus field)")
+			call_deferred("_setup_test_range")
+		elif DebugPreview.pending_rush != "":
 			_debug_override_rush = DebugPreview.pending_rush
 			DebugLog.add("debug preview: rush %s" % _debug_override_rush)
 			DebugPreview.clear()
@@ -1093,6 +1100,12 @@ whatever that's worth." % posse_count
 
 # Dispatch table per the memory's matrix. Returns the rush ID to play.
 # "A"/"B"/"D"/"E"/"F"/"G"/"H" map to _gold_rush_* methods below.
+# Iter 46: when true, this scene is running as a TEST RANGE — posse
+# is invulnerable (no fail trigger), normal gates/enemies are stripped,
+# and a stationary 6×6 cactus grid is spawned for weapon/posse testing.
+# Set via debug menu's OPEN TEST RANGE button.
+var _test_range_mode: bool = false
+
 # Iter 45: debug-menu override. If non-empty, _gold_rush_for() returns
 # this directly, bypassing the difficulty/terrain matrix. Set by
 # DebugPreview when launching from the debug menu's "Preview Rush X"
@@ -1167,6 +1180,134 @@ func _play_gold_rush() -> void:
 func _deferred_debug_sugar_rush() -> void:
 	await get_tree().create_timer(1.0).timeout
 	_equip_bonus("jelly_frenzy")
+
+# Iter 46: TEST RANGE setup. Strips the level scene of its gates/enemies/
+# obstacles and replaces them with a stationary 6×6 cactus grid for
+# weapon-feel + posse-formation testing. Mounts a sidebar of debug
+# buttons on the UI CanvasLayer (EQUIP RIFLE / EQUIP DEFAULT / +1 DUDE /
+# -1 DUDE / RESET CACTI). Halts world scroll so cacti stay put — there's
+# no boss to confront, no gate to clear, no win condition.
+const _TEST_RANGE_GROUPS: Array[String] = [
+	"barrels", "bulls", "outlaws", "prospectors", "tumbleweeds", "cacti",
+	"bosses", "bonuses",
+]
+const _TEST_RANGE_GRID_ROWS: int = 6
+const _TEST_RANGE_GRID_COLS: int = 6
+const _TEST_RANGE_GRID_START_X: float = 180.0
+const _TEST_RANGE_GRID_STEP_X: float = 145.0
+const _TEST_RANGE_GRID_START_Y: float = 350.0
+const _TEST_RANGE_GRID_STEP_Y: float = 180.0
+const _TEST_RANGE_CACTUS_SCENE := preload("res://scenes/cactus.tscn")
+
+func _setup_test_range() -> void:
+	# 1) Strip existing obstacles/enemies. Each group's members get
+	#    queue_free'd; surviving in-flight bullets are also cleared.
+	for group_name in _TEST_RANGE_GROUPS:
+		for node in get_tree().get_nodes_in_group(group_name):
+			node.queue_free()
+	for bullet in get_tree().get_nodes_in_group("bullets"):
+		bullet.queue_free()
+	# 2) Stop world scroll so the new cacti stay where we placed them.
+	WorldSpeed.set_mult(0.0)
+	# Hide the LevelLabel + WinOverlay + FailOverlay clutter.
+	if win_overlay:
+		win_overlay.visible = false
+	if fail_overlay:
+		fail_overlay.visible = false
+	# 3) Spawn the 6×6 cactus grid. Each cactus's per-process scroll is
+	#    multiplied by WorldSpeed.mult, which we just set to 0 — they
+	#    stay put forever. Stagger Y slightly per column for visual
+	#    interest (so the grid doesn't read as a perfectly square block).
+	var rng := RandomNumberGenerator.new()
+	rng.seed = 4646  # deterministic placement for repeatable tests
+	for row in range(_TEST_RANGE_GRID_ROWS):
+		for col in range(_TEST_RANGE_GRID_COLS):
+			var c: Node2D = _TEST_RANGE_CACTUS_SCENE.instantiate()
+			var x: float = _TEST_RANGE_GRID_START_X + float(col) * _TEST_RANGE_GRID_STEP_X
+			x += rng.randf_range(-15.0, 15.0)
+			var y: float = _TEST_RANGE_GRID_START_Y + float(row) * _TEST_RANGE_GRID_STEP_Y
+			y += rng.randf_range(-12.0, 12.0)
+			c.position = Vector2(x, y)
+			add_child(c)
+	# 4) Mount the debug sidebar — EQUIP/POSSE buttons. Vertical column
+	#    on the right edge of the UI CanvasLayer.
+	_mount_test_range_sidebar()
+	DebugLog.add("test range: %d cacti spawned" % (_TEST_RANGE_GRID_ROWS * _TEST_RANGE_GRID_COLS))
+
+# Iter 46: builds a vertical column of debug buttons on the UI. Each
+# button drives a one-shot action via _on_test_*. Buttons appear on
+# the right edge so they don't overlap with the LEVEL label / posse
+# count / ammo bar on the left.
+func _mount_test_range_sidebar() -> void:
+	var ui_layer: CanvasLayer = $UI
+	var panel := VBoxContainer.new()
+	panel.position = Vector2(840, 460)
+	panel.custom_minimum_size = Vector2(220, 0)
+	panel.add_theme_constant_override("separation", 14)
+	ui_layer.add_child(panel)
+
+	var actions: Array = [
+		["EQUIP RIFLE",   "_on_test_equip_rifle"],
+		["EQUIP DEFAULT", "_on_test_equip_default"],
+		["JELLY FRENZY",  "_on_test_jelly_frenzy"],
+		["+1 DUDE",       "_on_test_add_dude"],
+		["−1 DUDE",       "_on_test_remove_dude"],
+		["RESET CACTI",   "_on_test_reset_cacti"],
+		["EXIT RANGE",    "_on_test_exit"],
+	]
+	for entry in actions:
+		var btn := Button.new()
+		btn.text = entry[0]
+		btn.custom_minimum_size = Vector2(220, 70)
+		btn.add_theme_font_size_override("font_size", 26)
+		btn.pressed.connect(Callable(self, entry[1]))
+		panel.add_child(btn)
+
+func _on_test_equip_rifle() -> void:
+	_equip_bonus("rifle")
+	DebugLog.add("test range: equipped rifle")
+
+func _on_test_equip_default() -> void:
+	_gun = GunScript.new()
+	_gun_state = GunStateScript.new(_gun)
+	DebugLog.add("test range: equipped default Jelly Bean Six-Shooter")
+
+func _on_test_jelly_frenzy() -> void:
+	_equip_bonus("jelly_frenzy")
+
+func _on_test_add_dude() -> void:
+	posse_count = mini(posse_count + 1, 20)
+	DebugLog.add("test range: posse=%d" % posse_count)
+
+func _on_test_remove_dude() -> void:
+	# Iter 46: test range keeps posse alive even at 0 (no fail trigger);
+	# still clamp to 1 here so the leader stays renderable.
+	posse_count = maxi(posse_count - 1, 1)
+	DebugLog.add("test range: posse=%d" % posse_count)
+
+func _on_test_reset_cacti() -> void:
+	# Tear down current cacti + spawn a fresh grid (use case: stress-test
+	# AOE / pierce after destroying the first wave).
+	for c in get_tree().get_nodes_in_group("cacti"):
+		c.queue_free()
+	# Wait one frame for queue_free to settle, then re-spawn.
+	await get_tree().process_frame
+	var rng := RandomNumberGenerator.new()
+	rng.seed = Time.get_ticks_msec()  # vary placement across resets
+	for row in range(_TEST_RANGE_GRID_ROWS):
+		for col in range(_TEST_RANGE_GRID_COLS):
+			var c: Node2D = _TEST_RANGE_CACTUS_SCENE.instantiate()
+			var x: float = _TEST_RANGE_GRID_START_X + float(col) * _TEST_RANGE_GRID_STEP_X
+			x += rng.randf_range(-15.0, 15.0)
+			var y: float = _TEST_RANGE_GRID_START_Y + float(row) * _TEST_RANGE_GRID_STEP_Y
+			y += rng.randf_range(-12.0, 12.0)
+			c.position = Vector2(x, y)
+			add_child(c)
+	DebugLog.add("test range: cacti reset")
+
+func _on_test_exit() -> void:
+	AudioBus.play_tap()
+	get_tree().change_scene_to_file("res://scenes/debug_menu.tscn")
 
 func _gold_rush_jelly_jar_cascade() -> void:
 	FlourishBanner.spawn($UI, "SUGAR_CASCADE", self)

@@ -27,6 +27,13 @@ var pending_weapon: String = ""
 # the level immediately. Empty = no special unlock.
 var pending_posse_unlock: String = ""
 
+# Iter 46: when true, level.gd clears all gates/barrels/enemies and
+# replaces them with a stationary 6×6 cactus grid for weapon testing.
+# Adds a side-panel of debug buttons (EQUIP RIFLE, +/-1 DUDE) so the
+# user can iterate weapon-feel + posse-formation tests in isolation.
+# Posse is made invulnerable to keep the test loop running.
+var pending_test_range: bool = false
+
 # Called by level.gd after consuming a pending field so back-to-back
 # debug launches don't leak state across scenes.
 func clear() -> void:
@@ -34,10 +41,12 @@ func clear() -> void:
 	pending_sugar_rush = false
 	pending_weapon = ""
 	pending_posse_unlock = ""
+	pending_test_range = false
 
 # True if any preview is pending. Level.gd can short-circuit normal
 # gate/boss spawning when this is true (so the rush plays in an
 # uncluttered scene).
 func has_pending() -> bool:
 	return pending_rush != "" or pending_sugar_rush or \
-		pending_weapon != "" or pending_posse_unlock != ""
+		pending_weapon != "" or pending_posse_unlock != "" or \
+		pending_test_range

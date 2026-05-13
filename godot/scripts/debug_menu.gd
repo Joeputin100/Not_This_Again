@@ -55,6 +55,11 @@ func _build_sections() -> void:
 	sugar_btn.pressed.connect(_on_preview_sugar_rush)
 	content.add_child(sugar_btn)
 
+	_add_section_header("TEST RANGE")
+	var range_btn := _make_button("OPEN CACTUS FIELD (weapon + posse test)")
+	range_btn.pressed.connect(_on_open_test_range)
+	content.add_child(range_btn)
+
 	_add_section_header("FLOURISH PREVIEWS (in-place)")
 	for key in FLOURISH_KEYS:
 		var btn := _make_button(key)
@@ -98,6 +103,12 @@ func _on_preview_sugar_rush() -> void:
 	AudioBus.play_tap()
 	DebugPreview.pending_sugar_rush = true
 	DebugLog.add("debug: preview sugar rush")
+	get_tree().change_scene_to_file("res://scenes/level.tscn")
+
+func _on_open_test_range() -> void:
+	AudioBus.play_tap()
+	DebugPreview.pending_test_range = true
+	DebugLog.add("debug: open test range")
 	get_tree().change_scene_to_file("res://scenes/level.tscn")
 
 # Flourish previews: fire on the local CanvasLayer immediately. No scene
