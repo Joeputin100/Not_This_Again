@@ -129,6 +129,13 @@ const POSSE_FORMATION_OFFSETS: Array[Vector3] = [
 const FOLLOWER_LERP_SPEED: float = 5.5
 var _followers: Array[Sprite3D] = []
 
+# Iter 85: subtle y-bob animation gives life to the otherwise-static
+# billboards. Sine wave on position.y at each frame; followers get a
+# phase offset so they don't bob in lockstep with the leader.
+const BOB_AMPLITUDE: float = 0.06
+const BOB_FREQUENCY: float = 4.5
+var _bob_time: float = 0.0
+
 func _ready() -> void:
 	get_tree().set_quit_on_go_back(false)
 	get_window().go_back_requested.connect(_on_back_pressed)
@@ -559,13 +566,19 @@ func _process(delta: float) -> void:
 	cowboy_3d.position.x = lerpf(cowboy_3d.position.x, _target_x,
 		clampf(COWBOY_LERP_SPEED * delta, 0.0, 1.0))
 	# Iter 72: followers track the leader's x with formation-offset lag.
-	for f in _followers:
+	# Iter 85: y-bob animation overlays on top of the base 0.45 anchor.
+	_bob_time += delta
+	cowboy_3d.position.y = 0.45 + sin(_bob_time * BOB_FREQUENCY) * BOB_AMPLITUDE
+	for i in range(_followers.size()):
+		var f := _followers[i]
 		if not is_instance_valid(f):
 			continue
 		var offset: Vector3 = f.get_meta("formation_offset", Vector3.ZERO)
 		var target_fx: float = cowboy_3d.position.x + offset.x
 		f.position.x = lerpf(f.position.x, target_fx,
 			clampf(FOLLOWER_LERP_SPEED * delta, 0.0, 1.0))
+		# Phase offset per follower so the crowd looks alive.
+		f.position.y = 0.45 + sin(_bob_time * BOB_FREQUENCY + float(i) * 0.7) * BOB_AMPLITUDE
 	# Spawn obstacles periodically.
 	_spawn_timer -= delta
 	if _spawn_timer <= 0.0:
