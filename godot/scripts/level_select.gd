@@ -48,10 +48,10 @@ func _ready() -> void:
 	DebugLog.add("level_select _ready (build=%s)" % BuildInfo.SHA)
 	level_1_button.pressed.connect(_on_level_1_pressed)
 	back_button.pressed.connect(_on_back_pressed)
-	# Iter 63: apply perspective scaling once on entry. Static map — no
-	# per-frame update needed unless drag-pan also moves tiles, which it
-	# doesn't (only the terrain UV nudges; tiles stay in screen-space).
-	_apply_tile_perspective()
+	# Iter 63: tile perspective scaling — disabled in iter 64 in favor
+	# of full 3D refactor. Tiles will be migrated to 3D billboards
+	# inside the terrain SubViewport in a future iter.
+	# _apply_tile_perspective()
 
 # Iter 63: drag-to-pan. Track the previous touch y; on drag, nudge the
 # terrain's UV offset by the y-delta scaled to a sensible factor.

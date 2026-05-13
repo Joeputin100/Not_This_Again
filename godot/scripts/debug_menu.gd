@@ -59,6 +59,10 @@ func _build_sections() -> void:
 	var range_btn := _make_button("OPEN CACTUS FIELD (weapon + posse test)")
 	range_btn.pressed.connect(_on_open_test_range)
 	content.add_child(range_btn)
+	# Iter 64: 3D level prototype preview.
+	var level3d_btn := _make_button("PREVIEW 3D LEVEL (iter 64 prototype)")
+	level3d_btn.pressed.connect(_on_open_level_3d)
+	content.add_child(level3d_btn)
 
 	_add_section_header("FLOURISH PREVIEWS (in-place)")
 	for key in FLOURISH_KEYS:
@@ -110,6 +114,11 @@ func _on_open_test_range() -> void:
 	DebugPreview.pending_test_range = true
 	DebugLog.add("debug: open test range")
 	get_tree().change_scene_to_file("res://scenes/level.tscn")
+
+func _on_open_level_3d() -> void:
+	AudioBus.play_tap()
+	DebugLog.add("debug: open 3D level prototype")
+	get_tree().change_scene_to_file("res://scenes/level_3d.tscn")
 
 # Flourish previews: fire on the local CanvasLayer immediately. No scene
 # change. Banner appears centered, plays its animation, frees itself.

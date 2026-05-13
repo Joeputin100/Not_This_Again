@@ -318,11 +318,10 @@ func _process(delta: float) -> void:
 		if _frenzy_timer <= 0.0:
 			_frenzy_active = false
 			DebugLog.add("jelly frenzy ended")
-	# Iter 62: apply perspective scaling so scrolling entities don't
-	# float from the sky — they shrink toward the horizon and grow as
-	# they approach the cowboy. Skipped in test range (no scrolling).
-	if not _test_range_mode:
-		_apply_perspective_scaling()
+	# Iter 64: perspective-scale fakery REMOVED. The user chose a full
+	# 3D refactor over fake-it-in-2D — entities will be rebuilt as 3D
+	# objects living in the SubViewport in iters 65+. Leaving the helper
+	# function in place (still callable) but no longer auto-called.
 	# Wind drift — push target_x sideways every frame, even when the
 	# player isn't dragging. Player input still overrides instantly via
 	# _input() setting target_x to the new touch position; the wind just
