@@ -65,23 +65,24 @@ func _ready() -> void:
 	# has passed since the last spend, hearts will tick up.
 	GameState.apply_regen()
 	_refresh_hearts(GameState.hearts)
-	# Iter 45/61: DEBUG button. Originally gated on OS.has_feature("debug")
-	# but firebelley/godot-export defaults to release-mode even from the
-	# "debug" workflow, so the feature flag is false in sideload builds.
-	# Until v1 ships to Play Store, always show — the user IS the only
-	# sideloader and needs the debug tools to test rushes/weapons/heroes.
+	# Iter 45/61/63: DEBUG button. The .tscn now ships visible=true so the
+	# button shows even if this script-side code never reaches here (was
+	# the iter 62 failure mode). The visible-set below is belt-and-suspenders.
 	if debug_button:
 		debug_button.visible = true
 		debug_button.pressed.connect(_on_debug_pressed)
-	# Build identifier in the bottom-right corner — proves which build is
-	# actually installed when sideloading repeatedly.
-	# Iter 61: omit iter portion when CI didn't successfully stamp it
-	# (BuildInfo.ITER == "?" placeholder). SHA + date alone is enough to
-	# identify the build for sideload bug reports.
-	if BuildInfo.ITER == "?" or BuildInfo.ITER == "":
-		build_id_label.text = "%s  ·  %s" % [BuildInfo.SHA, BuildInfo.SHORT_DATE]
+	# Iter 63: simplify build_id assignment — single unconditional path
+	# + DebugLog so we can verify in the log that it executed. Previous
+	# fallback (skip iter when "?") wasn't reaching the label in deployed
+	# builds for unknown reasons; hardcoded ITER in build_info.gd plus
+	# this simpler path should eliminate the "build: ?" display.
+	if build_id_label:
+		build_id_label.text = "%s · %s · iter %s" % [
+			BuildInfo.SHA, BuildInfo.SHORT_DATE, BuildInfo.ITER,
+		]
+		DebugLog.add("build_id_label set: %s" % build_id_label.text)
 	else:
-		build_id_label.text = "%s  %s  iter %s" % [BuildInfo.SHA, BuildInfo.SHORT_DATE, BuildInfo.ITER]
+		DebugLog.add("WARN: build_id_label is null at _ready")
 	# Debug-build-only triple-tap-to-crash gesture on the BuildId label,
 	# for verifying Crashlytics integration on first sideload. Release
 	# builds never wire this up — OS.crash() is a no-op there anyway,

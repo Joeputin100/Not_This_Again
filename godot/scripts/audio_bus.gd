@@ -55,3 +55,12 @@ func play_gunfire() -> void:
 	# shot's playback cutting off the previous one.
 	_gunfire_players[_gunfire_index].play()
 	_gunfire_index = (_gunfire_index + 1) % GUNFIRE_POOL_SIZE
+
+# Iter 63: stop every gunfire player in the pool. Called from level.gd's
+# _show_win / _show_fail so lingering pool samples don't keep playing
+# after the firefight ends (user reported continuous gunshot SFX after
+# posse stopped firing in iter 62 testing).
+func stop_gunfire() -> void:
+	for p in _gunfire_players:
+		if p and p.playing:
+			p.stop()

@@ -16,6 +16,12 @@ extends Node2D
 
 const SCROLL_SPEED: float = 0.25
 
+# Iter 63: gate the auto-scroll so the level-select variant of the
+# terrain can stay static (panned by finger drag instead). Default true
+# preserves gameplay behavior; level_select sets this to false on its
+# Terrain3D instance.
+@export var auto_scroll: bool = true
+
 @onready var sub_viewport: SubViewport = $SubViewport
 @onready var ground: MeshInstance3D = $SubViewport/Ground
 @onready var sprite_2d: Sprite2D = $Sprite
@@ -40,8 +46,19 @@ func _ready() -> void:
 func set_scroll_active(active: bool) -> void:
 	_scroll_active = active
 
+# Iter 63: external nudge for drag-pan scenes (level_select). Negative
+# delta scrolls "backward" so dragging UP makes the world come toward you.
+func nudge_uv(delta_y: float) -> void:
+	_uv_offset += delta_y
+	while _uv_offset > 1.0:
+		_uv_offset -= 1.0
+	while _uv_offset < 0.0:
+		_uv_offset += 1.0
+	if _material:
+		_material.uv1_offset = Vector3(0.0, _uv_offset, 0.0)
+
 func _process(delta: float) -> void:
-	if not _scroll_active:
+	if not _scroll_active or not auto_scroll:
 		return
 	_uv_offset += SCROLL_SPEED * WorldSpeed.mult * delta
 	# Wrap to keep the offset bounded — UV repeat makes any whole-tile

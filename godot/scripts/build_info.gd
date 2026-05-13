@@ -7,4 +7,8 @@ extends Object
 
 const SHA: String = "local-dev"
 const SHORT_DATE: String = "0000-00-00"
-const ITER: String = "?"
+# Iter 63: hardcoded ITER as a string. CI stamp step still overwrites
+# this with `git log --oneline | wc -l`, but if that ever fails, we
+# fall back to this manually-maintained value rather than showing "?".
+# Bumped per-iter as part of commit hygiene.
+const ITER: String = "63"

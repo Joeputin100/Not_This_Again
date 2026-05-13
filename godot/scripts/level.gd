@@ -989,6 +989,8 @@ func _maybe_show_win() -> void:
 func _show_fail() -> void:
 	DebugLog.add("FAIL: posse wiped out — last dude went down")
 	_shooting_active = false
+	# Iter 63: stop lingering gunfire audio (same as win flow).
+	AudioBus.stop_gunfire()
 	# Hide the leader cowboy sprite — they're dead too. (Followers are
 	# already gone via PosseRenderer's despawn flow.)
 	if cowboy:
@@ -1136,6 +1138,9 @@ func _show_win() -> void:
 	DebugLog.add("WIN: gates done, runway %.1fs before bounty" % POST_GATE_RUNWAY_S)
 	await get_tree().create_timer(POST_GATE_RUNWAY_S).timeout
 	_shooting_active = false
+	# Iter 63: stop the lingering gunfire pool so audio doesn't keep
+	# playing after the firefight ends.
+	AudioBus.stop_gunfire()
 	DebugLog.add("WIN: bullets stopped, %d posse remaining" % posse_count)
 	# Switch every dude (leader + followers) from run_shoot → idle so
 	# the crowd visibly stops running once the level is over. Was a
@@ -1409,8 +1414,11 @@ func _on_test_remove_dude() -> void:
 # entities render at PERSPECTIVE_HORIZON_SCALE.
 # At PERSPECTIVE_FOREGROUND_Y (near the cowboy), entities render at
 # 1.0× their base scale.
-const PERSPECTIVE_HORIZON_Y: float = 100.0
-const PERSPECTIVE_HORIZON_SCALE: float = 0.42
+# Iter 63: strengthened horizon scale (0.42 → 0.22) so far entities
+# read as significantly smaller. User's iter 62 feedback was that the
+# entities still 'floated from the sky' — 0.42 wasn't dramatic enough.
+const PERSPECTIVE_HORIZON_Y: float = 0.0
+const PERSPECTIVE_HORIZON_SCALE: float = 0.22
 const PERSPECTIVE_FOREGROUND_Y: float = 1500.0
 const PERSPECTIVE_GROUPS: Array[String] = [
 	"gates", "barrels", "bulls", "tumbleweeds", "cacti",

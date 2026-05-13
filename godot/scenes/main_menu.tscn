@@ -104,7 +104,7 @@ mouse_filter = 0
 theme = ExtResource("2_theme")
 theme_override_colors/font_color = Color(0.831, 0.659, 0.341, 0.75)
 theme_override_font_sizes/font_size = 32
-text = "build: ?"
+text = "loading…"
 horizontal_alignment = 1
 vertical_alignment = 1
 mouse_filter = 2
@@ -126,7 +126,6 @@ theme = ExtResource("2_theme")
 theme_override_font_sizes/font_size = 28
 theme_override_colors/font_color = Color(1, 0.5, 0.5, 0.9)
 text = "DEBUG"
-visible = false
 
 [node name="CopyButton" type="Button" parent="UI"]
 anchors_preset = -1
