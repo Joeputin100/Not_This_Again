@@ -8,7 +8,7 @@ const GunScript = preload("res://scripts/gun.gd")
 
 func test_default_display_name():
 	var gun := GunScript.new()
-	assert_eq(gun.display_name, "Six-Shooter")
+	assert_eq(gun.display_name, "Jelly Bean Six-Shooter")
 
 func test_default_range_short():
 	var gun := GunScript.new()
