@@ -59,6 +59,16 @@ const PRESETS: Dictionary = {
 	"SWEET!":      {"text": "ADEQUATE.",    "color": Color(1.00, 0.65, 0.95, 1), "size": 128, "ring": Color(1.00, 0.55, 0.95, 0.7), "trauma": 0.45},
 	"FLAWLESS!":   {"text": "RELUCTANTLY COMPETENT.", "color": Color(0.50, 0.95, 1.00, 1), "size": 96, "ring": Color(0.40, 0.85, 1.00, 0.7), "trauma": 0.65},
 	"JELLY_FRENZY":{"text": "JELLY BEAN FRENZY!", "color": Color(1.00, 0.55, 0.85, 1), "size": 144, "ring": Color(1.00, 0.85, 0.40, 0.8), "trauma": 0.95},
+	# Iter 44: Gold Rush cascade banners. Each rush ends with one of
+	# these as the "chain reaction completes" beat — equivalent to the
+	# Candy Crush Striped+Wrapped explosion finale.
+	"PERFECT_VOLLEY": {"text": "PERFECT VOLLEY!", "color": Color(1.00, 0.92, 0.30, 1), "size": 140, "ring": Color(1.00, 0.78, 0.20, 0.85), "trauma": 0.85},
+	"SUGAR_CASCADE":  {"text": "SUGAR CASCADE!",  "color": Color(1.00, 0.55, 0.95, 1), "size": 140, "ring": Color(1.00, 0.45, 0.85, 0.85), "trauma": 0.85},
+	"ROLLED":         {"text": "ROLLED!",         "color": Color(0.55, 0.95, 0.65, 1), "size": 160, "ring": Color(0.45, 0.95, 0.55, 0.85), "trauma": 0.80},
+	"CHAIN":          {"text": "CHAIN!",          "color": Color(1.00, 0.65, 0.30, 1), "size": 180, "ring": Color(1.00, 0.55, 0.20, 0.85), "trauma": 0.90},
+	"LOCOMOTIVE":     {"text": "LOCOMOTIVE!",     "color": Color(0.85, 0.45, 1.00, 1), "size": 160, "ring": Color(0.75, 0.35, 1.00, 0.85), "trauma": 0.90},
+	"AVALANCHE":      {"text": "AVALANCHE!",      "color": Color(0.55, 0.85, 1.00, 1), "size": 180, "ring": Color(0.45, 0.75, 1.00, 0.85), "trauma": 0.95},
+	"STAMPEDE":       {"text": "STAMPEDE!",       "color": Color(1.00, 0.45, 0.35, 1), "size": 180, "ring": Color(1.00, 0.35, 0.25, 0.85), "trauma": 0.95},
 }
 
 @onready var label: Label = $Label

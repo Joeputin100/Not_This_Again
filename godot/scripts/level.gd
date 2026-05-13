@@ -1059,28 +1059,104 @@ whatever that's worth." % posse_count
 		.set_trans(Tween.TRANS_BACK) \
 		.set_ease(Tween.EASE_OUT)
 
-# Iter 43b: returns the Gold Rush flavor for this level's difficulty.
-# Currently hardcoded to "A" because the only playable level is level 1
-# (Easy/Peppermint). Future: read from a per-level difficulty resource
-# tied to the level_select tile that spawned this scene. The dispatch
-# logic flows: GameState.current_level → difficulty → rush flavor.
-#   Easy    → "A" (Six-Shooter Salute)
-#   Medium  → "D" (Tumbleweed Bonus Roll) — not yet implemented
-#   Hard    → "B" (Jelly Jar Cascade) — not yet implemented
-#   Extreme → TBD
-func _gold_rush_flavor() -> String:
-	# Single-level v1 always plays A.
+# Iter 44: Gold Rush dispatch by (difficulty, terrain). The two axes are
+# independent — see project_level_themes_and_gold_rush memory. Difficulty
+# determines intensity (bounty per beat, chain length); terrain determines
+# which mechanic plays. Stubs fall through to A for now.
+#
+# Difficulty levels: 1=Easy(Peppermint), 2=Medium(Fireball),
+#                    3=Hard(Jellybean), 4=Extreme(Liquorice)
+# Terrains: "frontier", "mine", "farm", "mountain"
+#
+# Currently @export so the level scene can override; future per-level
+# .tres resources will feed these from level_select.
+@export var level_difficulty: int = 1
+@export var level_terrain: String = "frontier"
+
+# Dispatch table per the memory's matrix. Returns the rush ID to play.
+# "A"/"B"/"D"/"E"/"F"/"G"/"H" map to _gold_rush_* methods below.
+func _gold_rush_for(difficulty: int, terrain: String) -> String:
+	# Extreme (4) — chain-reaction-heavy rushes
+	if difficulty == 4:
+		match terrain:
+			"frontier": return "E"   # Candy Cart Chain Reaction
+			"mine":     return "F"   # Liquorice Locomotive
+			"farm":     return "B"   # Jelly Jar Cascade (no Extreme farm rush — borrows Hard's)
+			"mountain": return "G"   # Avalanche Bonanza
+	# Hard (3) — moderate complexity
+	if difficulty == 3:
+		match terrain:
+			"frontier": return "E"
+			"mine":     return "B"
+			"farm":     return "B"
+			"mountain": return "H"
+	# Medium (2) — slight skill demand
+	if difficulty == 2:
+		match terrain:
+			"mine":     return "D"
+			"farm":     return "D"
+			"mountain": return "G"   # lite version
+			_:          return "A"
+	# Easy (1) and any fallback → A (Six-Shooter Salute, Frontier default)
+	if terrain == "farm":
+		return "D"
+	if terrain == "mountain":
+		return "G"
 	return "A"
 
-# Top-level dispatcher. Awaitable: caller can chain `await` for ordering.
+# Top-level dispatcher. Awaitable so the caller (_show_win) can chain
+# `await _play_gold_rush()` before showing the win modal.
 func _play_gold_rush() -> void:
-	match _gold_rush_flavor():
+	var rush_id: String = _gold_rush_for(level_difficulty, level_terrain)
+	DebugLog.add("gold rush: %s (diff=%d terrain=%s)" % [rush_id, level_difficulty, level_terrain])
+	match rush_id:
 		"A":
 			await _gold_rush_six_shooter_salute()
+		"B":
+			await _gold_rush_jelly_jar_cascade()
+		"D":
+			await _gold_rush_tumbleweed_roll()
+		"E":
+			await _gold_rush_candy_cart_chain()
+		"F":
+			await _gold_rush_liquorice_locomotive()
+		"G":
+			await _gold_rush_avalanche_bonanza()
+		"H":
+			await _gold_rush_gumball_runaway()
 		_:
-			# Future B/D/extreme implementations land here; for now we
-			# just skip the ceremony and proceed straight to the modal.
-			pass
+			# Unknown rush id — fall through to the safe A path.
+			await _gold_rush_six_shooter_salute()
+
+# ── B/D/E/F/G/H stubs ─────────────────────────────────────────────────
+# Iter 44: stub functions for the 6 not-yet-built rushes. Each pops a
+# preview banner naming the rush + plays the A salute mechanically so
+# the player gets SOMETHING on a non-Frontier-Easy level. Real mechanics
+# land in iters 45+. The dispatch architecture is in place; only the
+# innards need filling in per rush.
+func _gold_rush_jelly_jar_cascade() -> void:
+	FlourishBanner.spawn($UI, "SUGAR_CASCADE", self)
+	await _gold_rush_six_shooter_salute()
+
+func _gold_rush_tumbleweed_roll() -> void:
+	FlourishBanner.spawn($UI, "ROLLED", self)
+	await _gold_rush_six_shooter_salute()
+
+func _gold_rush_candy_cart_chain() -> void:
+	FlourishBanner.spawn($UI, "CHAIN", self)
+	await _gold_rush_six_shooter_salute()
+
+func _gold_rush_liquorice_locomotive() -> void:
+	FlourishBanner.spawn($UI, "LOCOMOTIVE", self)
+	await _gold_rush_six_shooter_salute()
+
+func _gold_rush_avalanche_bonanza() -> void:
+	FlourishBanner.spawn($UI, "AVALANCHE", self)
+	await _gold_rush_six_shooter_salute()
+
+func _gold_rush_gumball_runaway() -> void:
+	FlourishBanner.spawn($UI, "STAMPEDE", self)
+	await _gold_rush_six_shooter_salute()
 
 # Gold Rush A — Six-Shooter Salute.
 # Each remaining dude (leader cowboy + active followers) fires once into
@@ -1124,8 +1200,66 @@ func _gold_rush_six_shooter_salute() -> void:
 	# "ceremony complete." Shake camera once on the final shot for punch.
 	if shake and shake.has_method("add_trauma"):
 		shake.add_trauma(0.45)
+	# Iter 44: Candy-Crush-style CASCADE finale. Each per-shot bounty
+	# popup spawned a "coin" that we now sweep to screen center, fuse
+	# together, and explode into a PERFECT VOLLEY! mega-pop. The
+	# cascade trigger is the LAST salute shot; the effect is a chain
+	# reaction across all the earned coins. Equivalent to Candy Crush
+	# Striped + Wrapped combo's screen-clearing explosion.
+	await _salute_cascade_finale(positions)
 	await get_tree().create_timer(SALUTE_END_HOLD_S).timeout
 	DebugLog.add("gold rush salute done, earned=%d" % total_earned)
+
+# Iter 44: cascade finale. Spawns one gold "coin" Polygon2D per remaining
+# dude, tweens them all converging toward screen center (~540, 700), then
+# explodes into a PERFECT VOLLEY banner + a +500 bonus popup. The chain
+# reaction is the whole point — each individual +50 was modest, the
+# cascade is where the player goes "ohh that was worth it." Bonus magnitude
+# scales with how many coins converged (more dudes = bigger finale).
+const SALUTE_CASCADE_BONUS_BASE: int = 200
+const SALUTE_CASCADE_BONUS_PER_COIN: int = 100
+const SALUTE_CASCADE_TARGET: Vector2 = Vector2(540, 700)
+const SALUTE_CASCADE_DURATION: float = 0.45
+
+func _salute_cascade_finale(start_positions: Array[Vector2]) -> void:
+	# Spawn coins at each starting position, tween toward center.
+	var coins: Array[Polygon2D] = []
+	for start_pos in start_positions:
+		var coin: Polygon2D = Polygon2D.new()
+		coin.color = Color(1.00, 0.92, 0.30, 1.0)
+		# 12-vertex circle approximation, ~24px radius.
+		var pts: PackedVector2Array = PackedVector2Array()
+		for i in range(12):
+			var a: float = float(i) / 12.0 * TAU
+			pts.append(Vector2(cos(a), sin(a)) * 24.0)
+		coin.polygon = pts
+		coin.position = start_pos + Vector2(0, -80)  # above each dude's head
+		add_child(coin)
+		coins.append(coin)
+	# Tween all coins toward center in parallel.
+	for coin in coins:
+		var t: Tween = create_tween().set_parallel(true)
+		t.tween_property(coin, "position", SALUTE_CASCADE_TARGET, SALUTE_CASCADE_DURATION) \
+			.set_trans(Tween.TRANS_QUART).set_ease(Tween.EASE_IN)
+		# Slight scale-up as they approach for "growing momentum" read.
+		t.tween_property(coin, "scale", Vector2(1.6, 1.6), SALUTE_CASCADE_DURATION) \
+			.set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_IN)
+	await get_tree().create_timer(SALUTE_CASCADE_DURATION).timeout
+	# Coins converged — explode them away + fire the cascade banner.
+	var bonus: int = SALUTE_CASCADE_BONUS_BASE + SALUTE_CASCADE_BONUS_PER_COIN * start_positions.size()
+	FlourishBanner.spawn($UI, "PERFECT_VOLLEY", self)
+	DamagePopup.spawn_bounty(self, SALUTE_CASCADE_TARGET, bonus)
+	if get_node_or_null("/root/GameState"):
+		GameState.bounty += bonus
+	# Burst the coins outward as confetti — each tweens to a random
+	# direction + fades to alpha 0 + queue_frees.
+	for coin in coins:
+		var dir: Vector2 = Vector2(randf_range(-1, 1), randf_range(-1, 1)).normalized()
+		var t: Tween = create_tween().set_parallel(true)
+		t.tween_property(coin, "position", coin.position + dir * 600.0, 0.55) \
+			.set_trans(Tween.TRANS_CUBIC).set_ease(Tween.EASE_OUT)
+		t.tween_property(coin, "modulate:a", 0.0, 0.55)
+		t.chain().tween_callback(coin.queue_free)
 
 # Iter 25+: switch leader cowboy + every follower in PosseRenderer from
 # run_shoot to idle. Called on win so the crowd visibly relaxes once
