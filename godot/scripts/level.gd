@@ -428,26 +428,34 @@ func _spawn_bullet() -> void:
 	AudioBus.play_gunfire()
 	# Iter 56: multi-bullet weapons (bullets_per_shot > 1) spawn a fan of
 	# bullets per fire trigger. Single-shot weapons hit this loop once.
+	#
+	# Iter 61: EVERY dude in the posse fires, not just the leader. Build
+	# the list of firing positions (leader + every active follower); the
+	# fan-spread inner loop runs PER POSITION. Followers fan-fire too —
+	# Jelly Bean Frenzy still applies to all of them.
+	var fire_positions: Array[Vector2] = [cowboy.position]
+	if posse_renderer:
+		for follower_pos in posse_renderer.get_dude_world_positions():
+			fire_positions.append(follower_pos)
 	var shots: int = maxi(_gun.bullets_per_shot, 1)
 	var spread: float = _gun.spread_radians
-	for s in range(shots):
-		var bullet := BulletScene.instantiate()
-		bullet.position = cowboy.position + Vector2(0, BULLET_SPAWN_Y_OFFSET)
-		bullet.max_range = _gun.range_px
-		bullet.damage = _gun.caliber
-		bullet.velocity_mult = bullet_velocity_mult
-		# Compute per-bullet lateral_drift based on fan position
-		var off: float = 0.0
-		if shots > 1:
-			off = lerpf(-spread, spread, float(s) / float(shots - 1))
-		bullet.lateral_drift = bullet_lateral_drift + tan(off) * BulletScript.SPEED
-		# Iter 56: weapon special transfers
-		bullet.pierce_remaining = _gun.pierce_count
-		bullet.aoe_radius = _gun.aoe_radius
-		bullet.freeze_duration_s = _gun.freeze_duration_s
-		bullet.slow_duration_s = _gun.slow_duration_s
-		add_child(bullet)
-		_bullets_fired += 1
+	for fire_pos in fire_positions:
+		for s in range(shots):
+			var bullet := BulletScene.instantiate()
+			bullet.position = fire_pos + Vector2(0, BULLET_SPAWN_Y_OFFSET)
+			bullet.max_range = _gun.range_px
+			bullet.damage = _gun.caliber
+			bullet.velocity_mult = bullet_velocity_mult
+			var off: float = 0.0
+			if shots > 1:
+				off = lerpf(-spread, spread, float(s) / float(shots - 1))
+			bullet.lateral_drift = bullet_lateral_drift + tan(off) * BulletScript.SPEED
+			bullet.pierce_remaining = _gun.pierce_count
+			bullet.aoe_radius = _gun.aoe_radius
+			bullet.freeze_duration_s = _gun.freeze_duration_s
+			bullet.slow_duration_s = _gun.slow_duration_s
+			add_child(bullet)
+			_bullets_fired += 1
 
 # Iter 41: Jelly Bean Frenzy multi-shot. Spawns FRENZY_FAN_SHOTS bullets
 # in a fan, each with a lateral_drift derived from its angle off-axis.

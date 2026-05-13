@@ -1,0 +1,68 @@
+[gd_scene load_steps=8 format=3 uid="uid://b0nttg_terrainsel_001"]
+
+; Iter 61: level_select-specific terrain variant. Same scene structure as
+; terrain_3d.tscn but uses dirt_path_2k.png as the albedo texture — the
+; Candy Crush world-map path is BAKED INTO the dirt so the 3D camera
+; renders it with proper perspective as part of the terrain. No more
+; 2D Line2D floating above the rendered terrain.
+;
+; All other parameters (subdivided plane, normal map, roughness, fill
+; light, camera tilt) match the regular Terrain3D so the dirt feel
+; carries between gameplay and world-map screens.
+
+[ext_resource type="Texture2D" path="res://assets/textures/dirt_path_2k.png" id="1_dirt"]
+[ext_resource type="Texture2D" path="res://assets/textures/dirt_2k_normal.png" id="3_normal"]
+[ext_resource type="Texture2D" path="res://assets/textures/dirt_2k_rough.png" id="4_rough"]
+[ext_resource type="Script" path="res://scripts/terrain_3d.gd" id="2_script"]
+
+[sub_resource type="PlaneMesh" id="PlaneMesh_ground"]
+size = Vector2(40, 60)
+subdivide_width = 32
+subdivide_depth = 64
+
+; uv1_scale = (1,1) so the dirt_path_2k texture maps 1:1 across the
+; entire plane — path coordinates baked into the texture render at
+; their correct relative positions. (Gameplay terrain tiles uv1 at
+; 3,4 to repeat the dirt; here we WANT a single non-repeating mapping.)
+[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_dirt"]
+albedo_texture = ExtResource("1_dirt")
+normal_enabled = true
+normal_scale = 2.5
+normal_texture = ExtResource("3_normal")
+roughness = 1.0
+roughness_texture = ExtResource("4_rough")
+roughness_texture_channel = 0
+metallic_specular = 0.15
+uv1_scale = Vector3(1, 1, 1)
+texture_filter = 5
+
+[node name="Terrain3D" type="Node2D"]
+script = ExtResource("2_script")
+
+[node name="SubViewport" type="SubViewport" parent="."]
+size = Vector2i(540, 960)
+own_world_3d = true
+transparent_bg = false
+render_target_update_mode = 4
+
+[node name="Camera3D" type="Camera3D" parent="SubViewport"]
+transform = Transform3D(1, 0, 0, 0, 0.866, 0.5, 0, -0.5, 0.866, 0, 3, 2)
+fov = 70.0
+
+[node name="DirectionalLight3D" type="DirectionalLight3D" parent="SubViewport"]
+transform = Transform3D(0.866, -0.354, 0.354, 0, 0.707, 0.707, -0.5, -0.612, 0.612, 0, 8, 0)
+light_energy = 1.25
+light_color = Color(1.0, 0.94, 0.82, 1)
+
+[node name="FillLight" type="DirectionalLight3D" parent="SubViewport"]
+transform = Transform3D(-0.866, 0.354, -0.354, 0, 0.707, 0.707, 0.5, 0.612, -0.612, 0, 8, 0)
+light_energy = 0.35
+light_color = Color(0.7, 0.78, 1.0, 1)
+
+[node name="Ground" type="MeshInstance3D" parent="SubViewport"]
+mesh = SubResource("PlaneMesh_ground")
+material_override = SubResource("StandardMaterial3D_dirt")
+
+[node name="Sprite" type="Sprite2D" parent="."]
+position = Vector2(540, 960)
+scale = Vector2(2, 2)

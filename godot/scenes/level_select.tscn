@@ -2,7 +2,7 @@
 
 [ext_resource type="Script" path="res://scripts/level_select.gd" id="1_select"]
 [ext_resource type="Theme" path="res://assets/theme.tres" id="2_theme"]
-[ext_resource type="PackedScene" path="res://scenes/terrain_3d.tscn" id="3_terrain"]
+[ext_resource type="PackedScene" path="res://scenes/terrain_3d_level_select.tscn" id="3_terrain"]
 [ext_resource type="Texture2D" path="res://assets/sprites/posse_idle_00.png" id="4_cowboy"]
 
 ; Iter 43a: themed level tiles. The first 4 nodes get unique candy+Western
@@ -100,21 +100,10 @@ mouse_filter = 2
 
 [node name="Terrain3D" parent="." instance=ExtResource("3_terrain")]
 
-[node name="PathLine" type="Line2D" parent="."]
-width = 22.0
-default_color = Color(0.74, 0.55, 0.28, 0.78)
-joint_mode = 2
-begin_cap_mode = 2
-end_cap_mode = 2
-points = PackedVector2Array(540, 1720, 760, 1500, 380, 1300, 620, 1100, 440, 900, 700, 700, 340, 500, 540, 350)
-
-[node name="PathLineDashes" type="Line2D" parent="."]
-width = 8.0
-default_color = Color(0.96, 0.85, 0.45, 0.6)
-joint_mode = 2
-begin_cap_mode = 2
-end_cap_mode = 2
-points = PackedVector2Array(540, 1720, 760, 1500, 380, 1300, 620, 1100, 440, 900, 700, 700, 340, 500, 540, 350)
+; Iter 61: 2D Line2D path REMOVED. The path is now baked into the
+; level-select terrain's dirt texture (dirt_path_2k.png), so it renders
+; AS PART of the 3D ground plane with perspective for free. Level node
+; buttons stay 2D for tap-ability and float over the visible path ends.
 
 ; ─── LEVEL 1 — PEPPERMINT (Easy) ─────────────────────────────────────
 [node name="LevelNode1" type="Button" parent="."]

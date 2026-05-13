@@ -65,15 +65,23 @@ func _ready() -> void:
 	# has passed since the last spend, hearts will tick up.
 	GameState.apply_regen()
 	_refresh_hearts(GameState.hearts)
-	# Iter 45: DEBUG button gate. Release builds never see the button.
-	# OS.has_feature("debug") is true for editor + debug exports; release
-	# exports strip it.
+	# Iter 45/61: DEBUG button. Originally gated on OS.has_feature("debug")
+	# but firebelley/godot-export defaults to release-mode even from the
+	# "debug" workflow, so the feature flag is false in sideload builds.
+	# Until v1 ships to Play Store, always show — the user IS the only
+	# sideloader and needs the debug tools to test rushes/weapons/heroes.
 	if debug_button:
-		debug_button.visible = OS.has_feature("debug")
+		debug_button.visible = true
 		debug_button.pressed.connect(_on_debug_pressed)
 	# Build identifier in the bottom-right corner — proves which build is
 	# actually installed when sideloading repeatedly.
-	build_id_label.text = "%s  %s  iter %s" % [BuildInfo.SHA, BuildInfo.SHORT_DATE, BuildInfo.ITER]
+	# Iter 61: omit iter portion when CI didn't successfully stamp it
+	# (BuildInfo.ITER == "?" placeholder). SHA + date alone is enough to
+	# identify the build for sideload bug reports.
+	if BuildInfo.ITER == "?" or BuildInfo.ITER == "":
+		build_id_label.text = "%s  ·  %s" % [BuildInfo.SHA, BuildInfo.SHORT_DATE]
+	else:
+		build_id_label.text = "%s  %s  iter %s" % [BuildInfo.SHA, BuildInfo.SHORT_DATE, BuildInfo.ITER]
 	# Debug-build-only triple-tap-to-crash gesture on the BuildId label,
 	# for verifying Crashlytics integration on first sideload. Release
 	# builds never wire this up — OS.crash() is a no-op there anyway,
