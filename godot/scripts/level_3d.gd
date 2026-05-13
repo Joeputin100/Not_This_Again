@@ -100,6 +100,10 @@ var _pete_fire_timer: float = 0.0
 @onready var win_overlay: ColorRect = $UI/WinOverlay
 @onready var win_label: Label = $UI/WinOverlay/WinLabel
 @onready var retry_button: Button = $UI/WinOverlay/RetryButton
+@onready var fail_overlay: ColorRect = $UI/FailOverlay
+@onready var fail_label: Label = $UI/FailOverlay/FailLabel
+@onready var fail_retry_button: Button = $UI/FailOverlay/RetryButton
+var _failed: bool = false
 
 # Target cowboy x in world units, lerped each frame. Set by drag input
 # which converts screen-x to world-x via the camera-plane projection.
@@ -142,6 +146,9 @@ func _ready() -> void:
 	# Iter 77: win-modal Retry button.
 	if retry_button:
 		retry_button.pressed.connect(_on_retry_pressed)
+	# Iter 78: fail-modal Retry button.
+	if fail_retry_button:
+		fail_retry_button.pressed.connect(_on_retry_pressed)
 
 # Iter 72: create 5 Sprite3D followers (matches default posse_count=5
 # minus the leader at index 0). Each is a clone of the leader cowboy
@@ -293,6 +300,22 @@ func _pete_fire() -> void:
 		return
 	_outlaw_fire(pete)  # reuse outlaw bullet system
 
+# Iter 78: trigger the FAIL flow on posse=0. Deduct a heart, pop the
+# FailOverlay, freeze the game (skip _process via _failed flag).
+func _show_fail() -> void:
+	if _failed:
+		return
+	_failed = true
+	# Deduct one heart from the autoloaded GameState (Murderbot voice
+	# context: 'one less posse for next time').
+	if get_node_or_null("/root/GameState"):
+		GameState.spend_heart()
+	info_label.text = "DEAD  ·  posse 0  ·  hits %d" % _hits
+	if fail_label:
+		fail_label.text = "DEAD\n%d hits" % _hits
+	if fail_overlay:
+		fail_overlay.visible = true
+
 # Iter 77: trigger the win flow. Pop the WIN overlay; player can retry.
 func _show_win() -> void:
 	_pete_defeated = true
@@ -342,7 +365,11 @@ func _outlaw_fire(outlaw: Node3D) -> void:
 	outlaw_bullets_root.add_child(b)
 
 func _process(delta: float) -> void:
-	if _pete_defeated:
+	if _pete_defeated or _failed:
+		return
+	# Iter 78: posse-wiped check fires once per frame.
+	if _posse_count_3d <= 0 and not _failed:
+		_show_fail()
 		return
 	_level_elapsed += delta
 	# Lerp cowboy x toward target (drag input target).
