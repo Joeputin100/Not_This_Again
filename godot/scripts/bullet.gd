@@ -32,6 +32,22 @@ var lateral_drift: float = 0.0
 
 var _spawn_y: float = 0.0
 
+# Iter 56: pierce-through count. Initially set to the firing gun's
+# pierce_count via level.gd's _spawn_bullet. Decremented in level.gd's
+# collision passes. When this reaches 0, the bullet despawns on the next
+# hit. Default 0 = bullet dies on first hit (existing behavior).
+var pierce_remaining: int = 0
+
+# Iter 56: AOE radius from firing gun. > 0 means on collision, level.gd
+# applies damage to all enemies within this radius from the bullet's
+# impact position (in addition to the directly-hit target).
+var aoe_radius: float = 0.0
+
+# Iter 56: freeze / slow durations transferred from the firing gun.
+# Apply to whatever the bullet hits. Default 0 = no debuff.
+var freeze_duration_s: float = 0.0
+var slow_duration_s: float = 0.0
+
 # Iter 40e: candy palette for jelly-bean bullets. Each shot picks a
 # random color so a burst of rapid fire reads as a colorful spray
 # rather than a stream of identical projectiles. Western framing kept

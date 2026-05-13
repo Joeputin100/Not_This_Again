@@ -32,6 +32,7 @@ const WeatherManagerScript = preload("res://scripts/weather_manager.gd")
 const MuzzleFlashScene = preload("res://scenes/muzzle_flash.tscn")
 const FlourishBanner = preload("res://scripts/flourish_banner.gd")
 const DamagePopup = preload("res://scripts/damage_popup.gd")
+const WeaponFactoryScript = preload("res://scripts/weapons.gd")
 
 const FOLLOW_SPEED: float = 12.0
 const STARTING_POSSE: int = 5
@@ -425,20 +426,28 @@ func _spawn_bullet() -> void:
 	# rolls through AudioBus's 6-player gunfire pool so the shots stack
 	# instead of cutting each other off.
 	AudioBus.play_gunfire()
-	var bullet := BulletScene.instantiate()
-	bullet.position = cowboy.position + Vector2(0, BULLET_SPAWN_Y_OFFSET)
-	# max_range and damage are set BEFORE add_child so bullet._ready can
-	# capture the values via the now-set var defaults. Property assignment
-	# on the script var sticks regardless of _ready order.
-	bullet.max_range = _gun.range_px
-	bullet.damage = _gun.caliber
-	# Iter 22d weather: bullets pick up per-spawn modifiers from the
-	# level's current weather state. RAIN slows them; WIND_STORM curves
-	# them. Defaults (1.0, 0.0) are no-effect.
-	bullet.velocity_mult = bullet_velocity_mult
-	bullet.lateral_drift = bullet_lateral_drift
-	add_child(bullet)
-	_bullets_fired += 1
+	# Iter 56: multi-bullet weapons (bullets_per_shot > 1) spawn a fan of
+	# bullets per fire trigger. Single-shot weapons hit this loop once.
+	var shots: int = maxi(_gun.bullets_per_shot, 1)
+	var spread: float = _gun.spread_radians
+	for s in range(shots):
+		var bullet := BulletScene.instantiate()
+		bullet.position = cowboy.position + Vector2(0, BULLET_SPAWN_Y_OFFSET)
+		bullet.max_range = _gun.range_px
+		bullet.damage = _gun.caliber
+		bullet.velocity_mult = bullet_velocity_mult
+		# Compute per-bullet lateral_drift based on fan position
+		var off: float = 0.0
+		if shots > 1:
+			off = lerpf(-spread, spread, float(s) / float(shots - 1))
+		bullet.lateral_drift = bullet_lateral_drift + tan(off) * BulletScript.SPEED
+		# Iter 56: weapon special transfers
+		bullet.pierce_remaining = _gun.pierce_count
+		bullet.aoe_radius = _gun.aoe_radius
+		bullet.freeze_duration_s = _gun.freeze_duration_s
+		bullet.slow_duration_s = _gun.slow_duration_s
+		add_child(bullet)
+		_bullets_fired += 1
 
 # Iter 41: Jelly Bean Frenzy multi-shot. Spawns FRENZY_FAN_SHOTS bullets
 # in a fan, each with a lateral_drift derived from its angle off-axis.
@@ -504,6 +513,9 @@ func _resolve_bullet_barrel_collisions() -> void:
 			if Collision2D.rects_overlap(
 					bullet.position, BulletScript.SIZE,
 					barrel.position, BarrelScript.SIZE):
+				# Iter 56: pierce_remaining > 0 means the bullet survives this
+				# hit and continues. Decrement; bullet only despawns when
+				# pierce hits 0 in the despawn site below.
 				var was_destroyed: bool = barrel.take_damage(bullet.damage)
 				if was_destroyed:
 					_barrels_destroyed += 1
@@ -750,7 +762,16 @@ func _equip_bonus(type: String) -> void:
 			_gun_state = GunStateScript.new(_gun)
 			DebugLog.add("bonus equipped: rifle → caliber=%d range=%.0f" % [_gun.caliber, _gun.range_px])
 		_:
-			DebugLog.add("bonus equipped: UNKNOWN type=%s" % type)
+			# Iter 56+: try the weapon factory for catalog slugs. If the
+			# slug matches a known weapon, swap the active gun. Unknown
+			# slugs fall through to the original UNKNOWN log.
+			var gun_from_slug: Resource = WeaponFactoryScript.gun_for_slug(type)
+			if gun_from_slug:
+				_gun = gun_from_slug
+				_gun_state = GunStateScript.new(_gun)
+				DebugLog.add("bonus equipped: weapon=%s" % _gun.display_name)
+			else:
+				DebugLog.add("bonus equipped: UNKNOWN type=%s" % type)
 
 func _input(event: InputEvent) -> void:
 	# Track ALL inputs to verify _input is being called at all, not just
@@ -1283,13 +1304,17 @@ func _mount_test_range_sidebar() -> void:
 	ui_layer.add_child(panel)
 
 	var actions: Array = [
-		["EQUIP RIFLE",   "_on_test_equip_rifle"],
-		["EQUIP DEFAULT", "_on_test_equip_default"],
-		["JELLY FRENZY",  "_on_test_jelly_frenzy"],
-		["+1 DUDE",       "_on_test_add_dude"],
-		["−1 DUDE",       "_on_test_remove_dude"],
-		["RESET CACTI",   "_on_test_reset_cacti"],
-		["EXIT RANGE",    "_on_test_exit"],
+		["EQUIP RIFLE",        "_on_test_equip_rifle"],
+		["EQUIP DEFAULT",      "_on_test_equip_default"],
+		["LIQUORICE WHIP",     "_on_test_equip_liquorice_whip"],
+		["JAWBREAKERS",        "_on_test_equip_jawbreaker"],
+		["COTTON CANDY RIFLE", "_on_test_equip_cotton_candy_rifle"],
+		["GUMDROP GATLING",    "_on_test_equip_gatling"],
+		["JELLY FRENZY",       "_on_test_jelly_frenzy"],
+		["+1 DUDE",            "_on_test_add_dude"],
+		["−1 DUDE",            "_on_test_remove_dude"],
+		["RESET CACTI",        "_on_test_reset_cacti"],
+		["EXIT RANGE",         "_on_test_exit"],
 	]
 	for entry in actions:
 		var btn := Button.new()
@@ -1320,6 +1345,20 @@ func _on_test_remove_dude() -> void:
 	# still clamp to 1 here so the leader stays renderable.
 	posse_count = maxi(posse_count - 1, 1)
 	DebugLog.add("test range: posse=%d" % posse_count)
+
+# Iter 56: test-range weapon equip helpers. Each calls _equip_bonus
+# with the matching slug so the weapon factory dispatches normally.
+func _on_test_equip_liquorice_whip() -> void:
+	_equip_bonus("liquorice_whip")
+
+func _on_test_equip_jawbreaker() -> void:
+	_equip_bonus("jawbreaker_grenades")
+
+func _on_test_equip_cotton_candy_rifle() -> void:
+	_equip_bonus("cotton_candy_rifle")
+
+func _on_test_equip_gatling() -> void:
+	_equip_bonus("gumdrop_gatling")
 
 func _on_test_reset_cacti() -> void:
 	# Tear down current cacti + spawn a fresh grid (use case: stress-test
