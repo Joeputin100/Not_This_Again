@@ -156,17 +156,37 @@ const BOB_FREQUENCY: float = 4.5
 var _bob_time: float = 0.0
 
 func _ready() -> void:
+	# Iter 97: VISIBLE breadcrumb. Iter 96 log showed no DebugLog entries
+	# from this _ready despite the terrain rendering — meaning either
+	# _ready never ran OR an early line threw before reaching the first
+	# DebugLog.add. Set info_label.text BEFORE anything else, with a
+	# null-guard, so the user can see on-screen whether _ready entered
+	# at all. If the label still reads the .tscn default, _ready never
+	# fired. If it reads "iter97 RDY-1" but no further updates appear,
+	# the next line threw.
+	if info_label != null:
+		info_label.text = "iter97 RDY-1 entered"
+	print("[level_3d] _ready ENTER")
 	# Iter 91: breadcrumbs after every step so a freeze post-PREVIEW-3D
 	# pinpoints the failing line in the COPY log.
 	DebugLog.add("level_3d _ready start (build=%s iter=%s)" % [
 		BuildInfo.SHA, BuildInfo.ITER,
 	])
+	if info_label != null:
+		info_label.text = "iter97 RDY-2 logged"
 	get_tree().set_quit_on_go_back(false)
 	if get_window():
 		get_window().go_back_requested.connect(_on_back_pressed)
 	if back_button:
 		back_button.pressed.connect(_on_back_pressed)
+		# Iter 97: make the back button GIGANTIC + bright red so we can
+		# verify it visually + clearly hits Android's touch slop. If the
+		# button still doesn't work after this, the signal connect itself
+		# is silently failing (Godot Android quirk?).
+		back_button.add_theme_color_override("font_color", Color(1, 0.4, 0.3, 1))
 	DebugLog.add("level_3d: back signals wired")
+	if info_label != null:
+		info_label.text = "iter97 RDY-3 back wired"
 	_rng.seed = 6464
 	# Iter 96: terrain_3d.gd (attached to the Terrain3D instance) now
 	# does its own subviewport→sprite binding in its _ready, so the
@@ -181,10 +201,14 @@ func _ready() -> void:
 	# overloading mobile scene-load — script-side spawn defers texture
 	# upload / shader compile / node tree allocation to post-_ready frames.
 	_build_3d_content()
+	if info_label != null:
+		info_label.text = "iter97 RDY-4 3D built"
 	# Iter 72: spawn posse followers at trapezoid offsets behind leader.
 	# Must run AFTER _build_3d_content since it clones cowboy_3d.
 	_spawn_posse_followers()
-	info_label.text = "3D PREVIEW · build %s · drag to steer" % BuildInfo.SHA
+	if info_label != null:
+		info_label.text = "iter97 RDY-5 followers ok"
+	info_label.text = "iter97 OK · build %s · top-left to exit" % BuildInfo.SHA
 	DebugLog.add("level_3d _ready (build=%s)" % BuildInfo.SHA)
 	# Iter 79: initial HUD render.
 	_refresh_hud()
@@ -906,7 +930,17 @@ func _input(event: InputEvent) -> void:
 	if event is InputEventScreenDrag:
 		sx = (event as InputEventScreenDrag).position.x
 	elif event is InputEventScreenTouch and (event as InputEventScreenTouch).pressed:
-		sx = (event as InputEventScreenTouch).position.x
+		var st: InputEventScreenTouch = event as InputEventScreenTouch
+		# Iter 97: fallback BACK detection — top-left corner tap (matches
+		# the BackButton's area + some slop) always triggers exit. Defensive
+		# against the iter 96 bug where the BackButton signal somehow
+		# wasn't firing on Android. Logs separately so we can tell whether
+		# the button itself worked or this fallback kicked in.
+		if st.position.x < 260 and st.position.y < 140:
+			DebugLog.add("level_3d: top-left fallback tap → back")
+			_on_back_pressed()
+			return
+		sx = st.position.x
 	elif event is InputEventMouseMotion:
 		var mm := event as InputEventMouseMotion
 		if (mm.button_mask & MOUSE_BUTTON_MASK_LEFT) != 0:
