@@ -1,4 +1,4 @@
-[gd_scene load_steps=14 format=3 uid="uid://b0nttg_lvl3d_001"]
+[gd_scene load_steps=7 format=3 uid="uid://b0nttg_lvl3d_001"]
 
 [ext_resource type="Script" path="res://scripts/level_3d.gd" id="1_lvl3d"]
 [ext_resource type="Texture2D" path="res://assets/textures/dirt_2k.png" id="2_dirt"]
@@ -10,22 +10,6 @@
 size = Vector2(40, 60)
 subdivide_width = 32
 subdivide_depth = 64
-
-; Iter 86: mountain palette — two muted purple-brown shades for
-; alternating silhouettes (creates depth via slight color variation).
-[sub_resource type="StandardMaterial3D" id="MountainMat_A"]
-albedo_color = Color(0.35, 0.22, 0.32, 1)
-roughness = 1.0
-
-[sub_resource type="StandardMaterial3D" id="MountainMat_B"]
-albedo_color = Color(0.42, 0.28, 0.36, 1)
-roughness = 1.0
-
-; Iter 92: shared unit-cube BoxMesh used by all 4 mountains. Each
-; instance scales it via transform basis to its desired size, avoiding
-; the per-node CSG mesh recompute on the mobile renderer.
-[sub_resource type="BoxMesh" id="MountainBoxMesh"]
-size = Vector3(1, 1, 1)
 
 [sub_resource type="StandardMaterial3D" id="StandardMaterial3D_dirt"]
 albedo_texture = ExtResource("2_dirt")
@@ -87,77 +71,18 @@ shadow_enabled = false
 mesh = SubResource("PlaneMesh_ground")
 material_override = SubResource("StandardMaterial3D_dirt")
 
-; Iter 64: 3D cowboy lives INSIDE the SubViewport's 3D scene — it's a
-; Sprite3D billboard always facing the camera. Pixel-size tuned so the
-; sprite reads ~2 world units tall (matches the dirt scale).
-; Iter 71: pixel_size 0.0003 → 0.002 (sprite ~0.68×0.89 world units —
-; visible but not dominant). y from 0.5 → 0.45 so the sprite's bottom
-; sits at y≈0 (on the dirt plane) instead of floating above.
-[node name="Cowboy3D" type="Sprite3D" parent="Terrain3D/SubViewport"]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.45, 1.5)
-pixel_size = 0.002
-billboard = 1
-alpha_cut = 1
-texture = ExtResource("5_cowboy")
-
-; Obstacles spawn as children of this Node3D so level_3d.gd can iterate
-; them. CSGBox3D placeholders for iter 64 (iter 65+ will swap to proper
-; 3D entity meshes per type).
-[node name="Obstacles" type="Node3D" parent="Terrain3D/SubViewport"]
-
-; Iter 66: bullets spawn as children of this Node3D. CSGSphere3D emissive
-; jelly beans — replaceable with proper bullet meshes in a future iter.
-[node name="Bullets" type="Node3D" parent="Terrain3D/SubViewport"]
-
-; Iter 75: gates spawn here. Each gate = two side-by-side colored door
-; quads, each with a Label3D math value. Cowboy walks through one of
-; the two doors to apply that effect.
-[node name="Gates" type="Node3D" parent="Terrain3D/SubViewport"]
-
-; Iter 76: outlaw enemies spawn here. Each = a tall red CSGBox3D that
-; scrolls toward the camera + fires red bullets back at the cowboy.
-[node name="Outlaws" type="Node3D" parent="Terrain3D/SubViewport"]
-
-; Iter 76: outlaw bullets — distinct from posse bullets so collision
-; checks can distinguish 'incoming' vs 'outgoing'.
-[node name="OutlawBullets" type="Node3D" parent="Terrain3D/SubViewport"]
-
-; Iter 77: boss container. Slippery Pete (or future bosses) lives here.
-; Spawned dynamically after PETE_SPAWN_DELAY into the level.
-[node name="Boss" type="Node3D" parent="Terrain3D/SubViewport"]
-
-; Iter 80: damage popups in 3D — Label3D billboards that float upward
-; and fade. Tear-down via queue_free after 0.7s lifespan.
-[node name="Popups" type="Node3D" parent="Terrain3D/SubViewport"]
-
-; Iter 88: bonus pickup spawns. Each = a small floating gold Sprite3D
-; or CSG above the dirt; cowboy collides → weapon variant change.
-[node name="Bonuses" type="Node3D" parent="Terrain3D/SubViewport"]
-
-; Iter 86/92: distance scenery — 4 horizon silhouettes at z=-32. Iter 92
-; converted CSGBox3D → MeshInstance3D + shared BoxMesh subresource +
-; transform.scale to vary size. CSG nodes were the likely cause of the
-; user-reported 3D preview freeze on Android (mobile GPU stalls when
-; combining CSG mesh compute + 1080×1920 SubViewport).
-[node name="MountainA" type="MeshInstance3D" parent="Terrain3D/SubViewport"]
-transform = Transform3D(12, 0, 0, 0, 7, 0, 0, 0, 1, -16, 3, -32)
-mesh = SubResource("MountainBoxMesh")
-material_override = SubResource("MountainMat_A")
-
-[node name="MountainB" type="MeshInstance3D" parent="Terrain3D/SubViewport"]
-transform = Transform3D(10, 0, 0, 0, 9, 0, 0, 0, 1, -6, 4, -33)
-mesh = SubResource("MountainBoxMesh")
-material_override = SubResource("MountainMat_B")
-
-[node name="MountainC" type="MeshInstance3D" parent="Terrain3D/SubViewport"]
-transform = Transform3D(11, 0, 0, 0, 8, 0, 0, 0, 1, 4, 3.5, -32)
-mesh = SubResource("MountainBoxMesh")
-material_override = SubResource("MountainMat_A")
-
-[node name="MountainD" type="MeshInstance3D" parent="Terrain3D/SubViewport"]
-transform = Transform3D(10, 0, 0, 0, 10, 0, 0, 0, 1, 14, 4.5, -33)
-mesh = SubResource("MountainBoxMesh")
-material_override = SubResource("MountainMat_B")
+; Iter 95: ALL 3D content (cowboy + mountains + 8 container Node3Ds)
+; moved to script-side spawn in level_3d.gd._ready. Hypothesis: bundling
+; ~15 nodes including a Sprite3D with a 1.7MB texture + 4 MeshInstance3D
+; with materials + the dirt MeshInstance3D + 2 lights into the .tscn
+; was overloading mobile scene-load (texture upload + shader compile
+; happens synchronously). Lazy script-side addition spreads the work
+; across multiple frames + lets the breadcrumbs reveal which step hangs
+; if any.
+;
+; Scene file now matches terrain_3d.tscn EXACTLY in SubViewport contents:
+; Camera3D + 2 Lights + Ground. That structure is proven-working in
+; gameplay levels (level.tscn instances terrain_3d.tscn successfully).
 
 ; SubViewport renders into this Sprite2D which spans the full screen.
 ; Iter 94: SubViewport halved to 540×960 so scale 2 upscales to fill
