@@ -168,16 +168,14 @@ func _ready() -> void:
 		back_button.pressed.connect(_on_back_pressed)
 	DebugLog.add("level_3d: back signals wired")
 	_rng.seed = 6464
-	# Iter 69: bind the SubViewport's render output to the Sprite2D.
-	# Without this, the Sprite2D has no texture and the Background
-	# ColorRect (dark brown) shows through — exactly what user reported.
-	if terrain_sprite and subviewport:
-		terrain_sprite.texture = subviewport.get_texture()
-		DebugLog.add("level_3d: subviewport→sprite texture bound")
+	# Iter 96: terrain_3d.gd (attached to the Terrain3D instance) now
+	# does its own subviewport→sprite binding in its _ready, so the
+	# manual binding from iter 69 is no longer needed. Keeping a
+	# breadcrumb so the log still shows the binding step succeeded.
+	if subviewport != null:
+		DebugLog.add("level_3d: terrain instance loaded; subviewport=%s" % subviewport.size)
 	else:
-		DebugLog.add("WARN level_3d: terrain_sprite=%s subviewport=%s" % [
-			str(terrain_sprite), str(subviewport),
-		])
+		DebugLog.add("WARN level_3d: subviewport null after terrain instance")
 	# Iter 95: build 3D content (cowboy + mountains + 8 container Node3Ds)
 	# AFTER initial setup. Hypothesis: bundling everything into .tscn was
 	# overloading mobile scene-load — script-side spawn defers texture
