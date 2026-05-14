@@ -42,13 +42,17 @@ const BULLET_SPAWN_Y: float = 1.2  # waist-high at cowboy
 
 @onready var subviewport: SubViewport = $Terrain3D/SubViewport
 @onready var camera: Camera3D = $Terrain3D/SubViewport/Camera3D
-@onready var cowboy_3d: Sprite3D = $Terrain3D/SubViewport/Cowboy3D
-@onready var obstacles_root: Node3D = $Terrain3D/SubViewport/Obstacles
-@onready var bullets_root: Node3D = $Terrain3D/SubViewport/Bullets
-@onready var gates_root: Node3D = $Terrain3D/SubViewport/Gates
-@onready var outlaws_root: Node3D = $Terrain3D/SubViewport/Outlaws
-@onready var outlaw_bullets_root: Node3D = $Terrain3D/SubViewport/OutlawBullets
-@onready var boss_root: Node3D = $Terrain3D/SubViewport/Boss
+# Iter 95: 3D content vars below were @onready against .tscn nodes
+# that are now created in _build_3d_content() (called from _ready)
+# instead of being baked into level_3d.tscn. The .tscn now matches
+# terrain_3d.tscn's minimal SubViewport structure exactly.
+var cowboy_3d: Sprite3D
+var obstacles_root: Node3D
+var bullets_root: Node3D
+var gates_root: Node3D
+var outlaws_root: Node3D
+var outlaw_bullets_root: Node3D
+var boss_root: Node3D
 # Iter 69: terrain_3d.gd script wasn't attached to the inline Terrain3D
 # node in level_3d.tscn, so the SubViewport→Sprite2D texture wiring
 # never ran. Reference + manual hookup in _ready below.
@@ -59,8 +63,9 @@ const BULLET_SPAWN_Y: float = 1.2  # waist-high at cowboy
 @onready var hearts_label: Label = $UI/HeartsLabel
 @onready var posse_label: Label = $UI/PosseLabel
 @onready var hits_label: Label = $UI/HitsLabel
-@onready var popups_root: Node3D = $Terrain3D/SubViewport/Popups
-@onready var bonuses_root: Node3D = $Terrain3D/SubViewport/Bonuses
+# Iter 95: also created in _build_3d_content().
+var popups_root: Node3D
+var bonuses_root: Node3D
 
 var _spawn_timer: float = 0.0
 var _fire_timer: float = 0.0
@@ -173,7 +178,13 @@ func _ready() -> void:
 		DebugLog.add("WARN level_3d: terrain_sprite=%s subviewport=%s" % [
 			str(terrain_sprite), str(subviewport),
 		])
+	# Iter 95: build 3D content (cowboy + mountains + 8 container Node3Ds)
+	# AFTER initial setup. Hypothesis: bundling everything into .tscn was
+	# overloading mobile scene-load — script-side spawn defers texture
+	# upload / shader compile / node tree allocation to post-_ready frames.
+	_build_3d_content()
 	# Iter 72: spawn posse followers at trapezoid offsets behind leader.
+	# Must run AFTER _build_3d_content since it clones cowboy_3d.
 	_spawn_posse_followers()
 	info_label.text = "3D PREVIEW · build %s · drag to steer" % BuildInfo.SHA
 	DebugLog.add("level_3d _ready (build=%s)" % BuildInfo.SHA)
@@ -185,6 +196,70 @@ func _ready() -> void:
 	# Iter 78: fail-modal Retry button.
 	if fail_retry_button:
 		fail_retry_button.pressed.connect(_on_retry_pressed)
+
+# Iter 95: build all 3D scene content that used to live in level_3d.tscn.
+# Order: containers → cowboy → mountains. After each step a DebugLog
+# breadcrumb lands so a freeze midway through pinpoints the failing step.
+const COWBOY_TEXTURE_LVL3D := preload("res://assets/sprites/posse_idle_00.png")
+
+func _build_3d_content() -> void:
+	if subviewport == null:
+		DebugLog.add("WARN level_3d: subviewport null in _build_3d_content")
+		return
+	DebugLog.add("level_3d: building 3D content")
+	# 1) Empty Node3D containers — cheapest first so they're available
+	# to other systems even if cowboy/mountain spawn fails.
+	obstacles_root = _make_lvl3d_container("Obstacles")
+	bullets_root = _make_lvl3d_container("Bullets")
+	gates_root = _make_lvl3d_container("Gates")
+	outlaws_root = _make_lvl3d_container("Outlaws")
+	outlaw_bullets_root = _make_lvl3d_container("OutlawBullets")
+	boss_root = _make_lvl3d_container("Boss")
+	popups_root = _make_lvl3d_container("Popups")
+	bonuses_root = _make_lvl3d_container("Bonuses")
+	DebugLog.add("level_3d: 8 containers added to subviewport")
+	# 2) Cowboy3D Sprite3D billboard.
+	cowboy_3d = Sprite3D.new()
+	cowboy_3d.name = "Cowboy3D"
+	cowboy_3d.texture = COWBOY_TEXTURE_LVL3D
+	cowboy_3d.pixel_size = 0.002
+	cowboy_3d.billboard = BaseMaterial3D.BILLBOARD_ENABLED
+	cowboy_3d.alpha_cut = SpriteBase3D.ALPHA_CUT_DISCARD
+	cowboy_3d.position = Vector3(0, 0.45, 1.5)
+	subviewport.add_child(cowboy_3d)
+	DebugLog.add("level_3d: cowboy_3d added")
+	# 3) 4 mountain MeshInstance3D silhouettes.
+	_spawn_mountains_lvl3d()
+	DebugLog.add("level_3d: mountains added")
+
+func _make_lvl3d_container(node_name: String) -> Node3D:
+	var n := Node3D.new()
+	n.name = node_name
+	subviewport.add_child(n)
+	return n
+
+func _spawn_mountains_lvl3d() -> void:
+	var box_mesh := BoxMesh.new()
+	box_mesh.size = Vector3(1, 1, 1)
+	var mat_a := StandardMaterial3D.new()
+	mat_a.albedo_color = Color(0.35, 0.22, 0.32, 1)
+	mat_a.roughness = 1.0
+	var mat_b := StandardMaterial3D.new()
+	mat_b.albedo_color = Color(0.42, 0.28, 0.36, 1)
+	mat_b.roughness = 1.0
+	var configs: Array = [
+		{"pos": Vector3(-16, 3.0, -32), "scl": Vector3(12, 7, 1),  "mat": mat_a},
+		{"pos": Vector3(-6,  4.0, -33), "scl": Vector3(10, 9, 1),  "mat": mat_b},
+		{"pos": Vector3(4,   3.5, -32), "scl": Vector3(11, 8, 1),  "mat": mat_a},
+		{"pos": Vector3(14,  4.5, -33), "scl": Vector3(10, 10, 1), "mat": mat_b},
+	]
+	for c in configs:
+		var m := MeshInstance3D.new()
+		m.mesh = box_mesh
+		m.material_override = c["mat"]
+		m.position = c["pos"]
+		m.scale = c["scl"]
+		subviewport.add_child(m)
 
 # Iter 72: create 5 Sprite3D followers (matches default posse_count=5
 # minus the leader at index 0). Each is a clone of the leader cowboy
