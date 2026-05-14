@@ -11,4 +11,4 @@ const SHORT_DATE: String = "0000-00-00"
 # this with `git log --oneline | wc -l`, but if that ever fails, we
 # fall back to this manually-maintained value rather than showing "?".
 # Bumped per-iter as part of commit hygiene.
-const ITER: String = "93"
+const ITER: String = "94"
