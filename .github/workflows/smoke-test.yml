@@ -95,7 +95,12 @@ jobs:
           unzip -j -o templates.tpz '*/android_source.zip' -d .
           mkdir -p "$GITHUB_WORKSPACE/godot/android/build"
           unzip -o android_source.zip -d "$GITHUB_WORKSPACE/godot/android/build/"
-          echo "${GODOT_VERSION}" > "$GITHUB_WORKSPACE/godot/android/.build_version"
+          # Godot's .build_version file uses '4.6.1.stable' format (with dot),
+          # not '4.6.1-stable' (with dash). The dash form matches the release
+          # download URL; the dot form matches what Godot writes when you
+          # install the build template from the Project menu. Mismatch causes
+          # "Android build version mismatch" at export time. Hardcoded here.
+          echo "4.6.1.stable" > "$GITHUB_WORKSPACE/godot/android/.build_version"
           touch "$GITHUB_WORKSPACE/godot/android/build/.gdignore"
 
       - name: Patch Android template for Firebase Crashlytics
