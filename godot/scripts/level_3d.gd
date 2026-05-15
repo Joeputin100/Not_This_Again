@@ -1,5 +1,34 @@
 extends Node2D
 
+# ============================================================================
+# Iter 98: SCRIPT-ATTACH DIAGNOSIS
+# ============================================================================
+# Iter 97 confirmed: terrain renders (terrain_3d.gd works), but neither
+# _ready NOR _input on this script ever fire on Android. The info_label
+# stayed at the .tscn default, the BackButton signal was never wired,
+# and the top-left-tap fallback in _input ALSO never triggered.
+#
+# This is the smoking gun: either (a) the script never attaches at
+# runtime, or (b) it parses but Godot's Android runtime suppresses all
+# lifecycle callbacks. CI export succeeds + the script appears in the
+# .tscn — but Android runtime acts as if Level3D is a plain Node2D.
+#
+# Three callbacks below — _init, _enter_tree, _ready — each log via
+# DebugLog (an autoload, always in tree). If ANY land in the disk log
+# after opening 3D PREVIEW, the script attached and we know WHICH
+# callback got suppressed. If NONE land, the script never attached and
+# the bug is in the .tscn / asset pipeline.
+# ============================================================================
+
+func _init() -> void:
+	# _init runs at allocation, before this node enters the tree. DebugLog
+	# is already in the tree (autoload), so it can be called from here.
+	# This is the EARLIEST possible breadcrumb from this script.
+	DebugLog.add("level_3d.gd _init — script IS attached")
+
+func _enter_tree() -> void:
+	DebugLog.add("level_3d.gd _enter_tree")
+
 # Iter 64: prototype 3D level scene. The user chose the full 3D refactor
 # path over the perspective-fake approach. This scene is the foundation
 # for the migration:
