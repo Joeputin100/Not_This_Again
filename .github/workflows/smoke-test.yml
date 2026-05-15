@@ -137,6 +137,26 @@ jobs:
           cache: true
           use_preset_export_path: true
 
+      - name: Generate Android debug keystore
+        # bundletool's universal APK build needs a keystore to sign the
+        # output, otherwise the emulator refuses to install with
+        # INSTALL_PARSE_FAILED_NO_CERTIFICATES. The standard Android debug
+        # keystore lives at ~/.android/debug.keystore with the well-known
+        # password 'android' and alias 'androiddebugkey'. Recreating it
+        # in CI matches what Android Studio + adb auto-create on a fresh
+        # workstation.
+        run: |
+          mkdir -p ~/.android
+          if [ ! -f ~/.android/debug.keystore ]; then
+            keytool -genkeypair \
+              -keystore ~/.android/debug.keystore \
+              -storepass android -keypass android \
+              -alias androiddebugkey \
+              -keyalg RSA -keysize 2048 -validity 10000 \
+              -dname "CN=Android Debug,O=Android,C=US"
+          fi
+          keytool -list -keystore ~/.android/debug.keystore -storepass android | head -5
+
       - name: Convert AAB to universal APK via bundletool
         run: |
           AAB=$(find build -name "*.aab" | head -1)
@@ -145,12 +165,22 @@ jobs:
           BUNDLETOOL=/tmp/bundletool.jar
           wget -nv -O "$BUNDLETOOL" \
             https://github.com/google/bundletool/releases/download/1.18.0/bundletool-all-1.18.0.jar
+          # Explicit keystore args ensure bundletool signs the output APK.
+          # Without --ks, bundletool only signs if it finds ~/.android/debug.keystore
+          # at the default location AND the AAB has signing config. Being
+          # explicit avoids depending on that auto-detection magic.
           java -jar "$BUNDLETOOL" build-apks \
             --bundle="$AAB" \
             --output=/tmp/app.apks \
-            --mode=universal
+            --mode=universal \
+            --ks="$HOME/.android/debug.keystore" \
+            --ks-pass=pass:android \
+            --key-pass=pass:android \
+            --ks-key-alias=androiddebugkey
           unzip -p /tmp/app.apks universal.apk > app-smoke.apk
           ls -lh app-smoke.apk
+          # Verify the APK is signed before uploading.
+          jarsigner -verify app-smoke.apk | head -3
 
       - name: Upload smoke-test APK
         uses: actions/upload-artifact@v4
