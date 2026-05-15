@@ -11,4 +11,11 @@ const SHORT_DATE: String = "0000-00-00"
 # this with `git log --oneline | wc -l`, but if that ever fails, we
 # fall back to this manually-maintained value rather than showing "?".
 # Bumped per-iter as part of commit hygiene.
-const ITER: String = "99"
+const ITER: String = "100"
+
+# Iter 100: CI smoke-test flag. The android-debug.yml stamp step keeps
+# this false (production sideloading); the new smoke-test.yml workflow
+# stamps it true so main_menu auto-redirects to level_3d.tscn after a
+# short delay. That lets the emulator + Firebase Test Lab smoke jobs
+# exercise the 3D PREVIEW scene WITHOUT scripting any UI taps.
+const SMOKE_TEST: bool = false

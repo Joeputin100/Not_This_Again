@@ -98,6 +98,22 @@ func _ready() -> void:
 	DebugLog.add("_ready: complete")
 	# Defer pivot capture so Godot's layout pass has run and sizes are real.
 	call_deferred("_finalize_setup")
+	# Iter 100: CI smoke-test auto-redirect. The smoke-test.yml workflow
+	# stamps BuildInfo.SMOKE_TEST=true, then this branch kicks in 2s after
+	# main_menu loads and changes scene to level_3d.tscn. The emulator +
+	# FTL jobs then grep logcat for 'level_3d.gd _init' to verify whether
+	# the 3D PREVIEW script actually attaches at runtime. Normal debug
+	# builds keep SMOKE_TEST=false and behave unchanged.
+	if BuildInfo.SMOKE_TEST:
+		DebugLog.add("SMOKE: auto-loading level_3d.tscn in 2.0s")
+		print("[SMOKE] auto-loading level_3d.tscn in 2.0s")
+		var smoke_timer: SceneTreeTimer = get_tree().create_timer(2.0)
+		smoke_timer.timeout.connect(_smoke_load_level_3d)
+
+func _smoke_load_level_3d() -> void:
+	DebugLog.add("SMOKE: change_scene → level_3d.tscn")
+	print("[SMOKE] change_scene → level_3d.tscn")
+	get_tree().change_scene_to_file("res://scenes/level_3d.tscn")
 
 func _on_debug_pressed() -> void:
 	AudioBus.play_tap()
