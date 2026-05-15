@@ -249,8 +249,13 @@ jobs:
             adb logcat -c
             echo "Installing APK..."
             adb install -r app-smoke.apk
-            echo "Launching app..."
-            adb shell am start -W -n app.notthisagain.run/com.godot.game.GodotApp
+            echo "Launching app via monkey (bypasses exported= check on API 31+)..."
+            # 'adb shell am start -n pkg/activity' requires the activity to
+            # be android:exported="true", which Godot's main activity isn't
+            # by default. Monkey emits a synthetic intent from the system
+            # uid which doesn't trip the exported check, and finds the
+            # launcher activity via category LAUNCHER + action MAIN.
+            adb shell monkey -p app.notthisagain.run -c android.intent.category.LAUNCHER 1
             echo "Waiting 30s for main_menu boot + auto-redirect to level_3d..."
             sleep 30
             echo "Dumping logcat..."
