@@ -284,7 +284,11 @@ func _build_3d_content() -> void:
 	cowboy_3d.texture = COWBOY_TEXTURE_LVL3D
 	cowboy_3d.pixel_size = 0.002
 	cowboy_3d.billboard = BaseMaterial3D.BILLBOARD_ENABLED
-	cowboy_3d.alpha_cut = SpriteBase3D.ALPHA_CUT_DISCARD
+	# Iter 100 (fix 8): SpriteBase3D.ALPHA_CUT_DISCARD parse-fails on
+	# Godot 4.6.1 Android runtime even though it's valid on Linux export.
+	# Use the int literal (1) directly with a comment for the human reader.
+	# (Same enum value as SpriteBase3D.AlphaCutMode.ALPHA_CUT_DISCARD.)
+	cowboy_3d.alpha_cut = 1  # ALPHA_CUT_DISCARD
 	cowboy_3d.position = Vector3(0, 0.45, 1.5)
 	subviewport.add_child(cowboy_3d)
 	DebugLog.add("level_3d: cowboy_3d added")
@@ -333,8 +337,13 @@ func _spawn_posse_followers() -> void:
 		var f := Sprite3D.new()
 		f.texture = leader_tex
 		f.pixel_size = leader_pixel
-		f.billboard = SpriteBase3D.BILLBOARD_ENABLED
-		f.alpha_cut = SpriteBase3D.ALPHA_CUT_DISCARD
+		# Iter 100 (fix 8): SpriteBase3D.BILLBOARD_ENABLED + ALPHA_CUT_DISCARD
+		# parse-fail at Godot 4.6.1 Android runtime — the script silently
+		# fails to attach (caught by smoke-test run 25903646479). Use int
+		# literals with comments — they're stable across Godot versions
+		# and the parser doesn't need to resolve the enum name.
+		f.billboard = 1  # BillboardMode.BILLBOARD_ENABLED
+		f.alpha_cut = 1  # AlphaCutMode.ALPHA_CUT_DISCARD
 		f.position = Vector3(offset.x, 0.45, COWBOY_Z + offset.z)
 		f.set_meta("formation_offset", offset)
 		subviewport.add_child(f)
