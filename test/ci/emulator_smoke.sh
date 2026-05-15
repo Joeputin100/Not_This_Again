@@ -15,13 +15,35 @@ PKG=app.notthisagain.run
 APK=app-smoke.apk
 WAIT_SECS=45  # main_menu boot + 2s auto-redirect timer + level_3d _ready
 
+# Defensive boot-completion wait. Some GH-hosted runners are slow enough
+# that emulator-runner's internal 'wait for boot' returns before Android
+# is actually responsive — leading to 'adb: device offline' or installs
+# that succeed but the app never reaches its first frame in our window.
+# Poll sys.boot_completed up to 90s before doing anything.
+echo "Waiting for Android boot to complete..."
+adb wait-for-device
+for i in $(seq 1 45); do
+  bc=$(adb shell getprop sys.boot_completed 2>/dev/null | tr -d '\r' || echo "")
+  if [ "$bc" = "1" ]; then
+    echo "Boot complete after ${i}*2s."
+    break
+  fi
+  sleep 2
+done
 # Bump logcat buffer so we don't lose godot lines during the wait. The
 # default 256K wrap can drop the breadcrumbs we need to assert against.
 adb logcat -G 4M
 adb logcat -c
 
 echo "Installing APK..."
-adb install -r "$APK"
+# Retry once if first install fails due to adb hiccup (intermittent
+# 'device offline' between probe + install on slow runners).
+if ! adb install -r "$APK"; then
+  echo "First install attempt failed, retrying after 10s..."
+  sleep 10
+  adb wait-for-device
+  adb install -r "$APK"
+fi
 
 echo "Launching $PKG via monkey..."
 # 'am start -n pkg/activity' requires android:exported='true' on API 31+.
