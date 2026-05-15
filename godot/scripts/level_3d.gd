@@ -48,6 +48,14 @@ func _enter_tree() -> void:
 # Reachable from debug menu → "PREVIEW 3D LEVEL".
 
 const BuildInfo = preload("res://scripts/build_info.gd")
+# Iter 99: moved up from mid-file (was between _ready and
+# _build_3d_content). The mid-file `const := preload(...)` after func
+# definitions appears to fail at Godot Android runtime — the script
+# attaches at CI export time but Android refuses to instantiate it,
+# which means _init, _enter_tree, _ready, _input ALL silently never
+# run (verified by iter 98's null-instrumentation result). Module
+# consts should all live at the top of the file, before any function.
+const COWBOY_TEXTURE_LVL3D: Texture2D = preload("res://assets/sprites/posse_idle_00.png")
 
 # 3D world bounds. The dirt PlaneMesh in terrain_3d_3d_prototype is
 # 40 wide × 60 deep, centered at origin. Cowboy lane = x in [-18, 18].
@@ -251,7 +259,8 @@ func _ready() -> void:
 # Iter 95: build all 3D scene content that used to live in level_3d.tscn.
 # Order: containers → cowboy → mountains. After each step a DebugLog
 # breadcrumb lands so a freeze midway through pinpoints the failing step.
-const COWBOY_TEXTURE_LVL3D := preload("res://assets/sprites/posse_idle_00.png")
+# (Iter 99: COWBOY_TEXTURE_LVL3D moved to top of file with other consts —
+# Godot Android refused to load the script when it lived mid-file.)
 
 func _build_3d_content() -> void:
 	if subviewport == null:
