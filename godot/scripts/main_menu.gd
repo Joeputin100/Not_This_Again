@@ -99,16 +99,22 @@ func _ready() -> void:
 	# Defer pivot capture so Godot's layout pass has run and sizes are real.
 	call_deferred("_finalize_setup")
 	# Iter 100: CI smoke-test auto-redirect. The smoke-test.yml workflow
-	# stamps BuildInfo.SMOKE_TEST=true, then this branch kicks in 2s after
-	# main_menu loads and changes scene to level_3d.tscn. The emulator +
-	# FTL jobs then grep logcat for 'level_3d.gd _init' to verify whether
-	# the 3D PREVIEW script actually attaches at runtime. Normal debug
-	# builds keep SMOKE_TEST=false and behave unchanged.
+	# stamps BuildInfo.SMOKE_TEST=true, then this branch redirects to
+	# level_3d.tscn so emulator + FTL jobs exercise it without UI
+	# automation. Normal debug builds keep SMOKE_TEST=false.
+	#
+	# Iter 100 (fix 7): used to wait 2s via SceneTreeTimer.timeout. That
+	# signal needs the scene tree to keep processing frames. Run 25903330679
+	# showed the 2s timer never fired — Vulkan QueuePresentKHR error 5 on
+	# the emulator stalls frame processing, and a stalled scene tree
+	# can't tick down SceneTreeTimers. Swapped to call_deferred — fires
+	# at the end of the current frame's idle phase, doesn't depend on
+	# a timer signal, and lets us prove whether level_3d.gd attaches
+	# independent of any timing issue.
 	if BuildInfo.SMOKE_TEST:
-		DebugLog.add("SMOKE: auto-loading level_3d.tscn in 2.0s")
-		print("[SMOKE] auto-loading level_3d.tscn in 2.0s")
-		var smoke_timer: SceneTreeTimer = get_tree().create_timer(2.0)
-		smoke_timer.timeout.connect(_smoke_load_level_3d)
+		DebugLog.add("SMOKE: deferring level_3d.tscn load to next frame")
+		print("[SMOKE] deferring level_3d.tscn load to next frame")
+		call_deferred("_smoke_load_level_3d")
 
 func _smoke_load_level_3d() -> void:
 	DebugLog.add("SMOKE: change_scene → level_3d.tscn")

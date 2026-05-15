@@ -46,12 +46,14 @@ if ! grep -q "main_menu _ready" /tmp/logcat.txt; then
 fi
 echo "OK: main_menu booted."
 
-# Assertion 2: SMOKE auto-redirect scheduled.
-if ! grep -q "SMOKE: auto-loading level_3d" /tmp/logcat.txt; then
-  echo "FAIL: SMOKE auto-redirect was never scheduled — BuildInfo.SMOKE_TEST may not be stamped to true."
+# Assertion 2: SMOKE deferred-load scheduled. (Iter 100 fix 7: was
+# 'auto-loading' via 2s timer; swapped to call_deferred since the
+# SceneTreeTimer never ticked on the emulator's stalled scene tree.)
+if ! grep -qE "SMOKE: (deferring|auto-loading) level_3d" /tmp/logcat.txt; then
+  echo "FAIL: SMOKE redirect was never scheduled — BuildInfo.SMOKE_TEST may not be stamped to true."
   exit 3
 fi
-echo "OK: SMOKE auto-redirect scheduled."
+echo "OK: SMOKE redirect scheduled."
 
 # Assertion 3: SMOKE change_scene actually fired.
 if ! grep -q "SMOKE: change_scene" /tmp/logcat.txt; then
