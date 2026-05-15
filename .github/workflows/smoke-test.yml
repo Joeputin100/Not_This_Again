@@ -244,33 +244,7 @@ jobs:
           force-avd-creation: false
           emulator-options: -no-snapshot-save -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none
           disable-animations: true
-          script: |
-            set -e
-            adb logcat -c
-            echo "Installing APK..."
-            adb install -r app-smoke.apk
-            echo "Launching app via monkey (bypasses exported= check on API 31+)..."
-            # 'adb shell am start -n pkg/activity' requires the activity to
-            # be android:exported="true", which Godot's main activity isn't
-            # by default. Monkey emits a synthetic intent from the system
-            # uid which doesn't trip the exported check, and finds the
-            # launcher activity via category LAUNCHER + action MAIN.
-            adb shell monkey -p app.notthisagain.run -c android.intent.category.LAUNCHER 1
-            echo "Waiting 30s for main_menu boot + auto-redirect to level_3d..."
-            sleep 30
-            echo "Dumping logcat..."
-            adb logcat -d > /tmp/logcat.txt
-            echo "===== filtered logcat ====="
-            grep -E "godot|level_3d|main_menu|SMOKE|DebugLog" /tmp/logcat.txt | tail -120 || true
-            echo "============================"
-            if grep -q "level_3d.gd _init" /tmp/logcat.txt; then
-              echo "PASS: level_3d.gd _init breadcrumb found — script attached."
-            else
-              echo "FAIL: level_3d.gd _init breadcrumb MISSING — script did not attach."
-              echo "----- last 50 godot lines -----"
-              grep -E "godot|GodotApp" /tmp/logcat.txt | tail -50 || true
-              exit 1
-            fi
+          script: bash test/ci/emulator_smoke.sh
 
       - name: Upload emulator logcat on failure
         if: failure()
