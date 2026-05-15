@@ -299,6 +299,17 @@ jobs:
         # per run within daily quota of 10).
         run: |
           set -e
+          # --results-bucket=<our-bucket>: without this, FTL auto-creates
+          # a bucket in some namespace neither we nor the SA can see/touch,
+          # producing 403 'storage.objects.create denied' even with project-
+          # level roles/storage.objectAdmin. Owning the bucket explicitly
+          # means we control its IAM and can grant the SA there. Bucket
+          # created once via:
+          #   gsutil mb -p ${GCP_PROJECT} -l us-central1 \
+          #     gs://ftl-results-static-webbing-461904-c4
+          #   gsutil iam ch \
+          #     serviceAccount:${SA}:roles/storage.objectAdmin \
+          #     gs://ftl-results-static-webbing-461904-c4
           gcloud firebase test android run \
             --type=robo \
             --app=app-smoke.apk \
@@ -307,6 +318,7 @@ jobs:
             --no-record-video \
             --no-performance-metrics \
             --project="${GCP_PROJECT}" \
+            --results-bucket="ftl-results-static-webbing-461904-c4" \
             --results-history-name="${FTL_HISTORY}" 2>&1 | tee /tmp/ftl_output.txt
           FTL_EXIT=${PIPESTATUS[0]}
           echo ""
