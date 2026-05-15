@@ -219,16 +219,19 @@ jobs:
           path: |
             ~/.android/avd/*
             ~/.android/adb*
-          key: avd-api33-x86_64-v1
+          # Bump key when AVD config changes so old caches don't stick around
+          key: avd-api33-x86_64-aosp_atd-v2
 
       - name: Create AVD + first-boot snapshot (cache miss only)
         if: steps.avd-cache.outputs.cache-hit != 'true'
         uses: reactivecircus/android-emulator-runner@v2
         with:
           api-level: 33
-          target: google_apis
+          target: aosp_atd
           arch: x86_64
           profile: pixel_5
+          ram-size: 4096M
+          heap-size: 1024M
           force-avd-creation: false
           emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none
           disable-animations: true
@@ -238,9 +241,11 @@ jobs:
         uses: reactivecircus/android-emulator-runner@v2
         with:
           api-level: 33
-          target: google_apis
+          target: aosp_atd
           arch: x86_64
           profile: pixel_5
+          ram-size: 4096M
+          heap-size: 1024M
           force-avd-creation: false
           emulator-options: -no-snapshot-save -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none
           disable-animations: true
