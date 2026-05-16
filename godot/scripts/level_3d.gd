@@ -70,7 +70,7 @@ const COWBOY_X_BOUND: float = 6.0  # iter 108: 18.0 → 6.0 — was off the road
 # the user reported on iter 105 sideload ("cowboy not visible, nothing
 # is tracking left/right" → the lerp was working but the sprite was
 # below the screen so the visual tracking was invisible).
-const COWBOY_Z: float = -3.0
+const COWBOY_Z: float = 0.0  # iter 113: -3.0 → 0.0 (cowboy was at screen center, want near bottom)
 const OBSTACLE_SPAWN_Z: float = -28.0  # far end of plane
 const OBSTACLE_DESPAWN_Z: float = 3.5   # past the cowboy
 const OBSTACLE_SPEED: float = 8.0    # world units per second
@@ -412,7 +412,17 @@ const SCENERY_WEIGHTS: Array[int] = [
 	1,  # BUILDING (rarest — large, distinctive)
 ]
 
+var _scenery_spawn_count: int = 0
+
 func _spawn_scenery_item() -> void:
+	_scenery_spawn_count += 1
+	if _scenery_spawn_count == 1 or _scenery_spawn_count % 10 == 0:
+		DebugLog.add("scenery spawn #%d (scenery_root.size=%d)" % [
+			_scenery_spawn_count, scenery_root.get_child_count(),
+		])
+	_spawn_scenery_item_inner()
+
+func _spawn_scenery_item_inner() -> void:
 	# Pick category via cumulative weight.
 	var total: int = 0
 	for w in SCENERY_WEIGHTS:
@@ -719,6 +729,7 @@ func _spawn_building_one(side: float, z: float) -> void:
 # a multiplier toward additive zero), updates the Label3D + door tint.
 const GATE_BULLET_Z_RANGE: float = 0.5
 const GATE_BULLET_X_HALF: float = 2.0  # half door width (= GATE_WIDTH * 0.5 * 0.5 = 1.0)
+const GATE_HITS_PER_STEP: int = 3  # iter 113: armor — 3 bullets per value decrement
 
 func _check_bullet_gate_collision(bullet: Node3D) -> bool:
 	for gate_node in gates_root.get_children():
@@ -739,11 +750,20 @@ func _check_bullet_gate_collision(bullet: Node3D) -> bool:
 		var door_center_x: float = gate.position.x + (-1.0 if side == "left" else 1.0) * (GATE_WIDTH * 0.25)
 		if absf(bullet.position.x - door_center_x) > GATE_BULLET_X_HALF:
 			continue
-		# Decrement the door's value toward 0.
+		# Iter 113: armor — accumulate hits, decrement value only every
+		# GATE_HITS_PER_STEP. Otherwise gates get pummeled to 0 instantly.
+		var hits: int = gate.get_meta(side + "_hits", 0) + 1
+		gate.set_meta(side + "_hits", hits)
+		# Always show a small popup so the player gets shot feedback.
+		_spawn_popup_3d(bullet.position + Vector3(0, 0.4, 0),
+			"hit", Color(1.0, 0.92, 0.3, 0.9), 28)
+		if hits < GATE_HITS_PER_STEP:
+			return true  # bullet absorbed, but value not yet stepped
+		# Step counter resets; decrement value toward 0.
+		gate.set_meta(side + "_hits", 0)
 		var value: int = gate.get_meta(side + "_value", 0)
 		var op: String = gate.get_meta(side + "_op", "+")
 		if op == "×":
-			# Degrade multiplier toward 2, then collapse to additive 0.
 			value = maxi(value - 1, 1)
 			if value < 2:
 				op = "+"
@@ -760,7 +780,7 @@ func _check_bullet_gate_collision(bullet: Node3D) -> bool:
 			lbl.text = "%s%d" % [op, value]
 		if door is CSGBox3D and (door as CSGBox3D).material is StandardMaterial3D:
 			(((door as CSGBox3D).material) as StandardMaterial3D).albedo_color = _gate_color_for(value, op)
-		# Hit-popup at impact point
+		# Step-popup at impact: shows the new value so player sees the change.
 		_spawn_popup_3d(bullet.position + Vector3(0, 0.5, 0),
 			"%s%d" % [op, value], Color(1.0, 0.92, 0.3, 1), 40)
 		return true
@@ -791,6 +811,12 @@ func _spawn_gate() -> void:
 	gate.set_meta("right_value", values[1])
 	gate.set_meta("right_op", operators[1])
 	gate.set_meta("triggered", false)
+	# Iter 113: per-door HP-style hit counter. Each bullet adds 1 to the
+	# counter; only every GATE_HITS_PER_STEP decrements the displayed
+	# value. Without this, 5-posse fire-rate (15-20 bullets per gate flight)
+	# pummels every gate to 0 before the player can choose a side.
+	gate.set_meta("left_hits", 0)
+	gate.set_meta("right_hits", 0)
 	# Left door (red if value would shrink, blue if grow)
 	var left_door := CSGBox3D.new()
 	left_door.size = Vector3(GATE_WIDTH * 0.5, GATE_HEIGHT, 0.15)
@@ -1214,10 +1240,13 @@ func _gold_rush_salute_3d() -> void:
 # Iter 76: spawn a red outlaw at a random lane position at far z.
 const VAGRANT_IDLE_STREAM := preload("res://assets/videos/vagrant/idle_wobble.ogv")
 
+var _outlaw_spawn_count: int = 0
+
 func _spawn_outlaw() -> void:
 	# Iter 109: video-driven billboard using vagrant/idle_wobble.ogv +
-	# chromakey shader. Was vagrant.png (iter 108) which was just the
-	# static fallback the user had asked us not to use.
+	# chromakey shader. Iter 110: world_height 2.0 → 2.5 (+25%).
+	# Iter 113: DebugLog breadcrumb so we can confirm via 'COPY log' that
+	# this function is being CALLED (vs the render side being broken).
 	var outlaw := Node3D.new()
 	var lane_x: float = _rng.randf_range(-COWBOY_X_BOUND * 0.75,
 		COWBOY_X_BOUND * 0.75)
@@ -1225,8 +1254,14 @@ func _spawn_outlaw() -> void:
 	outlaw.set_meta("hp", OUTLAW_HP)
 	outlaw.set_meta("fire_timer", _rng.randf() * OUTLAW_FIRE_INTERVAL)
 	outlaws_root.add_child(outlaw)
-	var billboard: Node3D = _make_video_billboard(VAGRANT_IDLE_STREAM, 2.5)  # iter 110: 2.0 → 2.5 (+25%)
+	var billboard: Node3D = _make_video_billboard(VAGRANT_IDLE_STREAM, 2.5)
 	outlaw.add_child(billboard)
+	_outlaw_spawn_count += 1
+	# Throttled log: every 5th spawn so we don't flood the buffer.
+	if _outlaw_spawn_count == 1 or _outlaw_spawn_count % 5 == 0:
+		DebugLog.add("outlaw spawn #%d at x=%.1f z=%.1f (outlaws_root.size=%d)" % [
+			_outlaw_spawn_count, lane_x, outlaw.position.z, outlaws_root.get_child_count(),
+		])
 
 # Iter 109: helper for video-driven 3D billboards. Pattern:
 #   wrapper Node3D
@@ -1296,7 +1331,15 @@ func _outlaw_fire(outlaw: Node3D) -> void:
 	b.set_meta("velocity", to_cowboy)
 	outlaw_bullets_root.add_child(b)
 
+var _process_first_tick_logged: bool = false
+
 func _process(delta: float) -> void:
+	# Iter 113: one-time breadcrumb on first _process tick. Tells the
+	# COPY log whether _process is running at all (some bugs would
+	# silently abort it mid-frame).
+	if not _process_first_tick_logged:
+		_process_first_tick_logged = true
+		DebugLog.add("_process first tick — game loop is running")
 	if _pete_defeated or _failed:
 		return
 	# Iter 78: posse-wiped check fires once per frame.
@@ -1574,12 +1617,37 @@ func _spawn_obstacle() -> void:
 			c.position = Vector3(lane_x, 1.2, OBSTACLE_SPAWN_Z)
 			obstacle = c
 		ObstacleType.TUMBLEWEED:
-			var t := CSGSphere3D.new()
-			t.radius = 0.9
-			t.radial_segments = 8
-			t.rings = 6
-			mat.albedo_color = Color(0.55, 0.36, 0.18, 1)
-			t.material = mat
+			# Iter 113: was a single smooth sphere with no detail. User
+			# called them "featureless spheres". Stack 3 spheres at slight
+			# offsets + each with random color jitter so the shape reads as
+			# tangled grass-ball instead of a billiard ball. Still CSG —
+			# a real tumbleweed mesh is a future asset upgrade.
+			var t := Node3D.new()
+			for i in range(3):
+				var s := CSGSphere3D.new()
+				s.radius = 0.7 + _rng.randf_range(-0.1, 0.2)
+				s.radial_segments = 12
+				s.rings = 8
+				var m := StandardMaterial3D.new()
+				m.albedo_color = Color(
+					_rng.randf_range(0.42, 0.58),
+					_rng.randf_range(0.28, 0.38),
+					_rng.randf_range(0.10, 0.20),
+					1,
+				)
+				m.roughness = 1.0
+				s.material = m
+				s.position = Vector3(
+					_rng.randf_range(-0.25, 0.25),
+					_rng.randf_range(-0.15, 0.15),
+					_rng.randf_range(-0.25, 0.25),
+				)
+				s.scale = Vector3(
+					_rng.randf_range(0.85, 1.10),
+					_rng.randf_range(0.85, 1.10),
+					_rng.randf_range(0.85, 1.10),
+				)
+				t.add_child(s)
 			t.position = Vector3(lane_x, 0.9, OBSTACLE_SPAWN_Z)
 			obstacle = t
 		_:  # BULL
