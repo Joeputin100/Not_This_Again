@@ -65,7 +65,7 @@ const COWBOY_TEXTURE_LVL3D: Texture2D = preload("res://assets/sprites/posse_idle
 
 # 3D world bounds. The dirt PlaneMesh in terrain_3d_3d_prototype is
 # 40 wide × 60 deep, centered at origin. Cowboy lane = x in [-18, 18].
-const COWBOY_X_BOUND: float = 6.0  # iter 108: 18.0 → 6.0 — was off the road
+const COWBOY_X_BOUND: float = 3.0  # iter 118: 6.0 → 3.0 to match the actual visible road width
 # Iter 106: cowboy z moved 1.5 → -3.0 because the previous value put
 # the cowboy below the camera frustum. Camera is at (0, 3, 2) tilted
 # -30° around X. Its look-ray (forward direction (0, -0.5, -0.866))
@@ -88,7 +88,7 @@ const OBSTACLE_SPAWN_INTERVAL: float = 1.2
 # distance-squared check between each bullet and each obstacle.
 const BULLET_SPEED: float = 28.0  # world units per second
 const BULLET_FIRE_INTERVAL: float = 0.20
-const BULLET_DESPAWN_Z: float = -32.0
+const BULLET_DESPAWN_Z: float = -10.0  # iter 118: -32 → -10 (was reaching off-screen outlaws before they appeared)
 const BULLET_COLLISION_DIST_SQ: float = 1.5 * 1.5  # 1.5 world unit radius
 const BULLET_PIXEL_SIZE: float = 0.18  # CSGSphere3D radius — iter 107: 0.5 → 0.18 (jelly-bean sized, was nearly cowboy-sized)
 const BULLET_SPAWN_Y: float = 1.2  # waist-high at cowboy
@@ -127,11 +127,20 @@ var scenery_root: Node3D
 
 var _spawn_timer: float = 0.0
 var _fire_timer: float = 0.0
-# Iter 115: GunState owns ammo + reload state for the cowboy. Replaces
-# the iter 66 _fire_timer pattern (kept above for any legacy callers
-# but no longer driving the cowboy fire loop).
+# Iter 115: GunState owns ammo + reload state for the cowboy.
 var _gun: Resource
 var _gun_state: RefCounted
+# Iter 118: level state machine.
+#   COUNTDOWN  — 3-2-1-GO countdown, no scrolling, no firing
+#   PLAYING    — normal play: scenery/outlaws scroll, cowboy fires
+#   BOSS       — Pete is alive: cowboy fires + bullets travel, but
+#                obstacles/scenery/outlaws stop scrolling so the duel
+#                stays focused on Pete
+#   FINISHED   — Pete defeated or posse=0: motion stops, modal up
+enum LevelState { COUNTDOWN, PLAYING, BOSS, FINISHED }
+var _level_state: int = LevelState.COUNTDOWN
+const COUNTDOWN_TOTAL: float = 3.5  # 3, 2, 1, GO! across this window
+var _countdown_remaining: float = COUNTDOWN_TOTAL
 var _hits: int = 0
 var _rng := RandomNumberGenerator.new()
 
@@ -145,23 +154,23 @@ const GATE_HEIGHT: float = 1.35     # iter 108: 2.5 → 1.35 = 1.5× cowboy heig
 const GATE_TRIGGER_Z: float = 0.5   # gates fire when their z passes this
 var _gate_spawn_timer: float = 0.0
 var _posse_count_3d: int = 5
-const STARTING_POSSE_3D: int = 5
+const STARTING_POSSE_3D: int = 1  # iter 118: 5 → 1 (gates grow it from there)
 
 # Iter 76: outlaw enemies. Spawn red boxes periodically at far z that
 # scroll toward camera + fire red bullets at the cowboy.
-const OUTLAW_SPAWN_INTERVAL: float = 3.0
+const OUTLAW_SPAWN_INTERVAL: float = 0.5  # iter 118: 3.0 → 0.5 (~14 alive at once)
 const OUTLAW_SPEED: float = 4.0  # slower than obstacles — they're shooters
 const OUTLAW_FIRE_INTERVAL: float = 1.8
 const OUTLAW_BULLET_SPEED: float = 14.0
 const OUTLAW_BULLET_RADIUS: float = 0.12  # iter 114: 0.35 → 0.12 (was nearly as wide as the outlaw was tall)
 const OUTLAW_BULLET_DESPAWN_Z: float = 4.0
 const OUTLAW_HIT_RADIUS_SQ: float = 1.5 * 1.5
-const OUTLAW_HP: int = 3
+const OUTLAW_HP: int = 10  # iter 118: 3 → 10 (1 cowboy firing 6/clip+1s reload = ~3.5 bullets/sec, dies in ~3s)
 var _outlaw_spawn_timer: float = 0.0
 
 # Iter 77: Slippery Pete boss. Appears at PETE_SPAWN_DELAY into the
 # level. Slow approach, much higher HP, drops the WIN modal on defeat.
-const PETE_SPAWN_DELAY: float = 12.0  # iter 110: 25 → 12 so testers don't have to wait
+const PETE_SPAWN_DELAY: float = 8.0  # iter 118: 12 → 8
 const PETE_HP: int = 40
 const PETE_SPEED: float = 1.6
 const PETE_FIRE_INTERVAL: float = 1.0
@@ -277,17 +286,20 @@ func _ready() -> void:
 		DebugLog.add("level_3d: terrain instance loaded; subviewport=%s" % subviewport.size)
 	else:
 		DebugLog.add("WARN level_3d: subviewport null after terrain instance")
-	# Iter 107: override the terrain_3d.tscn instance's camera to a
-	# steeper Evony-style top-down angle. We override in script (not
-	# in terrain_3d.tscn) because terrain_3d.tscn is also instanced
-	# by the gameplay level.tscn, where the existing 30° angle is
-	# baked into the 2D-sprite placement. When the 3D refactor
-	# replaces level.tscn, this override can move into terrain_3d.tscn
-	# directly. Until then, level_3d gets the new angle in isolation.
+	# Iter 107/118: override the terrain_3d.tscn instance's camera to a
+	# steeper Evony-style top-down angle, sized for the portrait viewport.
+	# Iter 118 added: fov=50 + KEEP_WIDTH so the horizontal extent reads
+	# correctly on a 9:16 viewport. With the default KEEP_HEIGHT + vfov=70°
+	# the horizontal half-FOV was only 21.5°, so anything beyond x=±3.35
+	# at cowboy depth (8.5 units away) was off-screen. KEEP_WIDTH with
+	# fov=50° gives horizontal half-FOV=25° → visible road x=±4 at the
+	# cowboy and ~±10 at obstacle-spawn z=-24.
 	if camera != null:
 		camera.position = Vector3(0, 7.0, 3.0)
 		camera.rotation_degrees = Vector3(-55, 0, 0)
-		DebugLog.add("level_3d: camera overridden (Evony top-down: y=7 z=3 pitch=-55°)")
+		camera.fov = 50.0
+		camera.keep_aspect = 0  # Camera3D.KEEP_WIDTH (portrait viewport)
+		DebugLog.add("level_3d: camera overridden (y=7 z=3 pitch=-55° fov=50 KEEP_WIDTH)")
 	# Iter 95: build 3D content (cowboy + mountains + 8 container Node3Ds)
 	# AFTER initial setup. Hypothesis: bundling everything into .tscn was
 	# overloading mobile scene-load — script-side spawn defers texture
@@ -1155,6 +1167,34 @@ func _spawn_popup_3d(world_pos: Vector3, text: String, color: Color, size: int) 
 # Iter 79: render the 3-label HUD from current state. Called after any
 # event that changes hearts/posse/hits (gate pass, outlaw kill, posse
 # damage). Hearts read from GameState if available.
+# Iter 118: countdown overlay during LevelState.COUNTDOWN. Hijacks
+# info_label since we're not firing yet — countdown precedes ammo UI.
+func _render_countdown() -> void:
+	if info_label == null:
+		return
+	# Phase breakdown across COUNTDOWN_TOTAL (3.5s):
+	#   t > 2.5  → "READY..."  (0.5-1.5s prep)
+	#   t > 1.5  → "3"
+	#   t > 0.5  → "2"
+	#   t > -0.5 → "1"
+	#   else     → "GO!"
+	var t: float = _countdown_remaining
+	if t > 2.5:
+		info_label.text = "READY..."
+		info_label.modulate = Color(0.95, 0.78, 0.35, 1)
+	elif t > 1.5:
+		info_label.text = "3"
+		info_label.modulate = Color(1.0, 0.55, 0.30, 1)
+	elif t > 0.5:
+		info_label.text = "2"
+		info_label.modulate = Color(1.0, 0.65, 0.30, 1)
+	elif t > -0.5:
+		info_label.text = "1"
+		info_label.modulate = Color(1.0, 0.75, 0.30, 1)
+	else:
+		info_label.text = "GO!"
+		info_label.modulate = Color(0.42, 1.0, 0.55, 1)
+
 # Iter 115/117: render the cowboy's ammo + reload status on a HUD label.
 # Iter 117: ported the EXACT 2D pip-glyph infographic from level.gd
 # (▰ filled, ▱ empty). User noted iter 115's plain text didn't match.
@@ -1287,9 +1327,30 @@ func _gold_rush_salute_3d() -> void:
 const VAGRANT_IDLE_STREAM := preload("res://assets/videos/vagrant/idle_wobble.ogv")
 
 var _outlaw_spawn_count: int = 0
-# Iter 114: outlaw spawn x narrowed from ±4.5 (= COWBOY_X_BOUND * 0.75)
-# to ±2.5. The portrait camera's horizontal half-FOV is only ~21.5°.
+# Iter 114/118: outlaw spawn x narrowed to ±2.5 to fit the visible road.
 const OUTLAW_SPAWN_X_MAX: float = 2.5
+# Iter 118: prospector ("miner") spawns rarely as a tougher mid-tier
+# enemy. Uses the existing prospector.png + shared video billboard path.
+const PROSPECTOR_IDLE_STREAM := preload("res://assets/videos/prospector/idle_drinking.ogv")
+const PROSPECTOR_SPAWN_INTERVAL: float = 5.0
+const PROSPECTOR_HP: int = 18
+var _prospector_spawn_timer: float = 2.0  # first one a couple seconds in
+var _prospector_spawn_count: int = 0
+
+func _spawn_prospector() -> void:
+	# Iter 118: a tougher mid-tier enemy. Same scroll/fire/track behavior
+	# as the outlaw via the outlaws_root container; differentiated by HP
+	# meta + video stream. The _process outlaw loop handles both transparently.
+	var prosp := Node3D.new()
+	var lane_x: float = _rng.randf_range(-OUTLAW_SPAWN_X_MAX, OUTLAW_SPAWN_X_MAX)
+	prosp.position = Vector3(lane_x, 1.0, OBSTACLE_SPAWN_Z + 4.0)
+	prosp.set_meta("hp", PROSPECTOR_HP)
+	prosp.set_meta("fire_timer", _rng.randf() * OUTLAW_FIRE_INTERVAL)
+	outlaws_root.add_child(prosp)
+	var billboard: Node3D = _make_video_billboard(PROSPECTOR_IDLE_STREAM, 2.6)
+	prosp.add_child(billboard)
+	_prospector_spawn_count += 1
+	DebugLog.add("prospector spawn #%d at x=%.1f" % [_prospector_spawn_count, lane_x])
 
 func _spawn_outlaw() -> void:
 	# Iter 116: re-enable video billboard, but this time via SHARED top-
@@ -1394,14 +1455,22 @@ func _outlaw_fire(outlaw: Node3D) -> void:
 var _process_first_tick_logged: bool = false
 
 func _process(delta: float) -> void:
-	# Iter 113: one-time breadcrumb on first _process tick. Tells the
-	# COPY log whether _process is running at all (some bugs would
-	# silently abort it mid-frame).
 	if not _process_first_tick_logged:
 		_process_first_tick_logged = true
-		DebugLog.add("_process first tick — game loop is running")
+		DebugLog.add("_process first tick — game loop is running, state=%d" % _level_state)
 	if _pete_defeated or _failed:
+		_level_state = LevelState.FINISHED
 		return
+	# Iter 118: COUNTDOWN phase — show 3/2/1/GO, freeze world motion.
+	if _level_state == LevelState.COUNTDOWN:
+		_countdown_remaining -= delta
+		_render_countdown()
+		if _countdown_remaining <= -0.6:
+			_level_state = LevelState.PLAYING
+			DebugLog.add("level state: COUNTDOWN → PLAYING")
+		return
+	# Iter 110 cowboy lerp: runs in PLAYING + BOSS so the player can
+	# still steer + fire during the boss duel.
 	# Iter 78: posse-wiped check fires once per frame.
 	if _posse_count_3d <= 0 and not _failed:
 		_show_fail()
@@ -1424,9 +1493,15 @@ func _process(delta: float) -> void:
 			clampf(FOLLOWER_LERP_SPEED * delta, 0.0, 1.0))
 		# Phase offset per follower so the crowd looks alive.
 		f.position.y = 0.45 + sin(_bob_time * BOB_FREQUENCY + float(i) * 0.7) * BOB_AMPLITUDE
-	# Spawn obstacles periodically.
+	# Iter 118: world motion delta — 0 during BOSS so obstacles/gates/
+	# outlaws/scenery freeze in place during the duel. Cowboy steering +
+	# bullets + Pete continue to update on the real delta.
+	var motion_delta: float = delta if _level_state == LevelState.PLAYING else 0.0
+	# Spawn obstacles periodically (PLAYING only).
+	if _level_state != LevelState.PLAYING:
+		_spawn_timer = OBSTACLE_SPAWN_INTERVAL  # reset so they don't pile up
 	_spawn_timer -= delta
-	if _spawn_timer <= 0.0:
+	if _level_state == LevelState.PLAYING and _spawn_timer <= 0.0:
 		_spawn_timer = OBSTACLE_SPAWN_INTERVAL
 		_spawn_obstacle()
 	# Move all obstacles toward camera (z increases since camera is at z>0).
@@ -1435,9 +1510,9 @@ func _process(delta: float) -> void:
 	# cactus / bull boxes) stay rigid since they don't roll IRL.
 	for child in obstacles_root.get_children():
 		if child is Node3D:
-			child.position.z += OBSTACLE_SPEED * delta
+			child.position.z += OBSTACLE_SPEED * motion_delta
 			if child is CSGSphere3D:
-				child.rotation.x += OBSTACLE_SPEED * delta * 0.5
+				child.rotation.x += OBSTACLE_SPEED * motion_delta * 0.5
 			if child.position.z > OBSTACLE_DESPAWN_Z:
 				child.queue_free()
 	# Iter 75: gates scroll like obstacles + check trigger when crossing z plane
@@ -1447,23 +1522,32 @@ func _process(delta: float) -> void:
 		_spawn_gate()
 	for gate in gates_root.get_children():
 		if gate is Node3D:
-			gate.position.z += OBSTACLE_SPEED * delta
+			gate.position.z += OBSTACLE_SPEED * motion_delta
 			_check_gate_trigger(gate)
 			if gate.position.z > OBSTACLE_DESPAWN_Z:
 				gate.queue_free()
 	# Iter 76: outlaws — spawn / scroll / fire / despawn.
-	_outlaw_spawn_timer -= delta
-	if _outlaw_spawn_timer <= 0.0:
-		_outlaw_spawn_timer = OUTLAW_SPAWN_INTERVAL
-		_spawn_outlaw()
+	# Iter 118: only spawn during PLAYING (not BOSS — boss fight has its
+	# own focus). Outlaws already spawned keep moving via _world_motion.
+	if _level_state == LevelState.PLAYING:
+		_outlaw_spawn_timer -= delta
+		if _outlaw_spawn_timer <= 0.0:
+			_outlaw_spawn_timer = OUTLAW_SPAWN_INTERVAL
+			_spawn_outlaw()
+		# Iter 118: prospector spawn (rarer, alongside outlaws).
+		_prospector_spawn_timer -= delta
+		if _prospector_spawn_timer <= 0.0:
+			_prospector_spawn_timer = PROSPECTOR_SPAWN_INTERVAL
+			_spawn_prospector()
 	for outlaw in outlaws_root.get_children():
 		if not (outlaw is Node3D):
 			continue
-		outlaw.position.z += OUTLAW_SPEED * delta
+		outlaw.position.z += OUTLAW_SPEED * motion_delta
 		# Iter 110: outlaws slowly track the cowboy's x position so
 		# they aren't just sliding straight forward in a single lane.
+		# Iter 118: gated on motion_delta so they freeze during BOSS.
 		outlaw.position.x = lerpf(outlaw.position.x, cowboy_3d.position.x,
-			clampf(1.2 * delta, 0.0, 1.0))
+			clampf(1.2 * motion_delta, 0.0, 1.0))
 		var ft: float = outlaw.get_meta("fire_timer", 0.0)
 		ft -= delta
 		if ft <= 0.0:
@@ -1515,7 +1599,7 @@ func _process(delta: float) -> void:
 	for s in scenery_root.get_children():
 		if not (s is Node3D):
 			continue
-		s.position.z += OBSTACLE_SPEED * delta
+		s.position.z += OBSTACLE_SPEED * motion_delta
 		if s.position.z > OBSTACLE_DESPAWN_Z + 2.0:
 			s.queue_free()
 	# Iter 88: bonus pickup spawn / scroll / collect.
@@ -1526,7 +1610,7 @@ func _process(delta: float) -> void:
 	for bonus in bonuses_root.get_children():
 		if not (bonus is Node3D):
 			continue
-		bonus.position.z += BONUS_SPEED * delta
+		bonus.position.z += BONUS_SPEED * motion_delta
 		# Sine y-bob for floating feel
 		var st: float = bonus.get_meta("spawn_time", 0.0)
 		bonus.position.y = 1.5 + sin((_level_elapsed - st) * 4.0) * 0.2
@@ -1539,9 +1623,13 @@ func _process(delta: float) -> void:
 		elif bonus.position.z > OBSTACLE_DESPAWN_Z:
 			bonus.queue_free()
 	# Iter 77: spawn Pete after PETE_SPAWN_DELAY.
-	if not _pete_spawned and _level_elapsed >= PETE_SPAWN_DELAY:
+	# Iter 118: only counts elapsed during PLAYING. Transitions level
+	# state to BOSS, which freezes world scrolling for the duel.
+	if _level_state == LevelState.PLAYING and not _pete_spawned and _level_elapsed >= PETE_SPAWN_DELAY:
 		_pete_spawned = true
 		_spawn_pete()
+		_level_state = LevelState.BOSS
+		DebugLog.add("level state: PLAYING → BOSS (Pete spawned)")
 	# Iter 77: Pete behavior — approach to PETE_STAY_Z, fire periodically,
 	# check bullet hits.
 	if _pete_spawned and boss_root.get_child_count() > 0:
@@ -1579,7 +1667,8 @@ func _process(delta: float) -> void:
 	# the while-can_fire loop drains as many shots as the cowboy is
 	# entitled to this frame (usually 0-1 depending on cooldown). Each
 	# fire() consumes one ammo; ammo=0 → reload kicks in automatically.
-	if _gun_state != null:
+	# Iter 118: gate firing on PLAYING + BOSS. Countdown blocks firing.
+	if _gun_state != null and _level_state != LevelState.COUNTDOWN:
 		_gun_state.tick(delta)
 		while _gun_state.can_fire():
 			_gun_state.fire()
