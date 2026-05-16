@@ -48,6 +48,12 @@ func _enter_tree() -> void:
 # Reachable from debug menu → "PREVIEW 3D LEVEL".
 
 const BuildInfo = preload("res://scripts/build_info.gd")
+# Iter 115: port the 2D gameplay's reload mechanic. Gun is a Resource
+# carrying clip_size / fire_interval / reload_time defaults. GunState
+# is the RefCounted per-shooter runtime (one per posse member; for now
+# only the cowboy uses one — followers fire on the cowboy's fire event).
+const GunScript = preload("res://scripts/gun.gd")
+const GunStateScript = preload("res://scripts/gun_state.gd")
 # Iter 99: moved up from mid-file (was between _ready and
 # _build_3d_content). The mid-file `const := preload(...)` after func
 # definitions appears to fail at Godot Android runtime — the script
@@ -121,6 +127,11 @@ var scenery_root: Node3D
 
 var _spawn_timer: float = 0.0
 var _fire_timer: float = 0.0
+# Iter 115: GunState owns ammo + reload state for the cowboy. Replaces
+# the iter 66 _fire_timer pattern (kept above for any legacy callers
+# but no longer driving the cowboy fire loop).
+var _gun: Resource
+var _gun_state: RefCounted
 var _hits: int = 0
 var _rng := RandomNumberGenerator.new()
 
@@ -287,6 +298,13 @@ func _ready() -> void:
 	# Iter 72: spawn posse followers at trapezoid offsets behind leader.
 	# Must run AFTER _build_3d_content since it clones cowboy_3d.
 	_spawn_posse_followers()
+	# Iter 115: instantiate Gun + GunState. Default Gun.clip_size=6,
+	# fire_interval=0.18s, reload_time=1.0s — matches the 2D defaults.
+	_gun = GunScript.new()
+	_gun_state = GunStateScript.new(_gun)
+	DebugLog.add("level_3d: gun state initialized (clip=%d, fire=%.2fs, reload=%.1fs)" % [
+		_gun.clip_size, _gun.fire_interval, _gun.reload_time,
+	])
 	if info_label != null:
 		info_label.text = "iter97 RDY-5 followers ok"
 	info_label.text = "iter97 OK · build %s · top-left to exit" % BuildInfo.SHA
@@ -1137,6 +1155,20 @@ func _spawn_popup_3d(world_pos: Vector3, text: String, color: Color, size: int) 
 # Iter 79: render the 3-label HUD from current state. Called after any
 # event that changes hearts/posse/hits (gate pass, outlaw kill, posse
 # damage). Hearts read from GameState if available.
+# Iter 115: render the cowboy's ammo + reload status on a HUD label.
+# Reuses info_label (top of screen). Two states:
+#   reloading      → "RELOADING 47%%"  (% complete)
+#   ready-to-fire  → "AMMO 4/6"
+func _refresh_ammo_label_3d() -> void:
+	if info_label == null or _gun_state == null:
+		return
+	if _gun_state.is_reloading():
+		info_label.text = "RELOADING %.0f%%" % (_gun_state.reload_progress() * 100.0)
+		info_label.modulate = Color(1.00, 0.65, 0.30, 1)  # amber
+	else:
+		info_label.text = "AMMO %d / %d" % [_gun_state.ammo(), _gun.clip_size]
+		info_label.modulate = Color(0.95, 0.78, 0.35, 1)  # gold (default)
+
 func _refresh_hud() -> void:
 	if hearts_label:
 		var max_h: int = 5
@@ -1537,13 +1569,17 @@ func _process(delta: float) -> void:
 						pete.queue_free()
 						_show_win()
 					break
-	# Iter 66: auto-fire bullets. Cowboy emits bullets along the -z axis
-	# every BULLET_FIRE_INTERVAL seconds. Bullets are CSGSphere3Ds for
-	# simplicity (no texture needed, gets the candy-colored material).
-	_fire_timer -= delta
-	if _fire_timer <= 0.0:
-		_fire_timer = BULLET_FIRE_INTERVAL
-		_spawn_bullet()
+	# Iter 115: GunState-driven auto-fire. Replaces the iter-66 fixed
+	# fire_timer. tick(delta) advances the cooldown + reload countdown;
+	# the while-can_fire loop drains as many shots as the cowboy is
+	# entitled to this frame (usually 0-1 depending on cooldown). Each
+	# fire() consumes one ammo; ammo=0 → reload kicks in automatically.
+	if _gun_state != null:
+		_gun_state.tick(delta)
+		while _gun_state.can_fire():
+			_gun_state.fire()
+			_spawn_bullet()
+		_refresh_ammo_label_3d()
 	# Move + collision-check each bullet.
 	for bullet in bullets_root.get_children():
 		if not (bullet is Node3D):
