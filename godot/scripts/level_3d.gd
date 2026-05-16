@@ -525,26 +525,21 @@ func _collect_bonus(bonus: Node3D) -> void:
 
 # Iter 77: spawn the Slippery Pete boss. Big yellow CSGBox3D with an
 # HP meta field + state machine. Stops at PETE_STAY_Z for the duel.
-const PETE_TEXTURE := preload("res://assets/sprites/slippery_pete.png")
+const PETE_IDLE_STREAM := preload("res://assets/videos/pete/taps_foot_idle.ogv")
 
 func _spawn_pete() -> void:
-	# Iter 108: was a yellow CSGBox3D placeholder. Now a Sprite3D
-	# billboard using slippery_pete.png. Pixel_size 0.0095 puts him
-	# at roughly 4 world units tall (matches old box height of 4.2).
-	# Position y=2.1 is the sprite CENTER (Sprite3D centered by
-	# default); bottom touches y=0 = ground. Container Node3D wraps
-	# the sprite so HP bar children billboard relative to a
-	# stable axis instead of the rotating sprite itself.
+	# Iter 109: video-driven billboard using pete/taps_foot_idle.ogv +
+	# chromakey shader (matches the 2D gameplay outlaw.tscn pattern).
+	# State-machine swapping between Pete's other 8 streams (FORWARD,
+	# STRAFE, SHOOT, HIT, DEATH, CELEBRATE, SHOUTS, COMPLAINS) is a
+	# follow-up — for now IDLE on loop while we verify the billboard
+	# pipeline works at all on Android.
 	var pete := Node3D.new()
 	pete.position = Vector3(0.0, 2.1, OBSTACLE_SPAWN_Z + 4.0)
 	pete.set_meta("hp", PETE_HP)
 	boss_root.add_child(pete)
-	var sprite := Sprite3D.new()
-	sprite.texture = PETE_TEXTURE
-	sprite.pixel_size = 0.0095
-	sprite.billboard = 1  # BILLBOARD_ENABLED
-	sprite.alpha_cut = 1  # ALPHA_CUT_DISCARD
-	pete.add_child(sprite)
+	var billboard: Node3D = _make_video_billboard(PETE_IDLE_STREAM, 4.2)
+	pete.add_child(billboard)
 	# Big "BOSS" label floating above him
 	var label := Label3D.new()
 	label.text = "SLIPPERY PETE"
@@ -776,13 +771,12 @@ func _gold_rush_salute_3d() -> void:
 	await get_tree().create_timer(0.5).timeout
 
 # Iter 76: spawn a red outlaw at a random lane position at far z.
-const VAGRANT_TEXTURE := preload("res://assets/sprites/vagrant.png")
+const VAGRANT_IDLE_STREAM := preload("res://assets/videos/vagrant/idle_wobble.ogv")
 
 func _spawn_outlaw() -> void:
-	# Iter 108: was a red CSGBox3D placeholder. Now a Sprite3D
-	# billboard using vagrant.png. Pixel_size 0.005 puts vagrant at
-	# roughly 2 world units tall (matches old box height). Wrapped in
-	# Node3D so meta + position handling keeps working unchanged.
+	# Iter 109: video-driven billboard using vagrant/idle_wobble.ogv +
+	# chromakey shader. Was vagrant.png (iter 108) which was just the
+	# static fallback the user had asked us not to use.
 	var outlaw := Node3D.new()
 	var lane_x: float = _rng.randf_range(-COWBOY_X_BOUND * 0.75,
 		COWBOY_X_BOUND * 0.75)
@@ -790,12 +784,54 @@ func _spawn_outlaw() -> void:
 	outlaw.set_meta("hp", OUTLAW_HP)
 	outlaw.set_meta("fire_timer", _rng.randf() * OUTLAW_FIRE_INTERVAL)
 	outlaws_root.add_child(outlaw)
+	var billboard: Node3D = _make_video_billboard(VAGRANT_IDLE_STREAM, 2.0)
+	outlaw.add_child(billboard)
+
+# Iter 109: helper for video-driven 3D billboards. Pattern:
+#   wrapper Node3D
+#     ├── SubViewport (offscreen render, transparent_bg, 3D disabled)
+#     │     └── VideoStreamPlayer (the .ogv with chromakey shader)
+#     └── Sprite3D (billboard, texture = SubViewport.get_texture())
+#
+# world_height: how tall the sprite should be in world units. The
+#   pixel_size derives from the SubViewport's pixel height.
+# viewport_px: SubViewport resolution. Higher = sharper but more GPU.
+#   150×270 ≈ 40K pixels per billboard, fine for a few enemies; bump
+#   down if many simultaneous outlaws cause perf issues on mobile.
+const _CHROMAKEY_SHADER := preload("res://shaders/chromakey.gdshader")
+
+func _make_video_billboard(
+	stream: VideoStream,
+	world_height: float,
+	viewport_px: Vector2i = Vector2i(150, 270),
+) -> Node3D:
+	var wrap := Node3D.new()
+	var sv := SubViewport.new()
+	sv.size = viewport_px
+	sv.transparent_bg = true
+	sv.disable_3d = true        # this SubViewport renders 2D only
+	sv.render_target_update_mode = 4  # SubViewport.UPDATE_ALWAYS — needed for video
+	wrap.add_child(sv)
+	var vp := VideoStreamPlayer.new()
+	vp.stream = stream
+	vp.autoplay = true
+	vp.loop = true
+	vp.expand = true
+	vp.size = Vector2(viewport_px)
+	var mat := ShaderMaterial.new()
+	mat.shader = _CHROMAKEY_SHADER
+	mat.set_shader_parameter("chroma_color", Color(0, 1, 0, 1))
+	mat.set_shader_parameter("similarity", 0.22)
+	mat.set_shader_parameter("blend_amount", 0.10)
+	vp.material = mat
+	sv.add_child(vp)
 	var sprite := Sprite3D.new()
-	sprite.texture = VAGRANT_TEXTURE
-	sprite.pixel_size = 0.005
-	sprite.billboard = 1  # BILLBOARD_ENABLED
-	sprite.alpha_cut = 1  # ALPHA_CUT_DISCARD
-	outlaw.add_child(sprite)
+	sprite.texture = sv.get_texture()
+	sprite.pixel_size = world_height / float(viewport_px.y)
+	sprite.billboard = 1   # BILLBOARD_ENABLED
+	sprite.alpha_cut = 0   # ALPHA_CUT_DISABLED — chromakey's smooth edge needs alpha blending, not threshold cut
+	wrap.add_child(sprite)
+	return wrap
 
 # Iter 76: outlaw fires a red bullet aimed at the cowboy.
 func _outlaw_fire(outlaw: Node3D) -> void:
