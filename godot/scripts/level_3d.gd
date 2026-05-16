@@ -84,7 +84,7 @@ const BULLET_SPEED: float = 28.0  # world units per second
 const BULLET_FIRE_INTERVAL: float = 0.20
 const BULLET_DESPAWN_Z: float = -32.0
 const BULLET_COLLISION_DIST_SQ: float = 1.5 * 1.5  # 1.5 world unit radius
-const BULLET_PIXEL_SIZE: float = 0.5  # CSGSphere3D radius
+const BULLET_PIXEL_SIZE: float = 0.18  # CSGSphere3D radius — iter 107: 0.5 → 0.18 (jelly-bean sized, was nearly cowboy-sized)
 const BULLET_SPAWN_Y: float = 1.2  # waist-high at cowboy
 
 @onready var subviewport: SubViewport = $Terrain3D/SubViewport
@@ -124,8 +124,8 @@ var _rng := RandomNumberGenerator.new()
 # Posse count starts at STARTING_POSSE (5) and modifies as cowboy
 # walks through gates.
 const GATE_SPAWN_INTERVAL: float = 4.5
-const GATE_WIDTH: float = 8.0       # each door is 4.0 wide
-const GATE_HEIGHT: float = 4.0
+const GATE_WIDTH: float = 4.0       # iter 107: 8.0 → 4.0 (each door is 2.0 wide)
+const GATE_HEIGHT: float = 2.5      # iter 107: 4.0 → 2.5 (was towering over cowboy)
 const GATE_TRIGGER_Z: float = 0.5   # gates fire when their z passes this
 var _gate_spawn_timer: float = 0.0
 var _posse_count_3d: int = 5
@@ -179,7 +179,7 @@ var _failed: bool = false
 # Target cowboy x in world units, lerped each frame. Set by drag input
 # which converts screen-x to world-x via the camera-plane projection.
 var _target_x: float = 0.0
-const COWBOY_LERP_SPEED: float = 8.0
+const COWBOY_LERP_SPEED: float = 4.0  # iter 107: 8.0 → 4.0 (was twitchy)
 
 # Iter 72: 3D posse followers — Sprite3D billboards spawned behind the
 # leader cowboy in a trapezoid formation. Each follower tracks the
@@ -243,6 +243,17 @@ func _ready() -> void:
 		DebugLog.add("level_3d: terrain instance loaded; subviewport=%s" % subviewport.size)
 	else:
 		DebugLog.add("WARN level_3d: subviewport null after terrain instance")
+	# Iter 107: override the terrain_3d.tscn instance's camera to a
+	# steeper Evony-style top-down angle. We override in script (not
+	# in terrain_3d.tscn) because terrain_3d.tscn is also instanced
+	# by the gameplay level.tscn, where the existing 30° angle is
+	# baked into the 2D-sprite placement. When the 3D refactor
+	# replaces level.tscn, this override can move into terrain_3d.tscn
+	# directly. Until then, level_3d gets the new angle in isolation.
+	if camera != null:
+		camera.position = Vector3(0, 7.0, 3.0)
+		camera.rotation_degrees = Vector3(-55, 0, 0)
+		DebugLog.add("level_3d: camera overridden (Evony top-down: y=7 z=3 pitch=-55°)")
 	# Iter 95: build 3D content (cowboy + mountains + 8 container Node3Ds)
 	# AFTER initial setup. Hypothesis: bundling everything into .tscn was
 	# overloading mobile scene-load — script-side spawn defers texture
