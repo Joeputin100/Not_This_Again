@@ -441,56 +441,132 @@ func _spawn_scenery_item() -> void:
 			_spawn_building(side, spawn_z)
 
 func _spawn_fence_post(side: float, z: float) -> void:
-	# Two posts spaced 0.8 along z so they read as a fence rail line.
-	for offset_z in [0.0, 0.8]:
+	# Iter 112: two posts + a connecting horizontal rail. Reads as a
+	# fence section instead of two unrelated sticks. Slight per-post
+	# height variance gives a hand-built look.
+	var post_xs: Array[float] = [
+		side * (SCENERY_ROAD_SHOULDER + _rng.randf_range(-0.2, 0.2)),
+		side * (SCENERY_ROAD_SHOULDER + _rng.randf_range(-0.2, 0.2)),
+	]
+	var heights: Array[float] = [
+		_rng.randf_range(0.80, 1.00),
+		_rng.randf_range(0.80, 1.00),
+	]
+	var wood_mat := StandardMaterial3D.new()
+	wood_mat.albedo_color = Color(
+		_rng.randf_range(0.42, 0.54),
+		_rng.randf_range(0.28, 0.36),
+		_rng.randf_range(0.14, 0.20),
+		1,
+	)
+	for i in range(2):
 		var post := CSGCylinder3D.new()
 		post.radius = 0.06
-		post.height = 0.9
-		var mat := StandardMaterial3D.new()
-		mat.albedo_color = Color(0.48, 0.32, 0.18, 1)  # weathered wood
-		post.material = mat
-		post.position = Vector3(
-			side * (SCENERY_ROAD_SHOULDER + _rng.randf_range(-0.2, 0.2)),
-			0.45,
-			z + offset_z,
-		)
+		post.height = heights[i]
+		post.material = wood_mat
+		post.position = Vector3(post_xs[i], heights[i] * 0.5, z + float(i) * 0.8)
 		scenery_root.add_child(post)
+	# Horizontal rail connecting the two posts at ~70% post height.
+	var rail := CSGBox3D.new()
+	rail.size = Vector3(0.08, 0.10, 0.8)
+	rail.material = wood_mat
+	var rail_y: float = mini(heights[0], heights[1]) * 0.65
+	rail.position = Vector3((post_xs[0] + post_xs[1]) * 0.5, rail_y, z + 0.4)
+	scenery_root.add_child(rail)
 
 func _spawn_rock(side: float, z: float) -> void:
+	# Iter 112: per-rock color jitter + random Y rotation breaks up the
+	# repetitive look. Asymmetric x/z scale makes rocks look like rocks
+	# instead of squashed marbles.
 	var rock := CSGSphere3D.new()
-	rock.radius = _rng.randf_range(0.25, 0.6)
+	rock.radius = _rng.randf_range(0.25, 0.7)
 	rock.radial_segments = 6
 	rock.rings = 4
 	var mat := StandardMaterial3D.new()
-	mat.albedo_color = Color(0.45, 0.40, 0.35, 1)  # weathered grey
+	var base_grey: float = _rng.randf_range(0.38, 0.52)
+	mat.albedo_color = Color(
+		base_grey + _rng.randf_range(-0.03, 0.06),  # slight warm/cool variance
+		base_grey,
+		base_grey - _rng.randf_range(0.0, 0.05),
+		1,
+	)
+	mat.roughness = 1.0
 	rock.material = mat
-	rock.scale = Vector3(1.0, _rng.randf_range(0.5, 0.9), _rng.randf_range(0.8, 1.2))
+	rock.scale = Vector3(
+		_rng.randf_range(0.9, 1.3),
+		_rng.randf_range(0.45, 0.85),
+		_rng.randf_range(0.85, 1.35),
+	)
+	rock.rotation_degrees = Vector3(0, _rng.randf_range(0, 360), 0)
 	rock.position = Vector3(
-		side * (SCENERY_ROAD_SHOULDER + _rng.randf_range(0.3, 2.0)),
-		rock.radius * 0.5,
+		side * (SCENERY_ROAD_SHOULDER + _rng.randf_range(0.3, 2.5)),
+		rock.radius * 0.45,
 		z,
 	)
 	scenery_root.add_child(rock)
 
 func _spawn_cactus_scenery(side: float, z: float) -> void:
-	# Saguaro-style trunk + optional arm. Two stacked CSGCylinders.
+	# Iter 112: three cactus variants. Saguaro (tall + arms), barrel
+	# cactus (squat round), prickly pear (stacked flat ovals). All share
+	# the same green palette but their silhouettes are distinct enough
+	# that a viewer reads variety along the road.
 	var cactus := Node3D.new()
-	var trunk := CSGCylinder3D.new()
-	trunk.radius = 0.18
-	trunk.height = _rng.randf_range(1.4, 2.2)
+	var green := Color(
+		_rng.randf_range(0.22, 0.32),
+		_rng.randf_range(0.38, 0.48),
+		_rng.randf_range(0.18, 0.26),
+		1,
+	)
 	var mat := StandardMaterial3D.new()
-	mat.albedo_color = Color(0.28, 0.42, 0.22, 1)
-	trunk.material = mat
-	trunk.position = Vector3(0, trunk.height * 0.5, 0)
-	cactus.add_child(trunk)
-	if _rng.randf() < 0.5:
-		var arm := CSGCylinder3D.new()
-		arm.radius = 0.12
-		arm.height = 0.6
-		arm.material = mat
-		arm.position = Vector3(0.22, trunk.height * 0.75, 0)
-		arm.rotation_degrees = Vector3(0, 0, -65)
-		cactus.add_child(arm)
+	mat.albedo_color = green
+	mat.roughness = 0.85
+	var variant: int = _rng.randi() % 3
+	if variant == 0:
+		# Saguaro
+		var trunk := CSGCylinder3D.new()
+		trunk.radius = 0.18
+		trunk.height = _rng.randf_range(1.4, 2.4)
+		trunk.material = mat
+		trunk.position = Vector3(0, trunk.height * 0.5, 0)
+		cactus.add_child(trunk)
+		# Random number of arms (0-2)
+		var arm_count: int = _rng.randi_range(0, 2)
+		for i in range(arm_count):
+			var arm := CSGCylinder3D.new()
+			arm.radius = 0.12
+			arm.height = _rng.randf_range(0.5, 0.8)
+			arm.material = mat
+			var arm_side: float = 1.0 if i == 0 else -1.0
+			arm.position = Vector3(arm_side * 0.22, trunk.height * _rng.randf_range(0.55, 0.80), 0)
+			arm.rotation_degrees = Vector3(0, 0, -arm_side * 65)
+			cactus.add_child(arm)
+	elif variant == 1:
+		# Barrel cactus — wide squat sphere
+		var barrel := CSGSphere3D.new()
+		barrel.radius = _rng.randf_range(0.35, 0.55)
+		barrel.radial_segments = 8
+		barrel.rings = 6
+		barrel.material = mat
+		barrel.scale = Vector3(1.0, _rng.randf_range(1.1, 1.5), 1.0)
+		barrel.position = Vector3(0, barrel.radius * 0.7, 0)
+		cactus.add_child(barrel)
+	else:
+		# Prickly pear — 3-5 flattened pads stacked at slight angles
+		var pad_count: int = _rng.randi_range(3, 5)
+		for i in range(pad_count):
+			var pad := CSGSphere3D.new()
+			pad.radius = _rng.randf_range(0.18, 0.28)
+			pad.radial_segments = 6
+			pad.rings = 4
+			pad.material = mat
+			pad.scale = Vector3(1.0, 1.4, 0.35)
+			pad.rotation_degrees = Vector3(0, _rng.randf_range(0, 70), _rng.randf_range(-30, 30))
+			pad.position = Vector3(
+				_rng.randf_range(-0.10, 0.10),
+				pad.radius * 0.8 + float(i) * 0.25,
+				_rng.randf_range(-0.08, 0.08),
+			)
+			cactus.add_child(pad)
 	cactus.position = Vector3(
 		side * (SCENERY_ROAD_SHOULDER + _rng.randf_range(1.0, 4.0)),
 		0,
@@ -515,46 +591,126 @@ func _spawn_scrub(side: float, z: float) -> void:
 	)
 	scenery_root.add_child(scrub)
 
+const _BUILDING_SIGNS := ["SALOON", "BANK", "JAIL", "GEN. STORE", "STABLES", "HOTEL", "BARBER", "POST"]
+
 func _spawn_building(side: float, z: float) -> void:
-	# A flat-front frontier building silhouette: rectangular body + a
-	# triangular roof gable suggested with a smaller box on top. Big
-	# enough to read at distance.
+	# Iter 112: full false-front Western building. Tall + narrow body,
+	# raised false-front gable, awning overhang, window/door indents.
+	# Each instance varies in color + which sign. Spawn a 50% chance of
+	# adjacent neighbors at ±8 z so buildings cluster into a street.
+	_spawn_building_one(side, z)
+	# Cluster: maybe add 1-2 more buildings on the same side, offset z.
+	if _rng.randf() < 0.55:
+		_spawn_building_one(side, z + 8.0)
+	if _rng.randf() < 0.35:
+		_spawn_building_one(side, z - 8.0)
+
+func _spawn_building_one(side: float, z: float) -> void:
 	var building := Node3D.new()
+	# Body: tall + narrow (4.5w × 4.5h × 2.5d) — Western false-front
+	# style, much more vertical than the iter 111 cube.
 	var body := CSGBox3D.new()
-	body.size = Vector3(4.5, 3.5, 3.5)
+	body.size = Vector3(_rng.randf_range(4.0, 5.0), 4.5, _rng.randf_range(2.2, 2.8))
 	var body_mat := StandardMaterial3D.new()
-	# Subtle hue variance: warm tan for adobe-style, grey-brown for wood
-	if _rng.randf() < 0.5:
-		body_mat.albedo_color = Color(0.62, 0.50, 0.34, 1)  # adobe tan
-	else:
-		body_mat.albedo_color = Color(0.45, 0.32, 0.22, 1)  # weathered wood
+	# Color palette: weathered wood OR adobe tan OR pale whitewash.
+	# Slight per-instance jitter inside each palette.
+	var palette: int = _rng.randi() % 3
+	if palette == 0:  # weathered wood (greys + browns)
+		body_mat.albedo_color = Color(
+			_rng.randf_range(0.45, 0.58),
+			_rng.randf_range(0.32, 0.42),
+			_rng.randf_range(0.22, 0.30),
+			1,
+		)
+	elif palette == 1:  # adobe tan
+		body_mat.albedo_color = Color(
+			_rng.randf_range(0.60, 0.72),
+			_rng.randf_range(0.46, 0.55),
+			_rng.randf_range(0.30, 0.38),
+			1,
+		)
+	else:  # pale whitewash
+		body_mat.albedo_color = Color(
+			_rng.randf_range(0.78, 0.88),
+			_rng.randf_range(0.74, 0.84),
+			_rng.randf_range(0.62, 0.72),
+			1,
+		)
+	body_mat.roughness = 0.95
 	body.material = body_mat
 	body.position = Vector3(0, body.size.y * 0.5, 0)
 	building.add_child(body)
-	# Roof gable — slightly darker, narrower.
-	var roof := CSGBox3D.new()
-	roof.size = Vector3(4.7, 0.8, 3.7)
-	var roof_mat := StandardMaterial3D.new()
-	roof_mat.albedo_color = Color(0.32, 0.22, 0.14, 1)
-	roof.material = roof_mat
-	roof.position = Vector3(0, body.size.y + 0.4, 0)
-	building.add_child(roof)
-	# Sign label — small Label3D so the player can tell what kind
-	# of building (saloon, bank, etc) it is. Cycle through types.
-	const SIGNS := ["SALOON", "BANK", "JAIL", "GEN. STORE", "STABLES", "HOTEL"]
+	# False-front gable: wider + taller rectangle on top of body
+	# extending only on the front face direction.
+	var gable := CSGBox3D.new()
+	gable.size = Vector3(body.size.x + 0.3, 1.2, 0.4)
+	var gable_mat := StandardMaterial3D.new()
+	gable_mat.albedo_color = body_mat.albedo_color.darkened(0.15)
+	gable_mat.roughness = 0.95
+	gable.material = gable_mat
+	# Front face is +z direction.
+	gable.position = Vector3(0, body.size.y + 0.5, body.size.z * 0.5 + 0.15)
+	building.add_child(gable)
+	# Awning: thin horizontal box jutting out from the front, at ~door height.
+	var awning := CSGBox3D.new()
+	awning.size = Vector3(body.size.x + 0.6, 0.10, 1.0)
+	var awning_mat := StandardMaterial3D.new()
+	awning_mat.albedo_color = Color(0.30, 0.20, 0.13, 1)  # darker than body
+	awning_mat.roughness = 0.95
+	awning.material = awning_mat
+	awning.position = Vector3(0, 2.4, body.size.z * 0.5 + 0.45)
+	building.add_child(awning)
+	# Awning support posts (2): thin cylinders from awning down to ground.
+	for awn_side in [-1.0, 1.0]:
+		var post := CSGCylinder3D.new()
+		post.radius = 0.06
+		post.height = 2.4
+		post.material = awning_mat
+		post.position = Vector3(awn_side * (body.size.x * 0.4), 1.2, body.size.z * 0.5 + 0.95)
+		building.add_child(post)
+	# Door indent: dark CSGBox slightly recessed into the front face.
+	var door := CSGBox3D.new()
+	door.size = Vector3(0.7, 1.5, 0.1)
+	var dark_mat := StandardMaterial3D.new()
+	dark_mat.albedo_color = Color(0.08, 0.06, 0.04, 1)
+	dark_mat.roughness = 0.7
+	door.material = dark_mat
+	door.position = Vector3(0, 0.75, body.size.z * 0.5 + 0.05)
+	building.add_child(door)
+	# Windows: 2 dark indents on either side of the door, plus 2 above.
+	for win_x in [-1.0, 1.0]:
+		var w := CSGBox3D.new()
+		w.size = Vector3(0.55, 0.65, 0.06)
+		w.material = dark_mat
+		w.position = Vector3(win_x * (body.size.x * 0.30), 1.4, body.size.z * 0.5 + 0.04)
+		building.add_child(w)
+		var w2 := CSGBox3D.new()
+		w2.size = Vector3(0.55, 0.65, 0.06)
+		w2.material = dark_mat
+		w2.position = Vector3(win_x * (body.size.x * 0.30), 3.2, body.size.z * 0.5 + 0.04)
+		building.add_child(w2)
+	# Sign label on the false-front gable.
 	var sign := Label3D.new()
-	sign.text = SIGNS[_rng.randi() % SIGNS.size()]
-	sign.font_size = 48
-	sign.outline_size = 6
+	sign.text = _BUILDING_SIGNS[_rng.randi() % _BUILDING_SIGNS.size()]
+	sign.font_size = 56
+	sign.outline_size = 8
 	sign.modulate = Color(0.95, 0.85, 0.55, 1)
-	sign.billboard = 1
-	sign.position = Vector3(0, body.size.y - 0.5, body.size.z * 0.5 + 0.05)
+	sign.billboard = 0  # NOT camera-billboard — face the road shoulder
+	# Orient sign face toward the road (negative-side buildings face +x,
+	# positive-side face -x). Side comes from the function arg.
+	sign.rotation_degrees = Vector3(0, 0 if side > 0 else 180, 0)
+	# Position: just in front of the gable, on the road-facing side.
+	sign.position = Vector3(0, body.size.y + 0.55, body.size.z * 0.5 + 0.36)
 	building.add_child(sign)
 	building.position = Vector3(
 		side * (SCENERY_FAR_BAND + _rng.randf_range(-1.0, 1.5)),
 		0,
 		z,
 	)
+	# Buildings on the LEFT side of the road should face the road too
+	# (rotate 180° so their front-face points to +x rather than -x).
+	if side < 0:
+		building.rotation_degrees = Vector3(0, 180, 0)
 	scenery_root.add_child(building)
 
 # Iter 110: bullet-vs-gate collision. Returns true if the bullet hit
