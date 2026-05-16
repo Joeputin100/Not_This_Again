@@ -113,6 +113,11 @@ var boss_root: Node3D
 # Iter 95: also created in _build_3d_content().
 var popups_root: Node3D
 var bonuses_root: Node3D
+# Iter 111: scrolling roadside scenery — fence posts, rocks, cacti,
+# distant building silhouettes. Spawn periodically off-road and scroll
+# toward camera at OBSTACLE_SPEED so the world feels lived-in rather
+# than a flat dirt plane.
+var scenery_root: Node3D
 
 var _spawn_timer: float = 0.0
 var _fire_timer: float = 0.0
@@ -159,6 +164,15 @@ const BONUS_SPAWN_INTERVAL: float = 7.0
 const BONUS_PICKUP_RADIUS_SQ: float = 1.6 * 1.6
 const BONUS_SPEED: float = OBSTACLE_SPEED  # match obstacle scroll
 var _bonus_spawn_timer: float = 0.0
+
+# Iter 111: scenery parameters. Spawn roadside props (fence posts,
+# rocks, cacti, distant building silhouettes) at SCENERY_SPAWN_INTERVAL
+# and let them scroll toward the camera. Range slightly wider than the
+# road bounds so the props sit alongside the dirt strip, not on it.
+const SCENERY_SPAWN_INTERVAL: float = 0.6  # one item every ~0.6s
+const SCENERY_ROAD_SHOULDER: float = 7.5    # x distance from road center
+const SCENERY_FAR_BAND: float = 14.0       # distant scenery (buildings, mountains-near)
+var _scenery_spawn_timer: float = 0.0
 
 # Iter 88: bullet fire modes. Each pickup changes how _spawn_bullet
 # colors / sizes its bullets. Default = candy palette random.
@@ -302,6 +316,7 @@ func _build_3d_content() -> void:
 	boss_root = _make_lvl3d_container("Boss")
 	popups_root = _make_lvl3d_container("Popups")
 	bonuses_root = _make_lvl3d_container("Bonuses")
+	scenery_root = _make_lvl3d_container("Scenery")
 	DebugLog.add("level_3d: 8 containers added to subviewport")
 	# 2) Cowboy3D Sprite3D billboard.
 	cowboy_3d = Sprite3D.new()
@@ -376,6 +391,171 @@ func _spawn_posse_followers() -> void:
 		f.set_meta("formation_offset", offset)
 		subviewport.add_child(f)
 		_followers.append(f)
+
+# Iter 111: spawn a single roadside scenery item. Weighted pick from
+# 5 categories so the world feels lived-in but not chaotic. Each item
+# is a simple CSG primitive — billboard sprites + textured models can
+# replace these in later iters once the spawn/scroll loop is stable.
+#
+# Categories:
+#   FENCE     — short wooden post on the road shoulder
+#   ROCK      — small grey boulder, scattered just past the shoulder
+#   CACTUS    — tall green column further out
+#   SCRUB     — low brown sphere (sagebrush), far side
+#   BUILDING  — flat-front "building façade" silhouette at FAR_BAND
+enum SceneryType { FENCE, ROCK, CACTUS, SCRUB, BUILDING }
+const SCENERY_WEIGHTS: Array[int] = [
+	4,  # FENCE
+	3,  # ROCK
+	2,  # CACTUS
+	2,  # SCRUB
+	1,  # BUILDING (rarest — large, distinctive)
+]
+
+func _spawn_scenery_item() -> void:
+	# Pick category via cumulative weight.
+	var total: int = 0
+	for w in SCENERY_WEIGHTS:
+		total += w
+	var roll: int = _rng.randi_range(0, total - 1)
+	var cum: int = 0
+	var pick: int = SceneryType.FENCE
+	for i in range(SCENERY_WEIGHTS.size()):
+		cum += SCENERY_WEIGHTS[i]
+		if roll < cum:
+			pick = i
+			break
+	# Side: random ±1 left/right of road.
+	var side: float = 1.0 if _rng.randf() < 0.5 else -1.0
+	var spawn_z: float = OBSTACLE_SPAWN_Z + _rng.randf_range(-3.0, 3.0)
+	match pick:
+		SceneryType.FENCE:
+			_spawn_fence_post(side, spawn_z)
+		SceneryType.ROCK:
+			_spawn_rock(side, spawn_z)
+		SceneryType.CACTUS:
+			_spawn_cactus_scenery(side, spawn_z)
+		SceneryType.SCRUB:
+			_spawn_scrub(side, spawn_z)
+		SceneryType.BUILDING:
+			_spawn_building(side, spawn_z)
+
+func _spawn_fence_post(side: float, z: float) -> void:
+	# Two posts spaced 0.8 along z so they read as a fence rail line.
+	for offset_z in [0.0, 0.8]:
+		var post := CSGCylinder3D.new()
+		post.radius = 0.06
+		post.height = 0.9
+		var mat := StandardMaterial3D.new()
+		mat.albedo_color = Color(0.48, 0.32, 0.18, 1)  # weathered wood
+		post.material = mat
+		post.position = Vector3(
+			side * (SCENERY_ROAD_SHOULDER + _rng.randf_range(-0.2, 0.2)),
+			0.45,
+			z + offset_z,
+		)
+		scenery_root.add_child(post)
+
+func _spawn_rock(side: float, z: float) -> void:
+	var rock := CSGSphere3D.new()
+	rock.radius = _rng.randf_range(0.25, 0.6)
+	rock.radial_segments = 6
+	rock.rings = 4
+	var mat := StandardMaterial3D.new()
+	mat.albedo_color = Color(0.45, 0.40, 0.35, 1)  # weathered grey
+	rock.material = mat
+	rock.scale = Vector3(1.0, _rng.randf_range(0.5, 0.9), _rng.randf_range(0.8, 1.2))
+	rock.position = Vector3(
+		side * (SCENERY_ROAD_SHOULDER + _rng.randf_range(0.3, 2.0)),
+		rock.radius * 0.5,
+		z,
+	)
+	scenery_root.add_child(rock)
+
+func _spawn_cactus_scenery(side: float, z: float) -> void:
+	# Saguaro-style trunk + optional arm. Two stacked CSGCylinders.
+	var cactus := Node3D.new()
+	var trunk := CSGCylinder3D.new()
+	trunk.radius = 0.18
+	trunk.height = _rng.randf_range(1.4, 2.2)
+	var mat := StandardMaterial3D.new()
+	mat.albedo_color = Color(0.28, 0.42, 0.22, 1)
+	trunk.material = mat
+	trunk.position = Vector3(0, trunk.height * 0.5, 0)
+	cactus.add_child(trunk)
+	if _rng.randf() < 0.5:
+		var arm := CSGCylinder3D.new()
+		arm.radius = 0.12
+		arm.height = 0.6
+		arm.material = mat
+		arm.position = Vector3(0.22, trunk.height * 0.75, 0)
+		arm.rotation_degrees = Vector3(0, 0, -65)
+		cactus.add_child(arm)
+	cactus.position = Vector3(
+		side * (SCENERY_ROAD_SHOULDER + _rng.randf_range(1.0, 4.0)),
+		0,
+		z,
+	)
+	scenery_root.add_child(cactus)
+
+func _spawn_scrub(side: float, z: float) -> void:
+	# Sagebrush — low matted sphere flattened on y.
+	var scrub := CSGSphere3D.new()
+	scrub.radius = _rng.randf_range(0.35, 0.55)
+	scrub.radial_segments = 6
+	scrub.rings = 4
+	var mat := StandardMaterial3D.new()
+	mat.albedo_color = Color(0.55, 0.50, 0.32, 1)  # dry sage-brown
+	scrub.material = mat
+	scrub.scale = Vector3(1.2, 0.35, 1.2)
+	scrub.position = Vector3(
+		side * (SCENERY_ROAD_SHOULDER + _rng.randf_range(0.5, 5.0)),
+		0.15,
+		z,
+	)
+	scenery_root.add_child(scrub)
+
+func _spawn_building(side: float, z: float) -> void:
+	# A flat-front frontier building silhouette: rectangular body + a
+	# triangular roof gable suggested with a smaller box on top. Big
+	# enough to read at distance.
+	var building := Node3D.new()
+	var body := CSGBox3D.new()
+	body.size = Vector3(4.5, 3.5, 3.5)
+	var body_mat := StandardMaterial3D.new()
+	# Subtle hue variance: warm tan for adobe-style, grey-brown for wood
+	if _rng.randf() < 0.5:
+		body_mat.albedo_color = Color(0.62, 0.50, 0.34, 1)  # adobe tan
+	else:
+		body_mat.albedo_color = Color(0.45, 0.32, 0.22, 1)  # weathered wood
+	body.material = body_mat
+	body.position = Vector3(0, body.size.y * 0.5, 0)
+	building.add_child(body)
+	# Roof gable — slightly darker, narrower.
+	var roof := CSGBox3D.new()
+	roof.size = Vector3(4.7, 0.8, 3.7)
+	var roof_mat := StandardMaterial3D.new()
+	roof_mat.albedo_color = Color(0.32, 0.22, 0.14, 1)
+	roof.material = roof_mat
+	roof.position = Vector3(0, body.size.y + 0.4, 0)
+	building.add_child(roof)
+	# Sign label — small Label3D so the player can tell what kind
+	# of building (saloon, bank, etc) it is. Cycle through types.
+	const SIGNS := ["SALOON", "BANK", "JAIL", "GEN. STORE", "STABLES", "HOTEL"]
+	var sign := Label3D.new()
+	sign.text = SIGNS[_rng.randi() % SIGNS.size()]
+	sign.font_size = 48
+	sign.outline_size = 6
+	sign.modulate = Color(0.95, 0.85, 0.55, 1)
+	sign.billboard = 1
+	sign.position = Vector3(0, body.size.y - 0.5, body.size.z * 0.5 + 0.05)
+	building.add_child(sign)
+	building.position = Vector3(
+		side * (SCENERY_FAR_BAND + _rng.randf_range(-1.0, 1.5)),
+		0,
+		z,
+	)
+	scenery_root.add_child(building)
 
 # Iter 110: bullet-vs-gate collision. Returns true if the bullet hit
 # a not-yet-triggered gate door, in which case the caller queue_frees
@@ -1067,6 +1247,18 @@ func _process(delta: float) -> void:
 			_sync_followers_to_count(_posse_count_3d)
 		elif ob.position.z > OUTLAW_BULLET_DESPAWN_Z or absf(ob.position.x) > 25.0:
 			ob.queue_free()
+	# Iter 111: scenery spawn / scroll / despawn. Cheaper than obstacles
+	# (no collision checks) so we run it more often for visual density.
+	_scenery_spawn_timer -= delta
+	if _scenery_spawn_timer <= 0.0:
+		_scenery_spawn_timer = SCENERY_SPAWN_INTERVAL
+		_spawn_scenery_item()
+	for s in scenery_root.get_children():
+		if not (s is Node3D):
+			continue
+		s.position.z += OBSTACLE_SPEED * delta
+		if s.position.z > OBSTACLE_DESPAWN_Z + 2.0:
+			s.queue_free()
 	# Iter 88: bonus pickup spawn / scroll / collect.
 	_bonus_spawn_timer -= delta
 	if _bonus_spawn_timer <= 0.0:
