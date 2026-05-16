@@ -145,7 +145,7 @@ var _outlaw_spawn_timer: float = 0.0
 
 # Iter 77: Slippery Pete boss. Appears at PETE_SPAWN_DELAY into the
 # level. Slow approach, much higher HP, drops the WIN modal on defeat.
-const PETE_SPAWN_DELAY: float = 25.0
+const PETE_SPAWN_DELAY: float = 12.0  # iter 110: 25 → 12 so testers don't have to wait
 const PETE_HP: int = 40
 const PETE_SPEED: float = 1.6
 const PETE_FIRE_INTERVAL: float = 1.0
@@ -234,7 +234,11 @@ func _ready() -> void:
 	DebugLog.add("level_3d: back signals wired")
 	if info_label != null:
 		info_label.text = "iter97 RDY-3 back wired"
-	_rng.seed = 6464
+	# Iter 110: randomize so bullet colors / lane choices / etc. don't
+	# repeat the same sequence every preview session. The deterministic
+	# seed (6464) was only useful for early reproduction; now we want
+	# variety across runs.
+	_rng.randomize()
 	# Iter 96: terrain_3d.gd (attached to the Terrain3D instance) now
 	# does its own subviewport→sprite binding in its _ready, so the
 	# manual binding from iter 69 is no longer needed. Keeping a
@@ -373,6 +377,59 @@ func _spawn_posse_followers() -> void:
 		subviewport.add_child(f)
 		_followers.append(f)
 
+# Iter 110: bullet-vs-gate collision. Returns true if the bullet hit
+# a not-yet-triggered gate door, in which case the caller queue_frees
+# the bullet. Decrements the hit door's value toward zero (or degrades
+# a multiplier toward additive zero), updates the Label3D + door tint.
+const GATE_BULLET_Z_RANGE: float = 0.5
+const GATE_BULLET_X_HALF: float = 2.0  # half door width (= GATE_WIDTH * 0.5 * 0.5 = 1.0)
+
+func _check_bullet_gate_collision(bullet: Node3D) -> bool:
+	for gate_node in gates_root.get_children():
+		if not (gate_node is Node3D):
+			continue
+		var gate: Node3D = gate_node
+		if gate.get_meta("triggered", false):
+			continue
+		if absf(bullet.position.z - gate.position.z) > GATE_BULLET_Z_RANGE:
+			continue
+		# Which door? Bullet x relative to gate center.
+		var side: String = "left" if bullet.position.x < gate.position.x else "right"
+		var door: Node = gate.get_meta(side + "_door")
+		if door == null or not is_instance_valid(door):
+			continue
+		# Confirm bullet is actually within door width (avoid hitting the
+		# unfilled middle gap that doesn't have a door behind it).
+		var door_center_x: float = gate.position.x + (-1.0 if side == "left" else 1.0) * (GATE_WIDTH * 0.25)
+		if absf(bullet.position.x - door_center_x) > GATE_BULLET_X_HALF:
+			continue
+		# Decrement the door's value toward 0.
+		var value: int = gate.get_meta(side + "_value", 0)
+		var op: String = gate.get_meta(side + "_op", "+")
+		if op == "×":
+			# Degrade multiplier toward 2, then collapse to additive 0.
+			value = maxi(value - 1, 1)
+			if value < 2:
+				op = "+"
+				value = 0
+		elif value > 0:
+			value -= 1
+		elif value < 0:
+			value += 1
+		# Persist + update visuals.
+		gate.set_meta(side + "_value", value)
+		gate.set_meta(side + "_op", op)
+		var lbl: Label3D = gate.get_meta(side + "_label")
+		if lbl != null and is_instance_valid(lbl):
+			lbl.text = "%s%d" % [op, value]
+		if door is CSGBox3D and (door as CSGBox3D).material is StandardMaterial3D:
+			(((door as CSGBox3D).material) as StandardMaterial3D).albedo_color = _gate_color_for(value, op)
+		# Hit-popup at impact point
+		_spawn_popup_3d(bullet.position + Vector3(0, 0.5, 0),
+			"%s%d" % [op, value], Color(1.0, 0.92, 0.3, 1), 40)
+		return true
+	return false
+
 # Iter 75: spawn a gate with two random door effects. Each door is a
 # semi-transparent ColorRect-style 3D quad (CSGBox3D, very thin in z)
 # with a math value Label3D billboard above it.
@@ -407,6 +464,7 @@ func _spawn_gate() -> void:
 	lmat.albedo_color = _gate_color_for(values[0], operators[0])
 	left_door.material = lmat
 	gate.add_child(left_door)
+	gate.set_meta("left_door", left_door)  # iter 110: bullets find door via meta
 	# Right door
 	var right_door := CSGBox3D.new()
 	right_door.size = Vector3(GATE_WIDTH * 0.5, GATE_HEIGHT, 0.15)
@@ -416,6 +474,7 @@ func _spawn_gate() -> void:
 	rmat.albedo_color = _gate_color_for(values[1], operators[1])
 	right_door.material = rmat
 	gate.add_child(right_door)
+	gate.set_meta("right_door", right_door)
 	# Math value labels (Label3D billboards above each door)
 	var llabel := Label3D.new()
 	llabel.text = "%s%d" % [operators[0], values[0]]
@@ -424,6 +483,7 @@ func _spawn_gate() -> void:
 	llabel.outline_size = 12
 	llabel.modulate = Color.WHITE
 	gate.add_child(llabel)
+	gate.set_meta("left_label", llabel)  # iter 110: bullets update label text via meta
 	var rlabel := Label3D.new()
 	rlabel.text = "%s%d" % [operators[1], values[1]]
 	rlabel.position = Vector3(GATE_WIDTH * 0.25, GATE_HEIGHT * 0.55, 0)
@@ -431,6 +491,7 @@ func _spawn_gate() -> void:
 	rlabel.outline_size = 12
 	rlabel.modulate = Color.WHITE
 	gate.add_child(rlabel)
+	gate.set_meta("right_label", rlabel)
 	gates_root.add_child(gate)
 
 # Gate door color helper. Blue = "growing" (good), red = "shrinking" (bad).
@@ -472,6 +533,50 @@ func _check_gate_trigger(gate: Node3D) -> void:
 	]
 	AudioBus.play_gate_pass()
 	_refresh_hud()
+	# Iter 110: sync visible posse Sprite3Ds to the new count so the
+	# screen actually shows the change instead of just the HUD number.
+	_sync_followers_to_count(_posse_count_3d)
+	# Iter 110: disintegrate the gate instead of letting it slide past.
+	# Scale-collapse + queue_free so the player feels the contact.
+	var tween := create_tween()
+	tween.tween_property(gate, "scale", Vector3(0.01, 0.01, 0.01), 0.25) \
+		.set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_IN)
+	tween.tween_callback(gate.queue_free)
+
+# Iter 110: keep the visible posse Sprite3Ds in sync with _posse_count_3d.
+# Called from gate-trigger and bullet-damage paths. Adds followers up to
+# the new count (minus 1 for the leader cowboy_3d), trims excess from
+# the tail. Cap at MAX_VISIBLE_FOLLOWERS so a ×4 gate doesn't spawn 100
+# Sprite3Ds and tank the framerate.
+const MAX_VISIBLE_FOLLOWERS: int = 24
+
+func _sync_followers_to_count(target: int) -> void:
+	var want: int = clampi(target - 1, 0, MAX_VISIBLE_FOLLOWERS)
+	# Trim excess from tail.
+	while _followers.size() > want:
+		var f: Sprite3D = _followers.pop_back()
+		if is_instance_valid(f):
+			f.queue_free()
+	# Grow up to want — clone leader sprite, place at trapezoid offset
+	# computed from index.
+	if cowboy_3d == null or not is_instance_valid(cowboy_3d):
+		return
+	while _followers.size() < want:
+		var idx: int = _followers.size()
+		var f := Sprite3D.new()
+		f.texture = cowboy_3d.texture
+		f.pixel_size = cowboy_3d.pixel_size
+		f.billboard = 1
+		f.alpha_cut = 1
+		var offset: Vector3 = (POSSE_FORMATION_OFFSETS[idx % POSSE_FORMATION_OFFSETS.size()]
+			if POSSE_FORMATION_OFFSETS.size() > 0
+			else Vector3(0, 0, 0.6 + 0.2 * float(idx)))
+		# Extra rows: scale offset.z by (1 + idx / OFFSETS.size())
+		var row_mul: float = 1.0 + floorf(float(idx) / float(POSSE_FORMATION_OFFSETS.size()))
+		f.position = Vector3(offset.x, 0.45, COWBOY_Z + offset.z * row_mul)
+		f.set_meta("formation_offset", Vector3(offset.x, 0.0, offset.z * row_mul))
+		subviewport.add_child(f)
+		_followers.append(f)
 
 # Iter 88: spawn a bonus pickup. Tall thin floating Sprite3D-style box
 # with a math-symbol Label3D billboard above it. Cowboy collides to
@@ -784,7 +889,7 @@ func _spawn_outlaw() -> void:
 	outlaw.set_meta("hp", OUTLAW_HP)
 	outlaw.set_meta("fire_timer", _rng.randf() * OUTLAW_FIRE_INTERVAL)
 	outlaws_root.add_child(outlaw)
-	var billboard: Node3D = _make_video_billboard(VAGRANT_IDLE_STREAM, 2.0)
+	var billboard: Node3D = _make_video_billboard(VAGRANT_IDLE_STREAM, 2.5)  # iter 110: 2.0 → 2.5 (+25%)
 	outlaw.add_child(billboard)
 
 # Iter 109: helper for video-driven 3D billboards. Pattern:
@@ -916,6 +1021,10 @@ func _process(delta: float) -> void:
 		if not (outlaw is Node3D):
 			continue
 		outlaw.position.z += OUTLAW_SPEED * delta
+		# Iter 110: outlaws slowly track the cowboy's x position so
+		# they aren't just sliding straight forward in a single lane.
+		outlaw.position.x = lerpf(outlaw.position.x, cowboy_3d.position.x,
+			clampf(1.2 * delta, 0.0, 1.0))
 		var ft: float = outlaw.get_meta("fire_timer", 0.0)
 		ft -= delta
 		if ft <= 0.0:
@@ -954,6 +1063,8 @@ func _process(delta: float) -> void:
 			ob.queue_free()
 			_posse_count_3d = maxi(0, _posse_count_3d - 1)
 			_refresh_hud()
+			# Iter 110: drop a visible follower when posse takes damage.
+			_sync_followers_to_count(_posse_count_3d)
 		elif ob.position.z > OUTLAW_BULLET_DESPAWN_Z or absf(ob.position.x) > 25.0:
 			ob.queue_free()
 	# Iter 88: bonus pickup spawn / scroll / collect.
@@ -1026,6 +1137,12 @@ func _process(delta: float) -> void:
 		bullet.position.z -= BULLET_SPEED * delta
 		# Despawn off the far end.
 		if bullet.position.z < BULLET_DESPAWN_Z:
+			bullet.queue_free()
+			continue
+		# Iter 110: gate-vs-bullet collision — bullets count down the
+		# gate door's value (moving toward 0). For multiplicative gates,
+		# degrade the multiplier toward 2 then collapse to additive 0.
+		if _check_bullet_gate_collision(bullet):
 			bullet.queue_free()
 			continue
 		# Collision check: any obstacle within BULLET_COLLISION_DIST_SQ.
