@@ -142,7 +142,7 @@ const OUTLAW_SPAWN_INTERVAL: float = 3.0
 const OUTLAW_SPEED: float = 4.0  # slower than obstacles — they're shooters
 const OUTLAW_FIRE_INTERVAL: float = 1.8
 const OUTLAW_BULLET_SPEED: float = 14.0
-const OUTLAW_BULLET_RADIUS: float = 0.35
+const OUTLAW_BULLET_RADIUS: float = 0.12  # iter 114: 0.35 → 0.12 (was nearly as wide as the outlaw was tall)
 const OUTLAW_BULLET_DESPAWN_Z: float = 4.0
 const OUTLAW_HIT_RADIUS_SQ: float = 1.5 * 1.5
 const OUTLAW_HP: int = 3
@@ -170,8 +170,13 @@ var _bonus_spawn_timer: float = 0.0
 # and let them scroll toward the camera. Range slightly wider than the
 # road bounds so the props sit alongside the dirt strip, not on it.
 const SCENERY_SPAWN_INTERVAL: float = 0.6  # one item every ~0.6s
-const SCENERY_ROAD_SHOULDER: float = 7.5    # x distance from road center
-const SCENERY_FAR_BAND: float = 14.0       # distant scenery (buildings, mountains-near)
+# Iter 114: pulled IN from 7.5 / 14.0. The SubViewport is 1080×1920
+# portrait — at vertical FOV 70°, the HORIZONTAL half-FOV is only ~21.5°.
+# Anything beyond x=±3.5 at cowboy depth (8 world units from camera) is
+# outside the visible cone. Buildings at x=±14 were never going to be on
+# screen. Now buildings sit at the road's edge, fences just outside it.
+const SCENERY_ROAD_SHOULDER: float = 3.5    # x distance from road center
+const SCENERY_FAR_BAND: float = 5.0          # buildings — just past shoulder
 var _scenery_spawn_timer: float = 0.0
 
 # Iter 88: bullet fire modes. Each pickup changes how _spawn_bullet
@@ -759,19 +764,23 @@ func _check_bullet_gate_collision(bullet: Node3D) -> bool:
 			"hit", Color(1.0, 0.92, 0.3, 0.9), 28)
 		if hits < GATE_HITS_PER_STEP:
 			return true  # bullet absorbed, but value not yet stepped
-		# Step counter resets; decrement value toward 0.
+		# Step counter resets. Iter 114: invert direction — bullets
+		# IMPROVE the gate (make it better for the player) rather than
+		# pummeling it to 0. User said: 'add/subtract gates are supposed
+		# to increase with bullet collision, but they are all going to 0'.
+		# Rules:
+		#   +N gate: bullets increase N (better for player)
+		#   -N gate: bullets move toward 0 (less bad for player)
+		#   ×N gate: bullets increase the multiplier
 		gate.set_meta(side + "_hits", 0)
 		var value: int = gate.get_meta(side + "_value", 0)
 		var op: String = gate.get_meta(side + "_op", "+")
 		if op == "×":
-			value = maxi(value - 1, 1)
-			if value < 2:
-				op = "+"
-				value = 0
-		elif value > 0:
-			value -= 1
-		elif value < 0:
+			value = mini(value + 1, 9)  # cap × at ×9 so the math stays sane
+		elif value >= 0:
 			value += 1
+		else:  # value < 0
+			value += 1  # move toward 0 (less negative)
 		# Persist + update visuals.
 		gate.set_meta(side + "_value", value)
 		gate.set_meta(side + "_op", op)
@@ -1241,23 +1250,37 @@ func _gold_rush_salute_3d() -> void:
 const VAGRANT_IDLE_STREAM := preload("res://assets/videos/vagrant/idle_wobble.ogv")
 
 var _outlaw_spawn_count: int = 0
+const VAGRANT_TEXTURE := preload("res://assets/sprites/vagrant.png")
+# Iter 114: outlaw spawn x narrowed from ±4.5 (= COWBOY_X_BOUND * 0.75)
+# to ±2.5. The portrait camera's horizontal half-FOV is only ~21.5°,
+# so at cowboy depth the visible road is only x=±3.35 wide.
+const OUTLAW_SPAWN_X_MAX: float = 2.5
 
 func _spawn_outlaw() -> void:
-	# Iter 109: video-driven billboard using vagrant/idle_wobble.ogv +
-	# chromakey shader. Iter 110: world_height 2.0 → 2.5 (+25%).
-	# Iter 113: DebugLog breadcrumb so we can confirm via 'COPY log' that
-	# this function is being CALLED (vs the render side being broken).
+	# Iter 114: reverted from video billboard (SubViewport+VideoStreamPlayer
+	# from iter 109) to static Sprite3D + vagrant.png. The video billboard
+	# pipeline appears to not render on Android Vulkan — nested-SubViewport
+	# is the suspect (Godot may not propagate the outer render pass to the
+	# inner one on mobile). Static sprite is the regression test: if user
+	# sees vagrants now, video billboard is confirmed as the culprit and
+	# a future iter can fix the nested-SubViewport (probably by adding
+	# the inner SubViewport as a SIBLING of outlaws_root rather than a
+	# CHILD of outlaws_root, so it renders independently).
 	var outlaw := Node3D.new()
-	var lane_x: float = _rng.randf_range(-COWBOY_X_BOUND * 0.75,
-		COWBOY_X_BOUND * 0.75)
+	var lane_x: float = _rng.randf_range(-OUTLAW_SPAWN_X_MAX, OUTLAW_SPAWN_X_MAX)
 	outlaw.position = Vector3(lane_x, 1.0, OBSTACLE_SPAWN_Z + 4.0)
 	outlaw.set_meta("hp", OUTLAW_HP)
 	outlaw.set_meta("fire_timer", _rng.randf() * OUTLAW_FIRE_INTERVAL)
 	outlaws_root.add_child(outlaw)
-	var billboard: Node3D = _make_video_billboard(VAGRANT_IDLE_STREAM, 2.5)
-	outlaw.add_child(billboard)
+	var sprite := Sprite3D.new()
+	sprite.texture = VAGRANT_TEXTURE
+	# Match the iter 110 +25% size: vagrant ~2.5 world units tall.
+	# pixel_size = 2.5 / texture_height. vagrant.png is roughly 400px tall.
+	sprite.pixel_size = 2.5 / 400.0
+	sprite.billboard = 1   # BILLBOARD_ENABLED
+	sprite.alpha_cut = 1   # ALPHA_CUT_DISCARD — PNG has transparent background
+	outlaw.add_child(sprite)
 	_outlaw_spawn_count += 1
-	# Throttled log: every 5th spawn so we don't flood the buffer.
 	if _outlaw_spawn_count == 1 or _outlaw_spawn_count % 5 == 0:
 		DebugLog.add("outlaw spawn #%d at x=%.1f z=%.1f (outlaws_root.size=%d)" % [
 			_outlaw_spawn_count, lane_x, outlaw.position.z, outlaws_root.get_child_count(),
