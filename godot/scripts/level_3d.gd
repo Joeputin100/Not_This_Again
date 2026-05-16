@@ -60,7 +60,17 @@ const COWBOY_TEXTURE_LVL3D: Texture2D = preload("res://assets/sprites/posse_idle
 # 3D world bounds. The dirt PlaneMesh in terrain_3d_3d_prototype is
 # 40 wide × 60 deep, centered at origin. Cowboy lane = x in [-18, 18].
 const COWBOY_X_BOUND: float = 18.0
-const COWBOY_Z: float = 1.5         # close to camera (near plane)
+# Iter 106: cowboy z moved 1.5 → -3.0 because the previous value put
+# the cowboy below the camera frustum. Camera is at (0, 3, 2) tilted
+# -30° around X. Its look-ray (forward direction (0, -0.5, -0.866))
+# from y=3 hits ground (y=0) at world position (0, 0, -3.2). For the
+# cowboy to be visible on-screen at ground level (y≈0.45), it has to
+# be near that intersection point. At z=1.5 the cowboy was 2.55 world
+# units BELOW the visible field at that depth — exactly the symptom
+# the user reported on iter 105 sideload ("cowboy not visible, nothing
+# is tracking left/right" → the lerp was working but the sprite was
+# below the screen so the visual tracking was invisible).
+const COWBOY_Z: float = -3.0
 const OBSTACLE_SPAWN_Z: float = -28.0  # far end of plane
 const OBSTACLE_DESPAWN_Z: float = 3.5   # past the cowboy
 const OBSTACLE_SPEED: float = 8.0    # world units per second
@@ -289,7 +299,10 @@ func _build_3d_content() -> void:
 	# Use the int literal (1) directly with a comment for the human reader.
 	# (Same enum value as SpriteBase3D.AlphaCutMode.ALPHA_CUT_DISCARD.)
 	cowboy_3d.alpha_cut = 1  # ALPHA_CUT_DISCARD
-	cowboy_3d.position = Vector3(0, 0.45, 1.5)
+	# Iter 106: use COWBOY_Z constant (= -3.0) so this stays in sync if
+	# the camera angle ever changes again. Previous hardcoded 1.5 was
+	# below the camera frustum.
+	cowboy_3d.position = Vector3(0, 0.45, COWBOY_Z)
 	subviewport.add_child(cowboy_3d)
 	DebugLog.add("level_3d: cowboy_3d added")
 	# 3) 4 mountain MeshInstance3D silhouettes.
