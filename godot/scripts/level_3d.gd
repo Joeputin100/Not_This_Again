@@ -1155,19 +1155,24 @@ func _spawn_popup_3d(world_pos: Vector3, text: String, color: Color, size: int) 
 # Iter 79: render the 3-label HUD from current state. Called after any
 # event that changes hearts/posse/hits (gate pass, outlaw kill, posse
 # damage). Hearts read from GameState if available.
-# Iter 115: render the cowboy's ammo + reload status on a HUD label.
-# Reuses info_label (top of screen). Two states:
-#   reloading      → "RELOADING 47%%"  (% complete)
-#   ready-to-fire  → "AMMO 4/6"
+# Iter 115/117: render the cowboy's ammo + reload status on a HUD label.
+# Iter 117: ported the EXACT 2D pip-glyph infographic from level.gd
+# (▰ filled, ▱ empty). User noted iter 115's plain text didn't match.
+# Two states:
+#   reloading      → "RELOADING ▰▰▱▱▱▱"  (pips fill as reload progresses)
+#   ready-to-fire  → "AMMO ▰▰▰▰▱▱"        (pips empty as ammo drains)
 func _refresh_ammo_label_3d() -> void:
 	if info_label == null or _gun_state == null:
 		return
+	var clip: int = _gun.clip_size
 	if _gun_state.is_reloading():
-		info_label.text = "RELOADING %.0f%%" % (_gun_state.reload_progress() * 100.0)
-		info_label.modulate = Color(1.00, 0.65, 0.30, 1)  # amber
+		var filled: int = int(round(float(clip) * _gun_state.reload_progress()))
+		info_label.text = "RELOADING " + "▰".repeat(filled) + "▱".repeat(clip - filled)
+		info_label.modulate = Color(1.0, 0.55, 0.25, 1)  # amber
 	else:
-		info_label.text = "AMMO %d / %d" % [_gun_state.ammo(), _gun.clip_size]
-		info_label.modulate = Color(0.95, 0.78, 0.35, 1)  # gold (default)
+		var ammo: int = _gun_state.ammo()
+		info_label.text = "AMMO " + "▰".repeat(ammo) + "▱".repeat(clip - ammo)
+		info_label.modulate = Color(1.0, 0.92, 0.55, 1)  # gold
 
 func _refresh_hud() -> void:
 	if hearts_label:
