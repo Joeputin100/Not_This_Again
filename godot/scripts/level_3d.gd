@@ -164,6 +164,7 @@ const OUTLAW_FIRE_INTERVAL: float = 1.8
 const OUTLAW_BULLET_SPEED: float = 14.0
 const OUTLAW_BULLET_RADIUS: float = 0.12  # iter 114: 0.35 → 0.12 (was nearly as wide as the outlaw was tall)
 const OUTLAW_BULLET_DESPAWN_Z: float = 4.0
+const OUTLAW_BULLET_HIT_X: float = 0.5  # iter 119: bullet only hits if within this x of any posse member
 const OUTLAW_HIT_RADIUS_SQ: float = 1.5 * 1.5
 const OUTLAW_HP: int = 10  # iter 118: 3 → 10 (1 cowboy firing 6/clip+1s reload = ~3.5 bullets/sec, dies in ~3s)
 var _outlaw_spawn_timer: float = 0.0
@@ -171,11 +172,20 @@ var _outlaw_spawn_timer: float = 0.0
 # Iter 77: Slippery Pete boss. Appears at PETE_SPAWN_DELAY into the
 # level. Slow approach, much higher HP, drops the WIN modal on defeat.
 const PETE_SPAWN_DELAY: float = 8.0  # iter 118: 12 → 8
-const PETE_HP: int = 40
+const PETE_HP: int = 1000  # iter 119: 40 → 1000 (×-gates can build huge posse)
 const PETE_SPEED: float = 1.6
-const PETE_FIRE_INTERVAL: float = 1.0
+const PETE_FIRE_INTERVAL: float = 0.5  # iter 119: 1.0 → 0.5 (alternates L/R guns)
 const PETE_HIT_RADIUS_SQ: float = 2.6 * 2.6
-const PETE_STAY_Z: float = -6.0  # stops here for the duel
+const PETE_STAY_Z: float = -6.0  # holds at duel distance until melee phase
+# Iter 119: Pete melee — if the duel drags on (Pete not yet defeated)
+# he keeps walking past STAY_Z toward the cowboy. Once within MELEE_RANGE,
+# he deals MELEE_DPS damage/second contact-style.
+const PETE_MELEE_TRIGGER_T: float = 10.0  # seconds at STAY_Z before Pete advances
+const PETE_MELEE_ADVANCE_SPEED: float = 0.8  # u/s during melee advance
+const PETE_MELEE_RANGE: float = 1.8  # distance at which melee tick starts
+const PETE_MELEE_DPS: float = 2.0  # posse members lost per second of contact
+var _pete_stay_elapsed: float = 0.0
+var _pete_melee_tick_accum: float = 0.0
 
 # Iter 88: bonus pickup spawn parameters. Pickups appear periodically
 # at a random lane x, hover with sine y-bob, scroll toward cowboy.
@@ -806,7 +816,7 @@ func _check_bullet_gate_collision(bullet: Node3D) -> bool:
 		var value: int = gate.get_meta(side + "_value", 0)
 		var op: String = gate.get_meta(side + "_op", "+")
 		if op == "×":
-			value = mini(value + 1, 9)  # cap × at ×9 so the math stays sane
+			pass  # iter 119: × gates absorb the bullet but DON'T increment. Multipliers stay at ×2 max so posse doesn't explode.
 		elif value >= 0:
 			value += 1
 		else:  # value < 0
@@ -843,7 +853,7 @@ func _spawn_gate() -> void:
 			operators.append("+" if v > 0 else "")  # negative sign included in value
 		else:
 			# Multiplicative
-			values.append(_rng.randi_range(2, 3))
+			values.append(2)  # iter 119: capped at ×2 — randi_range(2,3) was producing ×3 that explodes posse
 			operators.append("×")
 	gate.set_meta("left_value", values[0])
 	gate.set_meta("left_op", operators[0])
@@ -1110,7 +1120,16 @@ func _pete_fire() -> void:
 	var pete: Node3D = boss_root.get_child(0)
 	if not (pete is Node3D):
 		return
+	# Iter 119: alternate left/right gun by offsetting Pete's position
+	# briefly during the _outlaw_fire call (which uses outlaw.position
+	# as the bullet origin). Net effect: shots originate from his L gun
+	# on even fires, R gun on odd, giving a visual telegraph the player
+	# can read for dodge timing.
+	var gun_offset_x: float = -0.6 if (_pete_fire_count % 2 == 0) else 0.6
+	var orig_pos: Vector3 = pete.position
+	pete.position = orig_pos + Vector3(gun_offset_x, 0, 0)
 	_outlaw_fire(pete)
+	pete.position = orig_pos
 	_pete_fire_count += 1
 	if _pete_fire_count % PETE_TAUNT_INTERVAL == 0:
 		_pete_spawn_taunt(pete)
@@ -1488,7 +1507,11 @@ func _process(delta: float) -> void:
 		if not is_instance_valid(f):
 			continue
 		var offset: Vector3 = f.get_meta("formation_offset", Vector3.ZERO)
-		var target_fx: float = cowboy_3d.position.x + offset.x
+		# Iter 119: clamp follower target to the visible road so when the
+		# leader nears the edge, followers bunch up at the same edge
+		# instead of trailing off-screen.
+		var target_fx: float = clampf(cowboy_3d.position.x + offset.x,
+			-COWBOY_X_BOUND, COWBOY_X_BOUND)
 		f.position.x = lerpf(f.position.x, target_fx,
 			clampf(FOLLOWER_LERP_SPEED * delta, 0.0, 1.0))
 		# Phase offset per follower so the crowd looks alive.
@@ -1583,11 +1606,22 @@ func _process(delta: float) -> void:
 		# Posse-hit: if bullet reaches cowboy's near plane, decrement
 		# posse and kill the bullet.
 		if ob.position.z > cowboy_3d.position.z - 0.3:
+			# Iter 119: dodgeable bullet — only damage if it crosses
+			# CLOSE to the leader OR any follower (x distance check).
+			# If the player swerves out of the way, the bullet expires
+			# without harming anyone. Hitting a follower kills the
+			# tail-end of the posse (handled by _sync_followers_to_count
+			# popping from the back); the leader Sprite3D stays put.
+			var bx: float = ob.position.x
+			var min_dx: float = absf(bx - cowboy_3d.position.x)
+			for f in _followers:
+				if is_instance_valid(f):
+					min_dx = minf(min_dx, absf(bx - f.position.x))
 			ob.queue_free()
-			_posse_count_3d = maxi(0, _posse_count_3d - 1)
-			_refresh_hud()
-			# Iter 110: drop a visible follower when posse takes damage.
-			_sync_followers_to_count(_posse_count_3d)
+			if min_dx < OUTLAW_BULLET_HIT_X:
+				_posse_count_3d = maxi(0, _posse_count_3d - 1)
+				_refresh_hud()
+				_sync_followers_to_count(_posse_count_3d)
 		elif ob.position.z > OUTLAW_BULLET_DESPAWN_Z or absf(ob.position.x) > 25.0:
 			ob.queue_free()
 	# Iter 111: scenery spawn / scroll / despawn. Cheaper than obstacles
@@ -1638,6 +1672,27 @@ func _process(delta: float) -> void:
 			# Approach until STAY_Z
 			if pete.position.z < PETE_STAY_Z:
 				pete.position.z += PETE_SPEED * delta
+			else:
+				# Iter 119: Pete is at duel distance. After
+				# PETE_MELEE_TRIGGER_T seconds of holding still, he
+				# starts advancing toward the cowboy at MELEE_ADVANCE_SPEED.
+				# Once within MELEE_RANGE of the leader, deal MELEE_DPS
+				# damage per second of contact.
+				_pete_stay_elapsed += delta
+				if _pete_stay_elapsed >= PETE_MELEE_TRIGGER_T:
+					var dx_pete: float = absf(pete.position.x - cowboy_3d.position.x)
+					var dz_pete: float = absf(pete.position.z - cowboy_3d.position.z)
+					var dist_pete: float = sqrt(dx_pete * dx_pete + dz_pete * dz_pete)
+					if dist_pete > PETE_MELEE_RANGE:
+						pete.position.z += PETE_MELEE_ADVANCE_SPEED * delta
+					else:
+						# Melee contact — drain posse at MELEE_DPS rate.
+						_pete_melee_tick_accum += delta * PETE_MELEE_DPS
+						while _pete_melee_tick_accum >= 1.0:
+							_pete_melee_tick_accum -= 1.0
+							_posse_count_3d = maxi(0, _posse_count_3d - 1)
+							_sync_followers_to_count(_posse_count_3d)
+							_refresh_hud()
 			# Fire periodically
 			_pete_fire_timer -= delta
 			if _pete_fire_timer <= 0.0:
