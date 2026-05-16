@@ -1282,73 +1282,59 @@ func _gold_rush_salute_3d() -> void:
 const VAGRANT_IDLE_STREAM := preload("res://assets/videos/vagrant/idle_wobble.ogv")
 
 var _outlaw_spawn_count: int = 0
-const VAGRANT_TEXTURE := preload("res://assets/sprites/vagrant.png")
 # Iter 114: outlaw spawn x narrowed from ±4.5 (= COWBOY_X_BOUND * 0.75)
-# to ±2.5. The portrait camera's horizontal half-FOV is only ~21.5°,
-# so at cowboy depth the visible road is only x=±3.35 wide.
+# to ±2.5. The portrait camera's horizontal half-FOV is only ~21.5°.
 const OUTLAW_SPAWN_X_MAX: float = 2.5
 
 func _spawn_outlaw() -> void:
-	# Iter 114: reverted from video billboard (SubViewport+VideoStreamPlayer
-	# from iter 109) to static Sprite3D + vagrant.png. The video billboard
-	# pipeline appears to not render on Android Vulkan — nested-SubViewport
-	# is the suspect (Godot may not propagate the outer render pass to the
-	# inner one on mobile). Static sprite is the regression test: if user
-	# sees vagrants now, video billboard is confirmed as the culprit and
-	# a future iter can fix the nested-SubViewport (probably by adding
-	# the inner SubViewport as a SIBLING of outlaws_root rather than a
-	# CHILD of outlaws_root, so it renders independently).
+	# Iter 116: re-enable video billboard, but this time via SHARED top-
+	# level SubViewports (see _make_video_billboard) — iter 114 confirmed
+	# that nested-SubViewport video billboards don't render on Android.
 	var outlaw := Node3D.new()
 	var lane_x: float = _rng.randf_range(-OUTLAW_SPAWN_X_MAX, OUTLAW_SPAWN_X_MAX)
 	outlaw.position = Vector3(lane_x, 1.0, OBSTACLE_SPAWN_Z + 4.0)
 	outlaw.set_meta("hp", OUTLAW_HP)
 	outlaw.set_meta("fire_timer", _rng.randf() * OUTLAW_FIRE_INTERVAL)
 	outlaws_root.add_child(outlaw)
-	var sprite := Sprite3D.new()
-	sprite.texture = VAGRANT_TEXTURE
-	# Match the iter 110 +25% size: vagrant ~2.5 world units tall.
-	# pixel_size = 2.5 / texture_height. vagrant.png is roughly 400px tall.
-	sprite.pixel_size = 2.5 / 400.0
-	sprite.billboard = 1   # BILLBOARD_ENABLED
-	sprite.alpha_cut = 1   # ALPHA_CUT_DISCARD — PNG has transparent background
-	outlaw.add_child(sprite)
+	var billboard: Node3D = _make_video_billboard(VAGRANT_IDLE_STREAM, 2.5)
+	outlaw.add_child(billboard)
 	_outlaw_spawn_count += 1
 	if _outlaw_spawn_count == 1 or _outlaw_spawn_count % 5 == 0:
 		DebugLog.add("outlaw spawn #%d at x=%.1f z=%.1f (outlaws_root.size=%d)" % [
 			_outlaw_spawn_count, lane_x, outlaw.position.z, outlaws_root.get_child_count(),
 		])
 
-# Iter 109: helper for video-driven 3D billboards. Pattern:
-#   wrapper Node3D
-#     ├── SubViewport (offscreen render, transparent_bg, 3D disabled)
-#     │     └── VideoStreamPlayer (the .ogv with chromakey shader)
-#     └── Sprite3D (billboard, texture = SubViewport.get_texture())
+# Iter 116: SHARED-SubViewport video billboards. Each unique VideoStream
+# gets ONE SubViewport attached at Level3D scene root (NOT inside the
+# main Terrain3D/SubViewport). All enemies sharing that stream reference
+# the same ViewportTexture, so they animate in lockstep — acceptable
+# visual quirk; the alternative is per-enemy SubViewports, which don't
+# render on Android Vulkan when nested inside the main SubViewport.
 #
-# world_height: how tall the sprite should be in world units. The
-#   pixel_size derives from the SubViewport's pixel height.
-# viewport_px: SubViewport resolution. Higher = sharper but more GPU.
-#   150×270 ≈ 40K pixels per billboard, fine for a few enemies; bump
-#   down if many simultaneous outlaws cause perf issues on mobile.
+# iter 114's static-PNG sideload confirmed the nesting was the bug:
+# vagrants WERE being spawned (logs showed outlaws_root.size=1) but
+# the inner SubViewport never got its render pass propagated.
 const _CHROMAKEY_SHADER := preload("res://shaders/chromakey.gdshader")
+const _BILLBOARD_VIEWPORT_PX := Vector2i(150, 270)
+var _shared_video_viewports: Dictionary = {}  # VideoStream → SubViewport
 
-func _make_video_billboard(
-	stream: VideoStream,
-	world_height: float,
-	viewport_px: Vector2i = Vector2i(150, 270),
-) -> Node3D:
-	var wrap := Node3D.new()
+func _get_or_create_shared_video_viewport(stream: VideoStream) -> SubViewport:
+	if _shared_video_viewports.has(stream):
+		return _shared_video_viewports[stream]
 	var sv := SubViewport.new()
-	sv.size = viewport_px
+	sv.size = _BILLBOARD_VIEWPORT_PX
 	sv.transparent_bg = true
-	sv.disable_3d = true        # this SubViewport renders 2D only
-	sv.render_target_update_mode = 4  # SubViewport.UPDATE_ALWAYS — needed for video
-	wrap.add_child(sv)
+	sv.disable_3d = true
+	sv.render_target_update_mode = 4  # SubViewport.UPDATE_ALWAYS
+	# Add at Level3D scene root — NOT inside the main SubViewport.
+	# This is the whole point of the iter 116 refactor.
+	add_child(sv)
 	var vp := VideoStreamPlayer.new()
 	vp.stream = stream
 	vp.autoplay = true
 	vp.loop = true
 	vp.expand = true
-	vp.size = Vector2(viewport_px)
+	vp.size = Vector2(_BILLBOARD_VIEWPORT_PX)
 	var mat := ShaderMaterial.new()
 	mat.shader = _CHROMAKEY_SHADER
 	mat.set_shader_parameter("chroma_color", Color(0, 1, 0, 1))
@@ -1356,11 +1342,25 @@ func _make_video_billboard(
 	mat.set_shader_parameter("blend_amount", 0.10)
 	vp.material = mat
 	sv.add_child(vp)
+	_shared_video_viewports[stream] = sv
+	var stream_path: String = stream.resource_path if stream != null else "<null>"
+	DebugLog.add("shared video viewport created for %s (count=%d)" % [
+		stream_path.get_file(), _shared_video_viewports.size(),
+	])
+	return sv
+
+func _make_video_billboard(
+	stream: VideoStream,
+	world_height: float,
+	viewport_px: Vector2i = _BILLBOARD_VIEWPORT_PX,
+) -> Node3D:
+	var sv: SubViewport = _get_or_create_shared_video_viewport(stream)
+	var wrap := Node3D.new()
 	var sprite := Sprite3D.new()
 	sprite.texture = sv.get_texture()
 	sprite.pixel_size = world_height / float(viewport_px.y)
 	sprite.billboard = 1   # BILLBOARD_ENABLED
-	sprite.alpha_cut = 0   # ALPHA_CUT_DISABLED — chromakey's smooth edge needs alpha blending, not threshold cut
+	sprite.alpha_cut = 0   # ALPHA_CUT_DISABLED — chromakey's smooth edge needs alpha blending
 	wrap.add_child(sprite)
 	return wrap
 

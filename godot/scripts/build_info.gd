@@ -11,7 +11,7 @@ const SHORT_DATE: String = "0000-00-00"
 # this with `git log --oneline | wc -l`, but if that ever fails, we
 # fall back to this manually-maintained value rather than showing "?".
 # Bumped per-iter as part of commit hygiene.
-const ITER: String = "115"
+const ITER: String = "116"
 
 # Iter 100: CI smoke-test flag. The android-debug.yml stamp step keeps
 # this false (production sideloading); the new smoke-test.yml workflow
