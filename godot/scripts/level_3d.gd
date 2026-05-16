@@ -59,7 +59,7 @@ const COWBOY_TEXTURE_LVL3D: Texture2D = preload("res://assets/sprites/posse_idle
 
 # 3D world bounds. The dirt PlaneMesh in terrain_3d_3d_prototype is
 # 40 wide × 60 deep, centered at origin. Cowboy lane = x in [-18, 18].
-const COWBOY_X_BOUND: float = 18.0
+const COWBOY_X_BOUND: float = 6.0  # iter 108: 18.0 → 6.0 — was off the road
 # Iter 106: cowboy z moved 1.5 → -3.0 because the previous value put
 # the cowboy below the camera frustum. Camera is at (0, 3, 2) tilted
 # -30° around X. Its look-ray (forward direction (0, -0.5, -0.866))
@@ -125,7 +125,7 @@ var _rng := RandomNumberGenerator.new()
 # walks through gates.
 const GATE_SPAWN_INTERVAL: float = 4.5
 const GATE_WIDTH: float = 4.0       # iter 107: 8.0 → 4.0 (each door is 2.0 wide)
-const GATE_HEIGHT: float = 2.5      # iter 107: 4.0 → 2.5 (was towering over cowboy)
+const GATE_HEIGHT: float = 1.35     # iter 108: 2.5 → 1.35 = 1.5× cowboy height (~0.89)
 const GATE_TRIGGER_Z: float = 0.5   # gates fire when their z passes this
 var _gate_spawn_timer: float = 0.0
 var _posse_count_3d: int = 5
@@ -179,7 +179,7 @@ var _failed: bool = false
 # Target cowboy x in world units, lerped each frame. Set by drag input
 # which converts screen-x to world-x via the camera-plane projection.
 var _target_x: float = 0.0
-const COWBOY_LERP_SPEED: float = 4.0  # iter 107: 8.0 → 4.0 (was twitchy)
+const COWBOY_LERP_SPEED: float = 2.5  # iter 108: 4.0 → 2.5 (still felt twitchy)
 
 # Iter 72: 3D posse followers — Sprite3D billboards spawned behind the
 # leader cowboy in a trapezoid formation. Each follower tracks the
@@ -525,17 +525,26 @@ func _collect_bonus(bonus: Node3D) -> void:
 
 # Iter 77: spawn the Slippery Pete boss. Big yellow CSGBox3D with an
 # HP meta field + state machine. Stops at PETE_STAY_Z for the duel.
+const PETE_TEXTURE := preload("res://assets/sprites/slippery_pete.png")
+
 func _spawn_pete() -> void:
-	var pete := CSGBox3D.new()
-	pete.size = Vector3(2.4, 4.2, 1.2)
-	var mat := StandardMaterial3D.new()
-	mat.albedo_color = Color(0.92, 0.78, 0.22, 1)  # mustard yellow
-	mat.emission_enabled = true
-	mat.emission = Color(0.40, 0.30, 0.05, 1)
-	pete.material = mat
+	# Iter 108: was a yellow CSGBox3D placeholder. Now a Sprite3D
+	# billboard using slippery_pete.png. Pixel_size 0.0095 puts him
+	# at roughly 4 world units tall (matches old box height of 4.2).
+	# Position y=2.1 is the sprite CENTER (Sprite3D centered by
+	# default); bottom touches y=0 = ground. Container Node3D wraps
+	# the sprite so HP bar children billboard relative to a
+	# stable axis instead of the rotating sprite itself.
+	var pete := Node3D.new()
 	pete.position = Vector3(0.0, 2.1, OBSTACLE_SPAWN_Z + 4.0)
 	pete.set_meta("hp", PETE_HP)
 	boss_root.add_child(pete)
+	var sprite := Sprite3D.new()
+	sprite.texture = PETE_TEXTURE
+	sprite.pixel_size = 0.0095
+	sprite.billboard = 1  # BILLBOARD_ENABLED
+	sprite.alpha_cut = 1  # ALPHA_CUT_DISCARD
+	pete.add_child(sprite)
 	# Big "BOSS" label floating above him
 	var label := Label3D.new()
 	label.text = "SLIPPERY PETE"
@@ -767,18 +776,26 @@ func _gold_rush_salute_3d() -> void:
 	await get_tree().create_timer(0.5).timeout
 
 # Iter 76: spawn a red outlaw at a random lane position at far z.
+const VAGRANT_TEXTURE := preload("res://assets/sprites/vagrant.png")
+
 func _spawn_outlaw() -> void:
-	var outlaw := CSGBox3D.new()
-	outlaw.size = Vector3(0.9, 2.0, 0.6)
-	var mat := StandardMaterial3D.new()
-	mat.albedo_color = Color(0.78, 0.18, 0.18, 1)
-	outlaw.material = mat
+	# Iter 108: was a red CSGBox3D placeholder. Now a Sprite3D
+	# billboard using vagrant.png. Pixel_size 0.005 puts vagrant at
+	# roughly 2 world units tall (matches old box height). Wrapped in
+	# Node3D so meta + position handling keeps working unchanged.
+	var outlaw := Node3D.new()
 	var lane_x: float = _rng.randf_range(-COWBOY_X_BOUND * 0.75,
 		COWBOY_X_BOUND * 0.75)
 	outlaw.position = Vector3(lane_x, 1.0, OBSTACLE_SPAWN_Z + 4.0)
 	outlaw.set_meta("hp", OUTLAW_HP)
 	outlaw.set_meta("fire_timer", _rng.randf() * OUTLAW_FIRE_INTERVAL)
 	outlaws_root.add_child(outlaw)
+	var sprite := Sprite3D.new()
+	sprite.texture = VAGRANT_TEXTURE
+	sprite.pixel_size = 0.005
+	sprite.billboard = 1  # BILLBOARD_ENABLED
+	sprite.alpha_cut = 1  # ALPHA_CUT_DISCARD
+	outlaw.add_child(sprite)
 
 # Iter 76: outlaw fires a red bullet aimed at the cowboy.
 func _outlaw_fire(outlaw: Node3D) -> void:

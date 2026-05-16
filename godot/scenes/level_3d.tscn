@@ -107,11 +107,15 @@ text = "← DEBUG"
 
 ; Iter 77: WIN overlay — pops when Pete is defeated. Mirrors 2D
 ; level.tscn's WinOverlay structure.
+; Iter 108: WAS broken — anchor_right=1.0 AND offset_right=1080.0
+; STACK additively. The overlay was 2160px wide on a 1080px screen,
+; so the centered Label rendered with its center at x=1080 (off-screen
+; right by half its width) and only the leftmost ~400px ('BO' of
+; 'BOUNTY!') was visible. Same bug fixed on FailOverlay below.
+; Correct pattern: anchor=1.0 with offset=0 OR no anchor with offset=1080.
 [node name="WinOverlay" type="ColorRect" parent="UI"]
 anchor_right = 1.0
 anchor_bottom = 1.0
-offset_right = 1080.0
-offset_bottom = 1920.0
 color = Color(0.226, 0.157, 0.078, 0.88)
 visible = false
 mouse_filter = 2
@@ -125,7 +129,7 @@ offset_left = -400.0
 offset_top = -160.0
 offset_right = 400.0
 offset_bottom = 100.0
-theme_override_font_sizes/font_size = 110
+theme_override_font_sizes/font_size = 80
 theme_override_colors/font_color = Color(0.95, 0.78, 0.35, 1)
 text = "BOUNTY!"
 horizontal_alignment = 1
@@ -146,11 +150,10 @@ text = "RETRY"
 
 ; Iter 78: FAIL overlay — pops when _posse_count_3d hits 0. Same pattern
 ; as WinOverlay but red palette + 'DEAD' headline.
+; Iter 108: same anchor+offset double-add bug fix as WinOverlay above.
 [node name="FailOverlay" type="ColorRect" parent="UI"]
 anchor_right = 1.0
 anchor_bottom = 1.0
-offset_right = 1080.0
-offset_bottom = 1920.0
 color = Color(0.28, 0.09, 0.06, 0.93)
 visible = false
 mouse_filter = 2
@@ -164,7 +167,7 @@ offset_left = -400.0
 offset_top = -160.0
 offset_right = 400.0
 offset_bottom = 100.0
-theme_override_font_sizes/font_size = 110
+theme_override_font_sizes/font_size = 80
 theme_override_colors/font_color = Color(0.98, 0.32, 0.22, 1)
 text = "DEAD"
 horizontal_alignment = 1
