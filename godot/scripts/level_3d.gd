@@ -1750,10 +1750,240 @@ func _weapon_fire_lasso(data: Dictionary) -> void:
 		s.queue_free()
 	_burst_at(pivot + Vector3(0, 0, -8.0), 16, data.color, 1.4, 0.6)
 
+# ---- iter 129: Bonus hero previews -----------------------------------------
+# Each hero gets a stand-in sprite (color-coded CSG silhouette) spawned
+# alongside the cowboy, a floating Label3D name banner above them, and a
+# short signature-ability demo (double-volley / spin-attack / heal-pulse
+# / etc). Until proper Veo or Tripo character art is generated, these
+# placeholder visuals communicate role + tone.
+
+const HERO_3D_DATA: Dictionary = {
+	"marshmallow_sheriff": {
+		"name": "MARSHMALLOW SHERIFF",
+		"color": Color(0.98, 0.95, 0.90, 1),
+		"trim":  Color(0.92, 0.20, 0.20, 1),  # red badge accent
+		"ability": "double_volley",
+		"value": 800,
+	},
+	"laughing_horse": {
+		"name": "LAUGHING HORSE",
+		"color": Color(0.55, 0.32, 0.18, 1),
+		"trim":  Color(0.95, 0.85, 0.55, 1),
+		"ability": "gallop_streak",
+		"value": 700,
+	},
+	"scarecrow": {
+		"name": "SCARECROW",
+		"color": Color(0.85, 0.72, 0.32, 1),
+		"trim":  Color(0.42, 0.22, 0.10, 1),
+		"ability": "spin_attack",
+		"value": 650,
+	},
+	"chocolate_outlaw": {
+		"name": "CHOCOLATE OUTLAW",
+		"color": Color(0.40, 0.22, 0.12, 1),
+		"trim":  Color(0.85, 0.55, 0.30, 1),
+		"ability": "dual_pistols",
+		"value": 750,
+	},
+	"sugar_doc": {
+		"name": "SUGAR DOC",
+		"color": Color(1.00, 0.90, 0.95, 1),
+		"trim":  Color(0.95, 0.30, 0.45, 1),
+		"ability": "heal_pulse",
+		"value": 850,
+	},
+	"taffy_kid": {
+		"name": "TAFFY KID",
+		"color": Color(1.00, 0.62, 0.30, 1),
+		"trim":  Color(1.00, 0.85, 0.45, 1),
+		"ability": "sticky_spread",
+		"value": 600,
+	},
+}
+
 func _preview_hero_3d(slug: String) -> void:
-	_ceremony_announce(slug.to_upper())
-	await get_tree().create_timer(2.0).timeout
-	_show_preview_win("HERO: %s" % slug)
+	var data: Dictionary = HERO_3D_DATA.get(slug, HERO_3D_DATA["marshmallow_sheriff"])
+	# Announce
+	var ui_canvas: Node = get_node_or_null("UI")
+	if ui_canvas != null:
+		FlourishBanner.spawn(ui_canvas, data.name)
+	await get_tree().create_timer(0.5).timeout
+	# Spawn the hero stand-in next to the cowboy.
+	# Body: small color-coded CSG box. Hat: darker box on top. Trim
+	# accent stripe: thin trim-colored box across the body.
+	var hero := Node3D.new()
+	hero.position = cowboy_3d.position + Vector3(1.2, 0.0, 0.0)
+	subviewport.add_child(hero)
+	var body := CSGBox3D.new()
+	body.size = Vector3(0.5, 1.2, 0.4)
+	var body_mat := StandardMaterial3D.new()
+	body_mat.albedo_color = data.color
+	body_mat.emission_enabled = true
+	body_mat.emission = data.color * 0.4
+	body.material = body_mat
+	body.position = Vector3(0, 0.6, 0)
+	hero.add_child(body)
+	var hat := CSGBox3D.new()
+	hat.size = Vector3(0.6, 0.15, 0.5)
+	var hat_mat := StandardMaterial3D.new()
+	hat_mat.albedo_color = data.trim
+	hat.material = hat_mat
+	hat.position = Vector3(0, 1.32, 0)
+	hero.add_child(hat)
+	var trim := CSGBox3D.new()
+	trim.size = Vector3(0.5, 0.12, 0.42)
+	trim.material = hat_mat  # share material
+	trim.position = Vector3(0, 0.85, 0)
+	hero.add_child(trim)
+	# Floating name plate
+	var name_label := Label3D.new()
+	name_label.text = data.name
+	name_label.font_size = 56
+	name_label.outline_size = 8
+	name_label.modulate = Color(1.0, 0.92, 0.55, 1)
+	name_label.billboard = 1  # BILLBOARD_ENABLED
+	name_label.position = Vector3(0, 2.0, 0)
+	hero.add_child(name_label)
+	# Entry pop — scale from 0 to 1 with TRANS_BACK
+	hero.scale = Vector3.ZERO
+	var entry_tw := create_tween()
+	entry_tw.tween_property(hero, "scale", Vector3.ONE, 0.35) \
+		.set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
+	await entry_tw.finished
+	# Ability demo
+	match data.ability:
+		"double_volley":  await _hero_double_volley(hero, data)
+		"gallop_streak":  await _hero_gallop_streak(hero, data)
+		"spin_attack":    await _hero_spin_attack(hero, data)
+		"dual_pistols":   await _hero_dual_pistols(hero, data)
+		"heal_pulse":     await _hero_heal_pulse(hero, data)
+		"sticky_spread":  await _hero_sticky_spread(hero, data)
+	# Exit + unlock flourish
+	await get_tree().create_timer(0.4).timeout
+	_spawn_popup_3d(hero.position + Vector3(0, 3.0, 0),
+		"UNLOCKED  +%d" % data.value, data.trim, 80)
+	_burst_at(hero.position + Vector3(0, 1.0, 0), 18, data.color, 1.2, 0.7)
+	_add_bounty(data.value)
+	# Hero departs
+	var exit_tw := create_tween()
+	exit_tw.tween_property(hero, "scale", Vector3.ZERO, 0.25) \
+		.set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_IN)
+	await exit_tw.finished
+	hero.queue_free()
+	await get_tree().create_timer(0.4).timeout
+	_show_preview_win("HERO: %s" % data.name)
+
+# ---- Hero ability demos ----------------------------------------------------
+
+func _hero_double_volley(hero: Node3D, data: Dictionary) -> void:
+	# Two parallel bullets per shot, double the throughput.
+	for i in range(5):
+		for x_off in [-0.25, 0.25]:
+			_weapon_spawn_projectile(hero.position + Vector3(x_off, 1.0, 0),
+				Vector3(0, 0, -22.0), data.trim, 0.18, 0.7)
+		await get_tree().create_timer(0.12).timeout
+
+func _hero_gallop_streak(hero: Node3D, data: Dictionary) -> void:
+	# Forward sweep — hero (mounted) dashes forward, leaves dust trail.
+	var start: Vector3 = hero.position
+	var end: Vector3 = start + Vector3(0, 0, -3.5)
+	var dash_tw := create_tween()
+	dash_tw.tween_property(hero, "position", end, 0.30) \
+		.set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
+	for i in range(8):
+		_burst_at(hero.position + Vector3(_rng.randf_range(-0.3, 0.3),
+			0.2, _rng.randf_range(-0.3, 0.3)),
+			4, Color(0.78, 0.65, 0.48, 1), 0.5, 0.4)
+		await get_tree().create_timer(0.05).timeout
+	await dash_tw.finished
+	# Return
+	var back_tw := create_tween()
+	back_tw.tween_property(hero, "position", start, 0.35) \
+		.set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_IN)
+	await back_tw.finished
+
+func _hero_spin_attack(hero: Node3D, data: Dictionary) -> void:
+	# Ring of 12 small bullets fanning out 360°
+	var pivot: Vector3 = hero.position + Vector3(0, 1.0, 0)
+	for i in range(12):
+		var a: float = float(i) / 12.0 * TAU
+		var velocity: Vector3 = Vector3(cos(a) * 14.0, 0, sin(a) * 14.0)
+		_weapon_spawn_projectile(pivot, velocity, data.trim, 0.18, 0.8)
+	# Hero spin animation
+	var spin_tw := create_tween()
+	spin_tw.tween_property(hero, "rotation:y", hero.rotation.y + TAU, 0.6)
+	await spin_tw.finished
+
+func _hero_dual_pistols(hero: Node3D, data: Dictionary) -> void:
+	# Alternating L/R rapid pistol shots
+	for i in range(8):
+		var x_off: float = -0.30 if i % 2 == 0 else 0.30
+		_weapon_spawn_projectile(hero.position + Vector3(x_off, 0.9, 0),
+			Vector3(0, 0, -26.0), data.trim, 0.16, 0.7)
+		await get_tree().create_timer(0.08).timeout
+
+func _hero_heal_pulse(hero: Node3D, data: Dictionary) -> void:
+	# 3 outward shockwave rings of green-pink particles around the cowboy
+	for pulse in range(3):
+		var pulse_center: Vector3 = cowboy_3d.position + Vector3(0, 1.0, 0)
+		for i in range(20):
+			var a: float = float(i) / 20.0 * TAU
+			var p := CSGSphere3D.new()
+			p.radius = 0.10
+			var pm := StandardMaterial3D.new()
+			pm.albedo_color = data.trim
+			pm.emission_enabled = true
+			pm.emission = data.trim * 1.8
+			p.material = pm
+			p.position = pulse_center
+			popups_root.add_child(p)
+			var target: Vector3 = pulse_center + Vector3(cos(a) * 2.5, 0, sin(a) * 2.5)
+			var pt := create_tween().set_parallel(true)
+			pt.tween_property(p, "position", target, 0.55) \
+				.set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
+			pt.tween_property(p, "scale", Vector3.ZERO, 0.55)
+			var ft: Tween = create_tween()
+			ft.tween_interval(0.55)
+			ft.tween_callback(p.queue_free)
+		await get_tree().create_timer(0.30).timeout
+	# Heart popup
+	_spawn_popup_3d(cowboy_3d.position + Vector3(0, 3.0, 0),
+		"+1 HEART", data.trim, 64)
+
+func _hero_sticky_spread(hero: Node3D, data: Dictionary) -> void:
+	# Spread of sticky balls that arc + settle on the ground (no despawn)
+	for i in range(7):
+		var angle: float = -PI * 0.3 + float(i) / 6.0 * (PI * 0.6)
+		var b := CSGSphere3D.new()
+		b.radius = 0.22
+		b.radial_segments = 8
+		b.rings = 6
+		var bm := StandardMaterial3D.new()
+		bm.albedo_color = data.color
+		bm.emission_enabled = true
+		bm.emission = data.trim * 0.8
+		b.material = bm
+		b.position = hero.position + Vector3(0, 1.0, 0)
+		popups_root.add_child(b)
+		var dist: float = 4.0
+		var landing: Vector3 = hero.position + Vector3(sin(angle) * dist,
+			0.22, -cos(angle) * dist)
+		var apex: Vector3 = Vector3(
+			(b.position.x + landing.x) * 0.5,
+			3.0,
+			(b.position.z + landing.z) * 0.5)
+		var arc_tw := create_tween()
+		arc_tw.tween_property(b, "position", apex, 0.25) \
+			.set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
+		arc_tw.tween_property(b, "position", landing, 0.25) \
+			.set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_IN)
+		# Sticky linger — fade out over 1.2s where it landed
+		arc_tw.tween_property(b, "scale", Vector3(1.5, 0.3, 1.5), 0.2)
+		arc_tw.tween_property(b, "scale", Vector3.ZERO, 1.0) \
+			.set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_IN)
+		arc_tw.tween_callback(b.queue_free)
+	await get_tree().create_timer(0.7).timeout
 
 # Iter 75: spawn a gate with two random door effects. Each door is a
 # semi-transparent ColorRect-style 3D quad (CSGBox3D, very thin in z)
