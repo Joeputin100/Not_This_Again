@@ -1481,10 +1481,274 @@ func _play_sugar_rush_3d() -> void:
 	await get_tree().create_timer(0.6).timeout
 	_ceremony_finale("JELLY_FRENZY", total)
 
+# ---- iter 128: Bonus weapon previews ---------------------------------------
+# Each weapon's preview spawns a banner + a short demo-fire pattern
+# spawning visually-distinct bullet shapes/colors from cowboy. The cowboy
+# sprite stays as the default jelly six-shooter wielder; weapon flair is
+# all about the projectiles.
+
+const WEAPON_3D_DATA: Dictionary = {
+	"jelly_six_shooter": {
+		"name": "JELLY SIX-SHOOTER", "color": Color(1.0, 0.40, 0.55, 1),
+		"size": 0.18, "shots": 6, "pattern": "rapid", "value": 100,
+	},
+	"marshmallow_cannon": {
+		"name": "MARSHMALLOW CANNON", "color": Color(0.98, 0.92, 0.85, 1),
+		"size": 0.55, "shots": 3, "pattern": "heavy", "value": 600,
+	},
+	"liquorice_whip": {
+		"name": "LIQUORICE WHIP", "color": Color(0.12, 0.06, 0.10, 1),
+		"size": 0.22, "shots": 1, "pattern": "whip", "value": 400,
+	},
+	"frostbite_rifle": {
+		"name": "FROSTBITE RIFLE", "color": Color(0.55, 0.85, 1.00, 1),
+		"size": 0.24, "shots": 4, "pattern": "precision", "value": 500,
+	},
+	"sugar_mortar": {
+		"name": "SUGAR MORTAR", "color": Color(1.00, 0.85, 0.30, 1),
+		"size": 0.42, "shots": 3, "pattern": "arc", "value": 700,
+	},
+	"gumdrop_grenade": {
+		"name": "GUMDROP GRENADE", "color": Color(0.55, 1.00, 0.55, 1),
+		"size": 0.35, "shots": 3, "pattern": "lob", "value": 600,
+	},
+	"peppermint_shotgun": {
+		"name": "PEPPERMINT SHOTGUN", "color": Color(1.0, 0.95, 0.95, 1),
+		"size": 0.20, "shots": 7, "pattern": "spread", "value": 550,
+	},
+	"caramel_lasso": {
+		"name": "CARAMEL LASSO", "color": Color(0.85, 0.55, 0.28, 1),
+		"size": 0.16, "shots": 18, "pattern": "lasso", "value": 450,
+	},
+}
+
 func _preview_weapon_3d(slug: String) -> void:
-	_ceremony_announce(slug.to_upper())
-	await get_tree().create_timer(2.0).timeout
-	_show_preview_win("WEAPON: %s" % slug)
+	var data: Dictionary = WEAPON_3D_DATA.get(slug, WEAPON_3D_DATA["jelly_six_shooter"])
+	# Announce
+	var ui_canvas: Node = get_node_or_null("UI")
+	if ui_canvas != null:
+		# Use the weapon name as the banner text (PRESETS will fall back
+		# to using it as literal display text since it isn't a preset).
+		FlourishBanner.spawn(ui_canvas, data.name)
+	await get_tree().create_timer(0.6).timeout
+	# Dispatch by pattern
+	match data.pattern:
+		"rapid":     await _weapon_fire_rapid(data)
+		"heavy":     await _weapon_fire_heavy(data)
+		"whip":      await _weapon_fire_whip(data)
+		"precision": await _weapon_fire_precision(data)
+		"arc":       await _weapon_fire_arc(data)
+		"lob":       await _weapon_fire_lob(data)
+		"spread":    await _weapon_fire_spread(data)
+		"lasso":     await _weapon_fire_lasso(data)
+		_:           await _weapon_fire_rapid(data)
+	# Equipped flourish
+	_spawn_popup_3d(cowboy_3d.position + Vector3(0, 4.5, 0),
+		"EQUIPPED  +%d" % data.value, data.color, 80)
+	_burst_at(cowboy_3d.position + Vector3(0, 2.0, 0), 14, data.color, 1.0, 0.7)
+	_add_bounty(data.value)
+	await get_tree().create_timer(0.8).timeout
+	_show_preview_win("WEAPON: %s" % data.name)
+
+# Shared weapon-bullet spawn — Sprite3D-style CSG sphere with emission
+# at the given world position + outgoing velocity. Auto-despawns at z<-10.
+func _weapon_spawn_projectile(start: Vector3, velocity: Vector3,
+		color: Color, size: float, lifetime: float = 0.9) -> void:
+	var b := CSGSphere3D.new()
+	b.radius = size
+	b.radial_segments = 10
+	b.rings = 8
+	var bm := StandardMaterial3D.new()
+	bm.albedo_color = color
+	bm.emission_enabled = true
+	bm.emission = color * 1.4
+	b.material = bm
+	b.position = start
+	popups_root.add_child(b)
+	var dest: Vector3 = start + velocity * lifetime
+	var tw := create_tween().set_parallel(true)
+	tw.tween_property(b, "position", dest, lifetime) \
+		.set_trans(Tween.TRANS_LINEAR)
+	tw.tween_property(b, "scale", Vector3(0.6, 0.6, 0.6), lifetime) \
+		.set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
+	var free_tw: Tween = create_tween()
+	free_tw.tween_interval(lifetime)
+	free_tw.tween_callback(b.queue_free)
+
+func _weapon_fire_rapid(data: Dictionary) -> void:
+	# 6 fast straight shots forward
+	for i in range(data.shots):
+		_weapon_spawn_projectile(cowboy_3d.position + Vector3(0, 1.0, -0.3),
+			Vector3(0, 0, -28.0), data.color, data.size, 0.7)
+		await get_tree().create_timer(0.08).timeout
+
+func _weapon_fire_heavy(data: Dictionary) -> void:
+	# 3 BIG slow projectiles with deep punch
+	for i in range(data.shots):
+		var b := CSGSphere3D.new()
+		b.radius = data.size
+		b.radial_segments = 12
+		b.rings = 10
+		var bm := StandardMaterial3D.new()
+		bm.albedo_color = data.color
+		bm.emission_enabled = true
+		bm.emission = data.color * 1.0
+		b.material = bm
+		b.position = cowboy_3d.position + Vector3(0, 1.0, -0.5)
+		popups_root.add_child(b)
+		var dest: Vector3 = b.position + Vector3(0, 0, -10.0)
+		var tw := create_tween()
+		tw.tween_property(b, "position", dest, 0.55) \
+			.set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
+		tw.tween_callback(_burst_at.bind(dest, 20, data.color, 1.4, 0.7))
+		tw.tween_callback(b.queue_free)
+		await get_tree().create_timer(0.4).timeout
+
+func _weapon_fire_whip(data: Dictionary) -> void:
+	# Single arc — a chain of small spheres rotates outward in a half-circle
+	var chain_count: int = 18
+	var radius: float = 3.0
+	var pivot: Vector3 = cowboy_3d.position + Vector3(0, 1.0, -0.3)
+	var spheres: Array[CSGSphere3D] = []
+	for i in range(chain_count):
+		var s := CSGSphere3D.new()
+		s.radius = data.size * (1.0 - float(i) / float(chain_count) * 0.5)
+		var sm := StandardMaterial3D.new()
+		sm.albedo_color = data.color
+		sm.emission_enabled = true
+		sm.emission = data.color * 1.2
+		s.material = sm
+		s.position = pivot
+		popups_root.add_child(s)
+		spheres.append(s)
+	# Sweep the chain
+	var sweep_duration: float = 0.55
+	var sweep_tw := create_tween().set_parallel(true)
+	for i in range(chain_count):
+		var sphere: CSGSphere3D = spheres[i]
+		var t_segment: float = float(i) / float(chain_count - 1)
+		var start_angle: float = -PI * 0.5
+		var end_angle: float = PI * 0.5
+		var ax := start_angle + (end_angle - start_angle) * t_segment
+		var dist: float = radius * (0.3 + t_segment * 0.7)
+		var target := pivot + Vector3(cos(ax) * dist, 0, sin(ax) * dist - dist)
+		sweep_tw.tween_property(sphere, "position", target, sweep_duration) \
+			.set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
+	await sweep_tw.finished
+	for s in spheres:
+		s.queue_free()
+	_burst_at(pivot + Vector3(0, 0, -3.0), 12, data.color, 1.2, 0.5)
+
+func _weapon_fire_precision(data: Dictionary) -> void:
+	# 4 well-aimed shots, longer cooldown, frost trail
+	for i in range(data.shots):
+		_weapon_spawn_projectile(cowboy_3d.position + Vector3(0, 1.2, -0.3),
+			Vector3(0, 0, -24.0), data.color, data.size, 1.0)
+		# Frost trail — extra particles
+		for j in range(3):
+			_weapon_spawn_projectile(cowboy_3d.position + Vector3(
+					_rng.randf_range(-0.3, 0.3), 1.0 + _rng.randf_range(-0.2, 0.2),
+					-0.3 - float(j) * 0.4),
+				Vector3(0, 0, -10.0), data.color * 0.7, data.size * 0.5, 0.6)
+		await get_tree().create_timer(0.3).timeout
+
+func _weapon_fire_arc(data: Dictionary) -> void:
+	# Mortar — 3 high-arc shots that land + burst at z=-6 / -4 / -2
+	for i in range(data.shots):
+		var land_z: float = -6.0 + float(i) * 2.0
+		var b := CSGSphere3D.new()
+		b.radius = data.size
+		var bm := StandardMaterial3D.new()
+		bm.albedo_color = data.color
+		bm.emission_enabled = true
+		bm.emission = data.color * 1.0
+		b.material = bm
+		b.position = cowboy_3d.position + Vector3(0, 1.5, -0.3)
+		popups_root.add_child(b)
+		var apex: Vector3 = Vector3(0, 5.0, (b.position.z + land_z) * 0.5)
+		var landing: Vector3 = Vector3(0, 0.4, land_z)
+		var up_tw := create_tween().set_parallel(true)
+		up_tw.tween_property(b, "position", apex, 0.35) \
+			.set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
+		await up_tw.finished
+		var down_tw := create_tween()
+		down_tw.tween_property(b, "position", landing, 0.30) \
+			.set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_IN)
+		down_tw.tween_callback(_burst_at.bind(landing, 16, data.color, 1.5, 0.6))
+		down_tw.tween_callback(b.queue_free)
+		await get_tree().create_timer(0.18).timeout
+
+func _weapon_fire_lob(data: Dictionary) -> void:
+	# 3 grenades lobbed forward, exploding in clusters
+	for i in range(data.shots):
+		var land_z: float = -4.0 - float(i) * 2.0
+		var lateral_x: float = (float(i) - 1.0) * 1.2
+		var b := CSGSphere3D.new()
+		b.radius = data.size
+		var bm := StandardMaterial3D.new()
+		bm.albedo_color = data.color
+		bm.emission_enabled = true
+		bm.emission = data.color * 1.0
+		b.material = bm
+		b.position = cowboy_3d.position + Vector3(0, 1.5, -0.3)
+		popups_root.add_child(b)
+		var apex: Vector3 = Vector3(lateral_x * 0.6, 4.5, (b.position.z + land_z) * 0.5)
+		var landing: Vector3 = Vector3(lateral_x, 0.4, land_z)
+		var lob_tw := create_tween()
+		lob_tw.tween_property(b, "position", apex, 0.30) \
+			.set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
+		lob_tw.tween_property(b, "position", landing, 0.30) \
+			.set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_IN)
+		lob_tw.tween_callback(_burst_at.bind(landing, 20, data.color, 1.6, 0.7))
+		lob_tw.tween_callback(b.queue_free)
+		await get_tree().create_timer(0.20).timeout
+
+func _weapon_fire_spread(data: Dictionary) -> void:
+	# Shotgun blast — 7 bullets fan out simultaneously
+	var spread_arc: float = 1.0  # radians (~60°)
+	var step: float = spread_arc / float(data.shots - 1)
+	for i in range(data.shots):
+		var angle: float = -spread_arc * 0.5 + float(i) * step
+		var velocity: Vector3 = Vector3(sin(angle) * 24.0, 0, -cos(angle) * 24.0)
+		_weapon_spawn_projectile(cowboy_3d.position + Vector3(0, 1.0, -0.3),
+			velocity, data.color, data.size, 0.7)
+
+func _weapon_fire_lasso(data: Dictionary) -> void:
+	# Caramel lasso — a ring of small spheres spinning around cowboy at
+	# expanding radius, then snapping forward as a unified spear.
+	var ring_count: int = data.shots
+	var spheres: Array[CSGSphere3D] = []
+	var pivot: Vector3 = cowboy_3d.position + Vector3(0, 1.2, -0.3)
+	for i in range(ring_count):
+		var s := CSGSphere3D.new()
+		s.radius = data.size
+		var sm := StandardMaterial3D.new()
+		sm.albedo_color = data.color
+		sm.emission_enabled = true
+		sm.emission = data.color * 1.3
+		s.material = sm
+		s.position = pivot
+		popups_root.add_child(s)
+		spheres.append(s)
+	# Spin out
+	var spin_dur: float = 0.5
+	var spin_tw := create_tween().set_parallel(true)
+	for i in range(ring_count):
+		var a: float = float(i) / float(ring_count) * TAU
+		var target := pivot + Vector3(cos(a) * 1.8, 0, sin(a) * 1.8)
+		spin_tw.tween_property(spheres[i], "position", target, spin_dur) \
+			.set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
+	await spin_tw.finished
+	# Snap forward
+	var snap_tw := create_tween().set_parallel(true)
+	for sphere in spheres:
+		var dest: Vector3 = sphere.position + Vector3(0, 0, -8.0)
+		snap_tw.tween_property(sphere, "position", dest, 0.40) \
+			.set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_IN)
+	await snap_tw.finished
+	for s in spheres:
+		s.queue_free()
+	_burst_at(pivot + Vector3(0, 0, -8.0), 16, data.color, 1.4, 0.6)
 
 func _preview_hero_3d(slug: String) -> void:
 	_ceremony_announce(slug.to_upper())

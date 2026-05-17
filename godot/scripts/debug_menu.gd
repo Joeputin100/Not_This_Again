@@ -31,6 +31,47 @@ const FLOURISH_KEYS: Array[String] = [
 	"YEEHAW!", "RAMPAGE!",
 ]
 
+# Iter 128: bonus weapon slugs + display names. Each routes through
+# DebugPreview.pending_weapon to level_3d's _preview_weapon_3d ceremony.
+const WEAPON_SLUGS: Array[String] = [
+	"jelly_six_shooter",
+	"marshmallow_cannon",
+	"liquorice_whip",
+	"frostbite_rifle",
+	"sugar_mortar",
+	"gumdrop_grenade",
+	"peppermint_shotgun",
+	"caramel_lasso",
+]
+const WEAPON_NAMES: Dictionary = {
+	"jelly_six_shooter":  "JELLY SIX-SHOOTER (default)",
+	"marshmallow_cannon": "MARSHMALLOW CANNON",
+	"liquorice_whip":     "LIQUORICE WHIP",
+	"frostbite_rifle":    "FROSTBITE RIFLE",
+	"sugar_mortar":       "SUGAR MORTAR",
+	"gumdrop_grenade":    "GUMDROP GRENADE",
+	"peppermint_shotgun": "PEPPERMINT SHOTGUN",
+	"caramel_lasso":      "CARAMEL LASSO",
+}
+
+# Iter 129: bonus hero slugs + display names.
+const HERO_SLUGS: Array[String] = [
+	"marshmallow_sheriff",
+	"laughing_horse",
+	"scarecrow",
+	"chocolate_outlaw",
+	"sugar_doc",
+	"taffy_kid",
+]
+const HERO_NAMES: Dictionary = {
+	"marshmallow_sheriff": "MARSHMALLOW SHERIFF (badge + double-action)",
+	"laughing_horse":      "LAUGHING HORSE (mount, faster swerve)",
+	"scarecrow":           "SCARECROW (sticks + straw + spin attack)",
+	"chocolate_outlaw":    "CHOCOLATE OUTLAW (dual jelly pistols)",
+	"sugar_doc":           "SUGAR DOC (heals 1 posse / 5s)",
+	"taffy_kid":           "TAFFY KID (sticky bullets slow enemies)",
+}
+
 @onready var ui_layer: CanvasLayer = $UI
 @onready var scroll: ScrollContainer = $UI/Scroll
 @onready var content: VBoxContainer = $UI/Scroll/Content
@@ -54,6 +95,23 @@ func _build_sections() -> void:
 	var sugar_btn := _make_button("JELLY BEAN FRENZY (mid-level activate)")
 	sugar_btn.pressed.connect(_on_preview_sugar_rush)
 	content.add_child(sugar_btn)
+
+	# Iter 128: bonus weapon previews. Each button sets
+	# DebugPreview.pending_weapon and routes to the 3D level which
+	# plays a short demo-fire ceremony for that weapon.
+	_add_section_header("BONUS WEAPONS")
+	for w in WEAPON_SLUGS:
+		var btn := _make_button(WEAPON_NAMES.get(w, w))
+		btn.pressed.connect(_on_preview_weapon.bind(w))
+		content.add_child(btn)
+
+	# Iter 129: bonus hero previews. Each button sets
+	# DebugPreview.pending_posse_unlock and routes to the 3D level.
+	_add_section_header("BONUS HEROES")
+	for h in HERO_SLUGS:
+		var btn := _make_button(HERO_NAMES.get(h, h))
+		btn.pressed.connect(_on_preview_hero.bind(h))
+		content.add_child(btn)
 
 	_add_section_header("TEST RANGE")
 	var range_btn := _make_button("OPEN CACTUS FIELD (weapon + posse test)")
@@ -110,6 +168,18 @@ func _on_preview_sugar_rush() -> void:
 	AudioBus.play_tap()
 	DebugPreview.pending_sugar_rush = true
 	DebugLog.add("debug: preview sugar rush (3D)")
+	get_tree().change_scene_to_file("res://scenes/level_3d.tscn")
+
+func _on_preview_weapon(slug: String) -> void:
+	AudioBus.play_tap()
+	DebugPreview.pending_weapon = slug
+	DebugLog.add("debug: preview weapon %s" % slug)
+	get_tree().change_scene_to_file("res://scenes/level_3d.tscn")
+
+func _on_preview_hero(slug: String) -> void:
+	AudioBus.play_tap()
+	DebugPreview.pending_posse_unlock = slug
+	DebugLog.add("debug: preview hero %s" % slug)
 	get_tree().change_scene_to_file("res://scenes/level_3d.tscn")
 
 func _on_open_test_range() -> void:
