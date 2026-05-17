@@ -1169,20 +1169,239 @@ func _rush_e_candy_cart_chain() -> void:
 # Stubs here keep the dispatch symbol-complete and announce the rush so
 # previewing them in iter 125 sideload at least shows the banner.
 
+# ---- Rush F: Liquorice Locomotive (Extreme, Mine) ---------------------------
+# A long black-and-licorice-red train barrels horizontally across the
+# scene. Engine in front with a chimney puffing CSGSphere smoke. As it
+# passes, cars drop bounty bags. Final detonation when train exits.
+
 func _rush_f_liquorice_locomotive() -> void:
 	_ceremony_announce("LOCOMOTIVE")
-	await get_tree().create_timer(2.0).timeout
-	_ceremony_finale("LOCOMOTIVE", 0)
+	await get_tree().create_timer(0.4).timeout
+	const TRAIN_LEN: int = 6
+	const TRAVEL_TIME: float = 3.0
+	const SMOKE_INTERVAL: float = 0.10
+	var train := Node3D.new()
+	popups_root.add_child(train)
+	train.position = Vector3(-13.0, 0.0, -2.0)
+	# Build cars
+	for i in range(TRAIN_LEN):
+		var car := CSGBox3D.new()
+		car.size = Vector3(1.5, 1.4, 1.4)
+		var m := StandardMaterial3D.new()
+		# Engine darker, cars alternate licorice-red and black
+		if i == 0:
+			m.albedo_color = Color(0.08, 0.05, 0.05, 1)
+		elif i % 2 == 0:
+			m.albedo_color = Color(0.55, 0.05, 0.08, 1)  # licorice red
+		else:
+			m.albedo_color = Color(0.10, 0.05, 0.08, 1)
+		m.emission_enabled = true
+		m.emission = m.albedo_color * 0.4
+		car.material = m
+		car.position = Vector3(-float(i) * 1.8, 0.7, 0.0)
+		train.add_child(car)
+	# Engine chimney
+	var chimney := CSGCylinder3D.new()
+	chimney.radius = 0.18
+	chimney.height = 0.9
+	var chim_mat := StandardMaterial3D.new()
+	chim_mat.albedo_color = Color(0.05, 0.04, 0.04, 1)
+	chimney.material = chim_mat
+	chimney.position = Vector3(0.4, 1.85, 0.0)
+	train.add_child(chimney)
+	# Engine front lamp
+	var lamp := CSGSphere3D.new()
+	lamp.radius = 0.18
+	var lamp_mat := StandardMaterial3D.new()
+	lamp_mat.albedo_color = Color(1.0, 0.95, 0.60, 1)
+	lamp_mat.emission_enabled = true
+	lamp_mat.emission = Color(1.0, 0.95, 0.60, 1) * 2.0
+	lamp.material = lamp_mat
+	lamp.position = Vector3(0.85, 0.9, 0.0)
+	train.add_child(lamp)
+	# Launch the train: tween x across the road
+	var travel_tw: Tween = create_tween()
+	travel_tw.tween_property(train, "position:x", 13.0, TRAVEL_TIME) \
+		.set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
+	# Smoke + bounty drops while traveling
+	var smoke_timer: float = 0.0
+	var bounty_timer: float = 0.0
+	var elapsed: float = 0.0
+	var total: int = 0
+	while elapsed < TRAVEL_TIME:
+		await get_tree().create_timer(SMOKE_INTERVAL).timeout
+		elapsed += SMOKE_INTERVAL
+		# Smoke puff from chimney
+		var smoke := CSGSphere3D.new()
+		smoke.radius = 0.32 + _rng.randf_range(-0.05, 0.10)
+		var sm := StandardMaterial3D.new()
+		sm.albedo_color = Color(0.65, 0.62, 0.60, 0.85)
+		sm.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+		smoke.material = sm
+		smoke.position = train.position + Vector3(0.4, 2.1, 0.0)
+		popups_root.add_child(smoke)
+		var smoke_tw := create_tween().set_parallel(true)
+		smoke_tw.tween_property(smoke, "position:y", smoke.position.y + 2.5, 1.2)
+		smoke_tw.tween_property(smoke, "scale", Vector3(2.5, 2.5, 2.5), 1.2)
+		smoke_tw.tween_property(smoke, "transparency", 1.0, 1.2)
+		var free_tw := create_tween()
+		free_tw.tween_interval(1.3)
+		free_tw.tween_callback(smoke.queue_free)
+		# Bounty drop every ~0.5s
+		bounty_timer += SMOKE_INTERVAL
+		if bounty_timer >= 0.5:
+			bounty_timer = 0.0
+			var drop_x: float = train.position.x - _rng.randf_range(2.0, 4.0)
+			_drop_bonus_at(Vector3(drop_x, 0.0, -3.0), 200,
+				Color(1.0, 0.85, 0.30, 1))
+			total += 200
+	await travel_tw.finished
+	# Massive exit detonation
+	_burst_at(train.position + Vector3(0, 1.2, 0), 36,
+		Color(0.95, 0.30, 0.20, 1), 2.2, 1.0)
+	_spawn_popup_3d(cowboy_3d.position + Vector3(0, 4.5, 0),
+		"+1000 BONUS", Color(1.0, 0.92, 0.30, 1), 84)
+	train.queue_free()
+	total += 1000
+	_add_bounty(1000)
+	await get_tree().create_timer(0.6).timeout
+	_ceremony_finale("LOCOMOTIVE", total)
+
+# ---- Rush G: Avalanche Bonanza (Extreme, Mountain) --------------------------
+# Cascade of boulder CSGSpheres dropping from horizon toward cowboy.
+# 20 medium boulders staggered + one giant climax boulder.
 
 func _rush_g_avalanche_bonanza() -> void:
 	_ceremony_announce("AVALANCHE")
-	await get_tree().create_timer(2.0).timeout
-	_ceremony_finale("AVALANCHE", 0)
+	await get_tree().create_timer(0.4).timeout
+	const BOULDERS: int = 20
+	var total: int = 0
+	for i in range(BOULDERS):
+		var x: float = _rng.randf_range(-3.0, 3.0)
+		var z: float = _rng.randf_range(-12.0, 2.0)
+		var size: float = _rng.randf_range(0.45, 0.85)
+		var rock := CSGSphere3D.new()
+		rock.radius = size
+		rock.radial_segments = 8
+		rock.rings = 6
+		var rm := StandardMaterial3D.new()
+		rm.albedo_color = Color(
+			_rng.randf_range(0.40, 0.55),
+			_rng.randf_range(0.35, 0.45),
+			_rng.randf_range(0.30, 0.40), 1)
+		rm.roughness = 1.0
+		rock.material = rm
+		rock.position = Vector3(x, 14.0, z)
+		popups_root.add_child(rock)
+		var spin: Vector3 = Vector3(
+			_rng.randf_range(-PI, PI),
+			_rng.randf_range(-PI, PI),
+			_rng.randf_range(-PI, PI))
+		var fall_tw := create_tween().set_parallel(true)
+		fall_tw.tween_property(rock, "position:y", size, 0.55) \
+			.set_trans(Tween.TRANS_CUBIC).set_ease(Tween.EASE_IN)
+		fall_tw.tween_property(rock, "rotation", spin, 0.55)
+		var finish_tw := create_tween()
+		finish_tw.tween_interval(0.55)
+		finish_tw.tween_callback(_burst_at.bind(Vector3(x, size, z),
+			10, Color(0.85, 0.78, 0.55, 1), size, 0.5))
+		finish_tw.tween_callback(rock.queue_free)
+		finish_tw.tween_callback(_drop_bounty_value.bind(50))
+		total += 50
+		await get_tree().create_timer(0.10).timeout
+	# Climax boulder — huge
+	await get_tree().create_timer(0.6).timeout
+	var big := CSGSphere3D.new()
+	big.radius = 2.0
+	big.radial_segments = 16
+	big.rings = 10
+	var big_mat := StandardMaterial3D.new()
+	big_mat.albedo_color = Color(0.55, 0.45, 0.32, 1)
+	big_mat.emission_enabled = true
+	big_mat.emission = big_mat.albedo_color * 0.3
+	big.material = big_mat
+	big.position = Vector3(0, 20.0, -3.0)
+	popups_root.add_child(big)
+	var big_tw := create_tween().set_parallel(true)
+	big_tw.tween_property(big, "position:y", 2.0, 0.8) \
+		.set_trans(Tween.TRANS_CUBIC).set_ease(Tween.EASE_IN)
+	big_tw.tween_property(big, "rotation", Vector3(TAU, TAU * 0.5, TAU * 0.7), 0.8)
+	await big_tw.finished
+	_burst_at(Vector3(0, 1.5, -3.0), 48,
+		Color(1.0, 0.85, 0.40, 1), 2.5, 1.2)
+	_spawn_popup_3d(cowboy_3d.position + Vector3(0, 4.5, 0),
+		"+1500 AVALANCHE", Color(1.0, 0.92, 0.30, 1), 84)
+	big.queue_free()
+	total += 1500
+	_add_bounty(1500)
+	await get_tree().create_timer(0.5).timeout
+	_ceremony_finale("AVALANCHE", total)
+
+# Iter 126: counterpart helper that just adds bounty (callable from
+# tween chains where we don't need the full _drop_bonus_at visual).
+func _drop_bounty_value(amount: int) -> void:
+	_add_bounty(amount)
+
+# ---- Rush H: Gumball Runaway (Extreme, Mountain alt) ------------------------
+# A chaotic swarm of bright primary-colored gumballs bouncing across the
+# road. Many small bursts compound into a sugar-storm feel.
 
 func _rush_h_gumball_runaway() -> void:
 	_ceremony_announce("STAMPEDE")
-	await get_tree().create_timer(2.0).timeout
-	_ceremony_finale("STAMPEDE", 0)
+	await get_tree().create_timer(0.4).timeout
+	const GUMBALL_COUNT: int = 40
+	const PALETTE: Array[Color] = [
+		Color(1.00, 0.20, 0.35, 1),  # red
+		Color(1.00, 0.62, 0.10, 1),  # orange
+		Color(1.00, 0.85, 0.20, 1),  # yellow
+		Color(0.20, 0.95, 0.45, 1),  # green
+		Color(0.20, 0.70, 1.00, 1),  # blue
+		Color(0.65, 0.30, 1.00, 1),  # purple
+		Color(1.00, 0.45, 0.85, 1),  # pink
+	]
+	var total: int = 0
+	for i in range(GUMBALL_COUNT):
+		var color: Color = PALETTE[i % PALETTE.size()]
+		var start_x: float = _rng.randf_range(-3.5, 3.5)
+		var start_z: float = _rng.randf_range(-12.0, -2.0)
+		var start_y: float = _rng.randf_range(6.0, 14.0)
+		var gum := CSGSphere3D.new()
+		gum.radius = _rng.randf_range(0.20, 0.36)
+		gum.radial_segments = 8
+		gum.rings = 6
+		var gm := StandardMaterial3D.new()
+		gm.albedo_color = color
+		gm.emission_enabled = true
+		gm.emission = color * 1.2
+		gum.material = gm
+		gum.position = Vector3(start_x, start_y, start_z)
+		popups_root.add_child(gum)
+		# Bounce sequence: fall, half-bounce, fall, burst.
+		var bounce1_y: float = _rng.randf_range(1.5, 3.5)
+		var bounce_tw := create_tween()
+		bounce_tw.tween_property(gum, "position:y", gum.radius, 0.35) \
+			.set_trans(Tween.TRANS_CUBIC).set_ease(Tween.EASE_IN)
+		bounce_tw.tween_property(gum, "position:y", bounce1_y, 0.20) \
+			.set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
+		bounce_tw.tween_property(gum, "position:y", gum.radius, 0.25) \
+			.set_trans(Tween.TRANS_CUBIC).set_ease(Tween.EASE_IN)
+		bounce_tw.tween_callback(_burst_at.bind(gum.position, 6, color, 0.6, 0.4))
+		bounce_tw.tween_callback(gum.queue_free)
+		bounce_tw.tween_callback(_drop_bounty_value.bind(50))
+		total += 50
+		# Tight stagger — chaos accelerates over time
+		var stagger: float = 0.05 if i > 20 else 0.10
+		await get_tree().create_timer(stagger).timeout
+	# Center crescendo
+	await get_tree().create_timer(0.6).timeout
+	_burst_at(cowboy_3d.position + Vector3(0, 2.0, -2.0), 40,
+		Color(1.0, 0.45, 0.85, 1), 2.0, 1.0)
+	_spawn_popup_3d(cowboy_3d.position + Vector3(0, 4.5, 0),
+		"+1000 GUMBALL!", Color(1.0, 0.92, 0.30, 1), 84)
+	total += 1000
+	_add_bounty(1000)
+	await get_tree().create_timer(0.5).timeout
+	_ceremony_finale("STAMPEDE", total)
 
 func _play_sugar_rush_3d() -> void:
 	_ceremony_announce("JELLY_FRENZY")
