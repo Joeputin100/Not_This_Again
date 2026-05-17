@@ -133,7 +133,11 @@ func _on_level_1_pressed() -> void:
 	tween.tween_property(level_1_button, "scale", Vector2(1.0, 1.0), 0.18) \
 		.set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
 	await tween.finished
-	get_tree().change_scene_to_file("res://scenes/level.tscn")
+	# Iter 123: route LEVEL 1 to the 3D level instead of the legacy 2D one.
+	# The 3D refactor is now the canonical gameplay path. Legacy 2D level
+	# is still reachable from the debug menu's '3D Preview' button (swapped
+	# in iter 123 — see debug_menu.gd).
+	get_tree().change_scene_to_file("res://scenes/level_3d.tscn")
 
 func _to_main_menu() -> void:
 	get_tree().change_scene_to_file("res://scenes/main_menu.tscn")

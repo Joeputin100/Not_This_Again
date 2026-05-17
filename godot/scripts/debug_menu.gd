@@ -112,13 +112,22 @@ func _on_preview_sugar_rush() -> void:
 func _on_open_test_range() -> void:
 	AudioBus.play_tap()
 	DebugPreview.pending_test_range = true
-	DebugLog.add("debug: open test range")
-	get_tree().change_scene_to_file("res://scenes/level.tscn")
+	# Iter 123: cactus test range now routes to the 3D level. The pending_
+	# test_range flag is still set, but level_3d.gd will need to honor it
+	# to spawn the cactus field (currently only level.gd reads it). Until
+	# that wires up, the test range opens the standard 3D level — better
+	# than the legacy 2D version since gameplay is now 3D-canonical.
+	DebugLog.add("debug: open test range (3D)")
+	get_tree().change_scene_to_file("res://scenes/level_3d.tscn")
 
 func _on_open_level_3d() -> void:
 	AudioBus.play_tap()
-	DebugLog.add("debug: open 3D level prototype")
-	get_tree().change_scene_to_file("res://scenes/level_3d.tscn")
+	# Iter 123: button label says '3D PREVIEW' but the underlying scene
+	# this opens is now the LEGACY 2D gameplay. Swap is intentional —
+	# the 3D level is canonical (via PLAY + test-range buttons); this
+	# button preserves access to the 2D version for comparison/debugging.
+	DebugLog.add("debug: open legacy 2D level (button labeled 3D PREVIEW)")
+	get_tree().change_scene_to_file("res://scenes/level.tscn")
 
 # Flourish previews: fire on the local CanvasLayer immediately. No scene
 # change. Banner appears centered, plays its animation, frees itself.

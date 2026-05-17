@@ -953,6 +953,37 @@ func _check_gate_trigger(gate: Node3D) -> void:
 	# Iter 110: sync visible posse Sprite3Ds to the new count so the
 	# screen actually shows the change instead of just the HUD number.
 	_sync_followers_to_count(_posse_count_3d)
+	# Iter 123: port the 2D level's gate-pass flourishes into 3D.
+	# Combo counter ticks on every gate; banner preset by streak depth.
+	# Plus a sugar-rush 'JELLY_FRENZY' when the posse first crosses 50,
+	# matching the 2D 'Jelly Bean Frenzy' threshold beat.
+	_gate_combo_count += 1
+	_gate_combo_decay = GATE_COMBO_DECAY_TIME
+	var combo_preset: String = ""
+	if _gate_combo_count >= 5:
+		combo_preset = "RAMPAGE!"
+	elif _gate_combo_count >= 3:
+		combo_preset = "MEGA!"
+	elif _gate_combo_count >= 2:
+		combo_preset = "DOUBLE!"
+	# Single quality flourish — only when gain was meaningful.
+	if combo_preset == "":
+		var gain: int = _posse_count_3d - before
+		if op == "×" and value >= 2:
+			combo_preset = "TASTY!"
+		elif gain >= 5:
+			combo_preset = "SWEET!"
+		elif gain >= 1 and _gate_combo_count == 1:
+			combo_preset = "JUICY!"
+	if combo_preset != "":
+		var ui_canvas: Node = get_node_or_null("UI")
+		if ui_canvas != null:
+			FlourishBanner.spawn(ui_canvas, combo_preset)
+	# Sugar Rush threshold — first time posse crosses 50, fire JELLY_FRENZY.
+	if before < 50 and _posse_count_3d >= 50:
+		var ui_canvas2: Node = get_node_or_null("UI")
+		if ui_canvas2 != null:
+			FlourishBanner.spawn(ui_canvas2, "JELLY_FRENZY")
 	# Iter 110: disintegrate the gate instead of letting it slide past.
 	# Scale-collapse + queue_free so the player feels the contact.
 	var tween := create_tween()
@@ -1295,6 +1326,11 @@ func _show_win() -> void:
 	info_label.text = "WIN!  Pete defeated · posse %d · hits %d" % [
 		_posse_count_3d, _hits,
 	]
+	# Iter 123: Gold Rush A — PERFECT_VOLLEY banner pops before the
+	# salute fire ceremony, matching the 2D level.gd Gold Rush A flow.
+	var ui_canvas: Node = get_node_or_null("UI")
+	if ui_canvas != null:
+		FlourishBanner.spawn(ui_canvas, "PERFECT_VOLLEY")
 	await _gold_rush_salute_3d()
 	if win_label:
 		win_label.text = "BOUNTY!\nposse %d · hits %d" % [_posse_count_3d, _hits]
@@ -1499,6 +1535,12 @@ func _outlaw_fire(outlaw: Node3D) -> void:
 	outlaw_bullets_root.add_child(b)
 
 var _process_first_tick_logged: bool = false
+# Iter 123: gate-combo tracking (ported from 2D level.gd's iter-41
+# flourish system). _gate_combo_decay counts down each frame after the
+# last gate; if it expires before the next gate, the streak resets.
+const GATE_COMBO_DECAY_TIME: float = 2.5
+var _gate_combo_count: int = 0
+var _gate_combo_decay: float = 0.0
 
 func _process(delta: float) -> void:
 	if not _process_first_tick_logged:
@@ -1507,6 +1549,13 @@ func _process(delta: float) -> void:
 	if _pete_defeated or _failed:
 		_level_state = LevelState.FINISHED
 		return
+	# Iter 123: tick the gate combo decay. When it hits 0 the streak
+	# resets — so the player has to keep chaining gates to climb the
+	# DOUBLE → MEGA → RAMPAGE banner ladder.
+	if _gate_combo_decay > 0.0:
+		_gate_combo_decay -= delta
+		if _gate_combo_decay <= 0.0:
+			_gate_combo_count = 0
 	# Iter 120: terrain UV scroll is independent of the obstacle/scenery
 	# motion_delta gate — it lives in terrain_3d.gd as its own _process
 	# animating uv1_offset. Call set_scroll_active() so the dirt freezes
