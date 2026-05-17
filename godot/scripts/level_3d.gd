@@ -1057,10 +1057,14 @@ func _spawn_pete() -> void:
 	# follow-up — for now IDLE on loop while we verify the billboard
 	# pipeline works at all on Android.
 	var pete := Node3D.new()
-	pete.position = Vector3(0.0, 2.1, OBSTACLE_SPAWN_Z + 4.0)
+	# Iter 122: Pete +300% — world_height 4.2 → 16.8 (4×). y position
+	# moved from 2.1 → 8.4 because Sprite3D pivots from center; without
+	# raising the position by half-the-new-height, his feet would bury
+	# 6.3 units underground.
+	pete.position = Vector3(0.0, 8.4, OBSTACLE_SPAWN_Z + 4.0)
 	pete.set_meta("hp", PETE_HP)
 	boss_root.add_child(pete)
-	var billboard: Node3D = _make_video_billboard(PETE_IDLE_STREAM, 4.2)
+	var billboard: Node3D = _make_video_billboard(PETE_IDLE_STREAM, 16.8)
 	pete.add_child(billboard)
 	# Big "BOSS" label floating above him
 	var label := Label3D.new()
@@ -1755,11 +1759,17 @@ func _process(delta: float) -> void:
 							_posse_count_3d = maxi(0, _posse_count_3d - 1)
 							_sync_followers_to_count(_posse_count_3d)
 							_refresh_hud()
-			# Fire periodically
+			# Fire periodically. Iter 122: Pete only fires when within
+			# OUTLAW_FIRE_RANGE_Z of cowboy z (= within camera frustum
+			# foreground). Same gate as regular outlaws — holds fire
+			# during the long approach walk, opens up once he's close
+			# enough for the player to see the gun telegraph.
 			_pete_fire_timer -= delta
 			if _pete_fire_timer <= 0.0:
 				_pete_fire_timer = PETE_FIRE_INTERVAL
-				_pete_fire()
+				var pete_z_gap: float = cowboy_3d.position.z - pete.position.z
+				if pete_z_gap >= 0.0 and pete_z_gap <= OUTLAW_FIRE_RANGE_Z:
+					_pete_fire()
 			# Bullet hit check
 			for bullet in bullets_root.get_children():
 				if not (bullet is Node3D):
