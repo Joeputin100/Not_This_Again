@@ -100,14 +100,17 @@ func _make_button(text: String) -> Button:
 func _on_preview_rush(rush_id: String) -> void:
 	AudioBus.play_tap()
 	DebugPreview.pending_rush = rush_id
-	DebugLog.add("debug: preview rush %s" % rush_id)
-	get_tree().change_scene_to_file("res://scenes/level.tscn")
+	DebugLog.add("debug: preview rush %s (3D)" % rush_id)
+	# Iter 125: rush previews now route to the 3D level. Each rush is
+	# implemented as a 3D ceremony in level_3d.gd; the 2D versions
+	# (level.gd) stay around as the legacy path but are not used here.
+	get_tree().change_scene_to_file("res://scenes/level_3d.tscn")
 
 func _on_preview_sugar_rush() -> void:
 	AudioBus.play_tap()
 	DebugPreview.pending_sugar_rush = true
-	DebugLog.add("debug: preview sugar rush")
-	get_tree().change_scene_to_file("res://scenes/level.tscn")
+	DebugLog.add("debug: preview sugar rush (3D)")
+	get_tree().change_scene_to_file("res://scenes/level_3d.tscn")
 
 func _on_open_test_range() -> void:
 	AudioBus.play_tap()

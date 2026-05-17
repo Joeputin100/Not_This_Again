@@ -337,16 +337,44 @@ func _ready() -> void:
 		info_label.text = "iter97 RDY-5 followers ok"
 	info_label.text = "iter97 OK · build %s · top-left to exit" % BuildInfo.SHA
 	DebugLog.add("level_3d _ready (build=%s)" % BuildInfo.SHA)
-	# Iter 124: honor DebugPreview.pending_test_range flag, mirroring
-	# 2D level.gd's iter-46 cactus field. Strips dynamic outlaw + Pete
-	# spawning and seeds a static cactus grid in front of the cowboy
-	# for shooting practice. Flag consumed so it doesn't re-fire after
-	# scene reloads.
+	# Iter 124: honor DebugPreview.pending_test_range flag.
 	if get_node_or_null("/root/DebugPreview") != null and DebugPreview.pending_test_range:
 		_test_range_mode = true
 		DebugPreview.pending_test_range = false
 		DebugLog.add("level_3d: TEST RANGE mode active — cactus-only field")
 		call_deferred("_setup_test_range_3d")
+	# Iter 125-129: honor the remaining DebugPreview flags so the
+	# debug menu's previews route into 3D ceremonies. Each flag enters
+	# a 'preview' mode: skip normal gate/outlaw/Pete spawning, run the
+	# chosen ceremony, leave the player in the empty scene afterward.
+	if get_node_or_null("/root/DebugPreview") != null:
+		if DebugPreview.pending_rush != "":
+			var rush_id: String = DebugPreview.pending_rush
+			DebugPreview.pending_rush = ""
+			_preview_mode = true
+			_level_state = LevelState.FINISHED
+			DebugLog.add("level_3d: rush preview %s" % rush_id)
+			call_deferred("_play_rush_3d", rush_id)
+		elif DebugPreview.pending_sugar_rush:
+			DebugPreview.pending_sugar_rush = false
+			_preview_mode = true
+			_level_state = LevelState.FINISHED
+			DebugLog.add("level_3d: sugar rush preview")
+			call_deferred("_play_sugar_rush_3d")
+		elif DebugPreview.pending_weapon != "":
+			var w: String = DebugPreview.pending_weapon
+			DebugPreview.pending_weapon = ""
+			_preview_mode = true
+			_level_state = LevelState.FINISHED
+			DebugLog.add("level_3d: weapon preview %s" % w)
+			call_deferred("_preview_weapon_3d", w)
+		elif DebugPreview.pending_posse_unlock != "":
+			var h: String = DebugPreview.pending_posse_unlock
+			DebugPreview.pending_posse_unlock = ""
+			_preview_mode = true
+			_level_state = LevelState.FINISHED
+			DebugLog.add("level_3d: hero preview %s" % h)
+			call_deferred("_preview_hero_3d", h)
 	# Iter 79: initial HUD render.
 	_refresh_hud()
 	# Iter 77: win-modal Retry button.
@@ -877,6 +905,300 @@ func _setup_test_range_3d() -> void:
 			c.position = Vector3(x, 1.2, z)
 			obstacles_root.add_child(c)
 	DebugLog.add("level_3d: test range cactus field — %d cacti spawned" % (TEST_RANGE_ROWS * TEST_RANGE_COLS))
+
+# ============================================================================
+# Iter 125-126: Gold Rush ceremonies (3D). Each rush is a 4-phase
+# Candy-Crush-style cascade:
+#   1. ANNOUNCE — big FlourishBanner with rush name
+#   2. BUILD    — initial visual (rolling tumbleweed, cart entry, etc)
+#   3. CASCADE  — staggered chain reactions with bounty drops
+#   4. CRESCENDO — final big burst + BOUNTY total flourish
+#
+# Shared primitives (_burst_at, _drop_bonus_at, _add_bounty) compose
+# each ceremony from the same building blocks. Visual escalation comes
+# from staggered call_deferred + create_tween chains.
+# ============================================================================
+
+func _play_rush_3d(rush_id: String) -> void:
+	# Small breath before the ceremony starts so the scene settles.
+	await get_tree().create_timer(0.4).timeout
+	match rush_id:
+		"A": await _rush_a_six_shooter_salute()
+		"B": await _rush_b_jelly_jar_cascade()
+		"D": await _rush_d_tumbleweed_bonus_roll()
+		"E": await _rush_e_candy_cart_chain()
+		"F": await _rush_f_liquorice_locomotive()
+		"G": await _rush_g_avalanche_bonanza()
+		"H": await _rush_h_gumball_runaway()
+		_:   await _rush_a_six_shooter_salute()
+	# After every rush, show the final BOUNTY flourish + retry button.
+	await get_tree().create_timer(0.6).timeout
+	_show_preview_win("RUSH COMPLETE")
+
+# ---- Shared primitives ------------------------------------------------------
+
+# Iter 125: candy burst — N small colored CSGSpheres tween outward in
+# a sphere from `pos`, scale to 0 and queue_free over `duration` seconds.
+# `scale` multiplies the burst radius; bigger scale → wider burst.
+func _burst_at(pos: Vector3, count: int, color: Color, scale: float = 1.0, duration: float = 0.7) -> void:
+	for i in range(count):
+		var c := CSGSphere3D.new()
+		c.radius = 0.14
+		c.radial_segments = 6
+		c.rings = 4
+		var mat := StandardMaterial3D.new()
+		mat.albedo_color = color
+		mat.emission_enabled = true
+		mat.emission = color * 1.4
+		c.material = mat
+		c.position = pos
+		popups_root.add_child(c)
+		var angle: float = float(i) / float(count) * TAU + _rng.randf() * 0.4
+		var horiz: float = _rng.randf_range(2.5, 4.0) * scale
+		var verti: float = _rng.randf_range(3.0, 5.5) * scale
+		var target := Vector3(
+			pos.x + cos(angle) * horiz,
+			pos.y + verti,
+			pos.z + sin(angle) * horiz,
+		)
+		var tw := create_tween().set_parallel(true)
+		tw.tween_property(c, "position", target, duration) \
+			.set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
+		tw.tween_property(c, "scale", Vector3(0.1, 0.1, 0.1), duration) \
+			.set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_IN)
+		var free_tween: Tween = create_tween()
+		free_tween.tween_interval(duration)
+		free_tween.tween_callback(c.queue_free)
+
+# Iter 125: drop a candy 'bonus jar' from above at `landing` with a
+# bounce-and-burst finale + bounty popup + GameState increment.
+func _drop_bonus_at(landing: Vector3, value: int, color: Color, label: String = "") -> void:
+	var c := CSGBox3D.new()
+	c.size = Vector3(0.55, 0.55, 0.55)
+	var mat := StandardMaterial3D.new()
+	mat.albedo_color = color
+	mat.emission_enabled = true
+	mat.emission = color * 0.9
+	c.material = mat
+	c.rotation_degrees = Vector3(_rng.randf_range(0, 60), _rng.randf_range(0, 60), _rng.randf_range(0, 60))
+	c.position = landing + Vector3(0, 9.0, 0)
+	popups_root.add_child(c)
+	var tw := create_tween()
+	tw.tween_property(c, "position", landing + Vector3(0, 0.3, 0), 0.45) \
+		.set_trans(Tween.TRANS_CUBIC).set_ease(Tween.EASE_IN)
+	# Squash + recoil + burst
+	tw.tween_property(c, "scale", Vector3(1.3, 0.5, 1.3), 0.08)
+	tw.tween_property(c, "scale", Vector3.ZERO, 0.18) \
+		.set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_IN)
+	tw.tween_callback(_burst_at.bind(landing + Vector3(0, 0.4, 0), 10, color, 1.0, 0.6))
+	var popup_label: String = label if label != "" else "+%d" % value
+	tw.tween_callback(_spawn_popup_3d.bind(landing + Vector3(0, 1.5, 0), popup_label, color, 64))
+	tw.tween_callback(c.queue_free)
+	tw.tween_callback(_add_bounty.bind(value))
+
+func _add_bounty(amount: int) -> void:
+	if get_node_or_null("/root/GameState") != null:
+		GameState.bounty = GameState.bounty + amount
+
+# Iter 125: announce + camera shake at ceremony start.
+func _ceremony_announce(preset: String) -> void:
+	var ui_canvas: Node = get_node_or_null("UI")
+	if ui_canvas != null:
+		FlourishBanner.spawn(ui_canvas, preset)
+
+# Iter 125: closing flourish — big final banner with the cumulative
+# bounty value, plus a 360-burst at the cowboy's position.
+func _ceremony_finale(preset: String, bounty_added: int) -> void:
+	_burst_at(cowboy_3d.position + Vector3(0, 1.5, 0), 24, Color(1.0, 0.92, 0.40, 1), 1.6, 1.0)
+	_spawn_popup_3d(cowboy_3d.position + Vector3(0, 4.0, 0),
+		"+%d BOUNTY" % bounty_added, Color(1.0, 0.92, 0.30, 1), 96)
+	_ceremony_announce(preset)
+
+# Iter 125: show the WIN modal after a ceremony so the user can RETRY
+# or back out. Reuses the existing WinOverlay; suppresses gameplay text.
+func _show_preview_win(banner_text: String) -> void:
+	if win_label:
+		win_label.text = banner_text
+	if win_overlay:
+		win_overlay.visible = true
+	if get_node_or_null("/root/AudioBus") and AudioBus.has_method("play_gate_pass"):
+		AudioBus.play_gate_pass()
+
+# ---- Rush A: Six-Shooter Salute (Easy, Frontier) ----------------------------
+# Each posse member fires a celebratory upward bullet, staggered, with
+# +50 bounty per shot. Iter 125 polish: pre-burst at cowboy + final
+# PERFECT_VOLLEY banner.
+
+func _rush_a_six_shooter_salute() -> void:
+	_ceremony_announce("PERFECT_VOLLEY")
+	await get_tree().create_timer(0.5).timeout
+	await _gold_rush_salute_3d()
+	_ceremony_finale("PERFECT_VOLLEY", 0)  # salute already added bounty
+
+# ---- Rush B: Jelly Jar Cascade (Hard, Mine) ---------------------------------
+# 12 colored jelly jars cascade DOWN onto the road in waves of 3 ahead
+# of the cowboy. Each jar awards +75 bounty. Final burst + total flourish.
+
+func _rush_b_jelly_jar_cascade() -> void:
+	_ceremony_announce("SUGAR_CASCADE")
+	await get_tree().create_timer(0.5).timeout
+	const JAR_COLORS: Array[Color] = [
+		Color(1.00, 0.32, 0.45, 1),   # cherry red
+		Color(1.00, 0.85, 0.30, 1),   # lemon yellow
+		Color(0.42, 0.92, 0.55, 1),   # lime green
+		Color(0.55, 0.65, 1.00, 1),   # blueberry
+		Color(0.95, 0.55, 0.95, 1),   # grape
+	]
+	# 4 waves of 3 jars each. Each wave staggered along x lanes, advancing
+	# in z toward the cowboy. Lots of color variety + cascading impacts.
+	var total_value: int = 0
+	for wave in range(4):
+		for col in range(3):
+			var x: float = (float(col) - 1.0) * 1.6
+			var z: float = -6.0 + float(wave) * 1.8
+			var color: Color = JAR_COLORS[(wave * 3 + col) % JAR_COLORS.size()]
+			_drop_bonus_at(Vector3(x, 0.0, z), 75, color)
+			total_value += 75
+			await get_tree().create_timer(0.18).timeout
+		await get_tree().create_timer(0.15).timeout
+	await get_tree().create_timer(0.8).timeout
+	_ceremony_finale("SUGAR_CASCADE", total_value)
+
+# ---- Rush D: Tumbleweed Bonus Roll (Medium, Farm) ---------------------------
+# Giant brown tumbleweed (multi-sphere bundle) rolls from far z toward
+# camera, dropping bounty wagons along its path. Final big bounce burst.
+
+func _rush_d_tumbleweed_bonus_roll() -> void:
+	_ceremony_announce("ROLLED")
+	await get_tree().create_timer(0.5).timeout
+	# Build the giant tumbleweed (4 stacked spheres, ~1.6 units total)
+	var tw_node := Node3D.new()
+	for i in range(4):
+		var s := CSGSphere3D.new()
+		s.radius = 0.6
+		s.radial_segments = 10
+		s.rings = 8
+		var sm := StandardMaterial3D.new()
+		sm.albedo_color = Color(
+			_rng.randf_range(0.48, 0.62),
+			_rng.randf_range(0.30, 0.40),
+			_rng.randf_range(0.12, 0.20), 1)
+		sm.roughness = 1.0
+		s.material = sm
+		s.scale = Vector3(_rng.randf_range(0.85, 1.10),
+			_rng.randf_range(0.85, 1.10), _rng.randf_range(0.85, 1.10))
+		s.position = Vector3(
+			_rng.randf_range(-0.3, 0.3),
+			_rng.randf_range(-0.3, 0.3),
+			_rng.randf_range(-0.3, 0.3))
+		tw_node.add_child(s)
+	tw_node.position = Vector3(-1.5, 1.0, -22.0)
+	popups_root.add_child(tw_node)
+	# Roll along z toward cowboy + drop bounties at intervals
+	var total: int = 0
+	for i in range(8):
+		var target_z: float = -22.0 + float(i + 1) * 3.2
+		var roll := create_tween()
+		roll.tween_property(tw_node, "position:z", target_z, 0.4)
+		await roll.finished
+		tw_node.rotation.x += PI * 0.6
+		_drop_bonus_at(Vector3(tw_node.position.x + _rng.randf_range(-0.6, 0.6),
+			0.0, tw_node.position.z - 1.0), 60, Color(1.0, 0.78, 0.30, 1))
+		total += 60
+	# Final big bounce + dissolve
+	var final_tw := create_tween()
+	final_tw.tween_property(tw_node, "scale", Vector3(1.4, 1.4, 1.4), 0.2)
+	final_tw.tween_property(tw_node, "scale", Vector3.ZERO, 0.25) \
+		.set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_IN)
+	await final_tw.finished
+	_burst_at(tw_node.position, 18, Color(1.0, 0.78, 0.30, 1), 1.5)
+	tw_node.queue_free()
+	total += 500
+	_add_bounty(500)
+	await get_tree().create_timer(0.4).timeout
+	_ceremony_finale("ROLLED", total)
+
+# ---- Rush E: Candy Cart Chain (Extreme, Frontier) ---------------------------
+# 5 colorful candy carts roll across the road in sequence (left to right
+# alternating direction). When each cart reaches its impact point, it
+# explodes into a candy burst. Chain detonation builds left-to-right.
+
+func _rush_e_candy_cart_chain() -> void:
+	_ceremony_announce("CHAIN")
+	await get_tree().create_timer(0.4).timeout
+	const CART_COLORS: Array[Color] = [
+		Color(1.0, 0.40, 0.55, 1),
+		Color(1.0, 0.85, 0.30, 1),
+		Color(0.55, 1.0, 0.55, 1),
+		Color(0.55, 0.75, 1.0, 1),
+		Color(0.85, 0.55, 1.0, 1),
+	]
+	var total: int = 0
+	for i in range(5):
+		var direction: float = 1.0 if i % 2 == 0 else -1.0
+		var start_x: float = -direction * 6.0
+		var end_x: float = direction * 6.0
+		var cart := CSGBox3D.new()
+		cart.size = Vector3(1.4, 1.0, 0.9)
+		var cm := StandardMaterial3D.new()
+		cm.albedo_color = CART_COLORS[i]
+		cm.emission_enabled = true
+		cm.emission = CART_COLORS[i] * 0.7
+		cart.material = cm
+		var lane_z: float = -2.0 - float(i) * 0.8
+		cart.position = Vector3(start_x, 0.5, lane_z)
+		popups_root.add_child(cart)
+		var roll_tw := create_tween().set_parallel(true)
+		roll_tw.tween_property(cart, "position:x", end_x, 0.55) \
+			.set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
+		roll_tw.tween_property(cart, "rotation:z",
+			-direction * TAU, 0.55)
+		await roll_tw.finished
+		_burst_at(cart.position, 14, CART_COLORS[i], 1.2)
+		_spawn_popup_3d(cart.position + Vector3(0, 2.0, 0),
+			"+200", CART_COLORS[i], 64)
+		cart.queue_free()
+		total += 200
+		_add_bounty(200)
+		await get_tree().create_timer(0.10).timeout  # tight chain
+	await get_tree().create_timer(0.6).timeout
+	_ceremony_finale("CHAIN", total)
+
+# ---- Stub implementations for iter 126+ ------------------------------------
+# Rushes F/G/H + sugar/weapon/hero get their own ceremonies in iter 126-129.
+# Stubs here keep the dispatch symbol-complete and announce the rush so
+# previewing them in iter 125 sideload at least shows the banner.
+
+func _rush_f_liquorice_locomotive() -> void:
+	_ceremony_announce("LOCOMOTIVE")
+	await get_tree().create_timer(2.0).timeout
+	_ceremony_finale("LOCOMOTIVE", 0)
+
+func _rush_g_avalanche_bonanza() -> void:
+	_ceremony_announce("AVALANCHE")
+	await get_tree().create_timer(2.0).timeout
+	_ceremony_finale("AVALANCHE", 0)
+
+func _rush_h_gumball_runaway() -> void:
+	_ceremony_announce("STAMPEDE")
+	await get_tree().create_timer(2.0).timeout
+	_ceremony_finale("STAMPEDE", 0)
+
+func _play_sugar_rush_3d() -> void:
+	_ceremony_announce("JELLY_FRENZY")
+	await get_tree().create_timer(2.0).timeout
+	_ceremony_finale("JELLY_FRENZY", 0)
+	_show_preview_win("SUGAR RUSH PREVIEW")
+
+func _preview_weapon_3d(slug: String) -> void:
+	_ceremony_announce(slug.to_upper())
+	await get_tree().create_timer(2.0).timeout
+	_show_preview_win("WEAPON: %s" % slug)
+
+func _preview_hero_3d(slug: String) -> void:
+	_ceremony_announce(slug.to_upper())
+	await get_tree().create_timer(2.0).timeout
+	_show_preview_win("HERO: %s" % slug)
 
 # Iter 75: spawn a gate with two random door effects. Each door is a
 # semi-transparent ColorRect-style 3D quad (CSGBox3D, very thin in z)
@@ -1580,6 +1902,10 @@ var _process_first_tick_logged: bool = false
 # normal outlaw/prospector spawning and seeds a static cactus grid for
 # weapon-tuning practice (cowboy can shoot, nothing fires back).
 var _test_range_mode: bool = false
+# Iter 125: preview mode — when true, the scene is hosting a debug
+# ceremony (rush / sugar / weapon / hero) and normal gameplay flow is
+# suspended (no gates, no outlaws, no Pete, no fail state).
+var _preview_mode: bool = false
 const TEST_RANGE_ROWS: int = 6
 const TEST_RANGE_COLS: int = 5
 const TEST_RANGE_SPACING_X: float = 1.0
