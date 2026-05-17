@@ -1403,11 +1403,83 @@ func _rush_h_gumball_runaway() -> void:
 	await get_tree().create_timer(0.5).timeout
 	_ceremony_finale("STAMPEDE", total)
 
+# ---- Sugar Rush: JELLY_FRENZY (mid-level activation) ------------------------
+# Iter 127: rainbow jelly-bean cascade. 80 mini-jelly-beans falling at
+# random positions over 3 seconds with the full candy palette. Each
+# lands with a sparkle pop. Mid-cascade: 5 BIG bonus jars drop. Finale:
+# 60-sphere rainbow burst at cowboy.
+
 func _play_sugar_rush_3d() -> void:
 	_ceremony_announce("JELLY_FRENZY")
-	await get_tree().create_timer(2.0).timeout
-	_ceremony_finale("JELLY_FRENZY", 0)
-	_show_preview_win("SUGAR RUSH PREVIEW")
+	await get_tree().create_timer(0.4).timeout
+	const FRENZY_BEANS: int = 80
+	const FRENZY_DURATION: float = 3.0
+	const RAINBOW: Array[Color] = [
+		Color(1.00, 0.32, 0.42, 1),
+		Color(1.00, 0.62, 0.30, 1),
+		Color(1.00, 0.85, 0.30, 1),
+		Color(0.42, 0.95, 0.55, 1),
+		Color(0.30, 0.80, 1.00, 1),
+		Color(0.55, 0.45, 1.00, 1),
+		Color(0.95, 0.55, 0.95, 1),
+	]
+	var total: int = 0
+	var bean_interval: float = FRENZY_DURATION / float(FRENZY_BEANS)
+	# 5 big-bonus-jar moments mid-cascade for crescendo punctuation.
+	var big_bonus_marks: Array[int] = [10, 25, 40, 55, 70]
+	for i in range(FRENZY_BEANS):
+		var color: Color = RAINBOW[i % RAINBOW.size()]
+		var x: float = _rng.randf_range(-3.0, 3.0)
+		var z: float = _rng.randf_range(-12.0, 1.0)
+		var bean := CSGSphere3D.new()
+		bean.radius = 0.18
+		bean.radial_segments = 8
+		bean.rings = 6
+		# Stretch into a jelly-bean shape
+		bean.scale = Vector3(1.0, 0.7, 1.5)
+		bean.rotation_degrees = Vector3(
+			_rng.randf_range(0, 360),
+			_rng.randf_range(0, 360),
+			_rng.randf_range(0, 360))
+		var bm := StandardMaterial3D.new()
+		bm.albedo_color = color
+		bm.emission_enabled = true
+		bm.emission = color * 1.3
+		bean.material = bm
+		bean.position = Vector3(x, 9.0 + _rng.randf_range(0, 3.0), z)
+		popups_root.add_child(bean)
+		var bean_tw := create_tween().set_parallel(true)
+		bean_tw.tween_property(bean, "position:y", 0.2, 0.45) \
+			.set_trans(Tween.TRANS_CUBIC).set_ease(Tween.EASE_IN)
+		bean_tw.tween_property(bean, "rotation",
+			bean.rotation + Vector3(TAU, TAU * 0.5, TAU * 0.7), 0.45)
+		var finish_tw := create_tween()
+		finish_tw.tween_interval(0.45)
+		finish_tw.tween_callback(_burst_at.bind(Vector3(x, 0.3, z),
+			5, color, 0.5, 0.3))
+		finish_tw.tween_callback(bean.queue_free)
+		finish_tw.tween_callback(_drop_bounty_value.bind(30))
+		total += 30
+		# Punctuating big bonus jars
+		if i in big_bonus_marks:
+			var bonus_x: float = _rng.randf_range(-2.0, 2.0)
+			var bonus_z: float = _rng.randf_range(-6.0, 0.0)
+			_drop_bonus_at(Vector3(bonus_x, 0.0, bonus_z), 250,
+				RAINBOW[(i + 3) % RAINBOW.size()])
+			total += 250
+		await get_tree().create_timer(bean_interval).timeout
+	# Finale — 60-sphere rainbow burst at cowboy
+	await get_tree().create_timer(0.6).timeout
+	for i in range(7):
+		_burst_at(cowboy_3d.position + Vector3(0, 2.0 + float(i) * 0.3, 0),
+			9, RAINBOW[i], 1.5, 0.8)
+		await get_tree().create_timer(0.08).timeout
+	_spawn_popup_3d(cowboy_3d.position + Vector3(0, 5.0, 0),
+		"+2000 SUGAR HIGH!", Color(1.0, 0.55, 0.85, 1), 84)
+	total += 2000
+	_add_bounty(2000)
+	await get_tree().create_timer(0.6).timeout
+	_ceremony_finale("JELLY_FRENZY", total)
 
 func _preview_weapon_3d(slug: String) -> void:
 	_ceremony_announce(slug.to_upper())
