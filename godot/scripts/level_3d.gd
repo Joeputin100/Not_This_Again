@@ -168,7 +168,7 @@ const OUTLAW_FIRE_INTERVAL: float = 3.6  # iter 121: 1.8 → 3.6 (halved fire ra
 # player visible reaction time before bullets start coming.
 const OUTLAW_FIRE_RANGE_Z: float = 10.0
 const OUTLAW_BULLET_SPEED: float = 8.0  # iter 121: 14 → 8 (dodgeable — was too fast to react to)
-const OUTLAW_BULLET_RADIUS: float = 0.06  # iter 114 0.35→0.12; iter 120 0.12→0.06 (still felt huge)
+const OUTLAW_BULLET_RADIUS: float = 0.15  # iter 124: 0.06 → 0.15 (was so small player couldn't see them coming)
 const OUTLAW_BULLET_DESPAWN_Z: float = 4.0
 const OUTLAW_BULLET_HIT_X: float = 0.5  # iter 119: bullet only hits if within this x of any posse member
 const OUTLAW_HIT_RADIUS_SQ: float = 1.5 * 1.5
@@ -179,7 +179,7 @@ var _outlaw_spawn_timer: float = 0.0
 # level. Slow approach, much higher HP, drops the WIN modal on defeat.
 const PETE_SPAWN_DELAY: float = 8.0  # iter 118: 12 → 8
 const PETE_HP: int = 1000  # iter 119: 40 → 1000 (×-gates can build huge posse)
-const PETE_SPEED: float = 1.6
+const PETE_SPEED: float = 4.0  # iter 124: 1.6 → 4.0 (was too slow — user quit before he arrived)
 const PETE_FIRE_INTERVAL: float = 0.5  # iter 119: 1.0 → 0.5 (alternates L/R guns)
 const PETE_HIT_RADIUS_SQ: float = 2.6 * 2.6
 const PETE_STAY_Z: float = -6.0  # holds at duel distance until melee phase
@@ -337,6 +337,16 @@ func _ready() -> void:
 		info_label.text = "iter97 RDY-5 followers ok"
 	info_label.text = "iter97 OK · build %s · top-left to exit" % BuildInfo.SHA
 	DebugLog.add("level_3d _ready (build=%s)" % BuildInfo.SHA)
+	# Iter 124: honor DebugPreview.pending_test_range flag, mirroring
+	# 2D level.gd's iter-46 cactus field. Strips dynamic outlaw + Pete
+	# spawning and seeds a static cactus grid in front of the cowboy
+	# for shooting practice. Flag consumed so it doesn't re-fire after
+	# scene reloads.
+	if get_node_or_null("/root/DebugPreview") != null and DebugPreview.pending_test_range:
+		_test_range_mode = true
+		DebugPreview.pending_test_range = false
+		DebugLog.add("level_3d: TEST RANGE mode active — cactus-only field")
+		call_deferred("_setup_test_range_3d")
 	# Iter 79: initial HUD render.
 	_refresh_hud()
 	# Iter 77: win-modal Retry button.
@@ -840,6 +850,33 @@ func _check_bullet_gate_collision(bullet: Node3D) -> bool:
 			"%s%d" % [op, value], Color(1.0, 0.92, 0.3, 1), 40)
 		return true
 	return false
+
+# Iter 124: lay out a static cactus grid for test range mode. 6 rows × 5
+# cols of CSGBox3D cacti staggered in z so the player can practice fire
+# aim without enemy interference. Reuses ObstacleType.CACTUS visual
+# (green box, 0.7×2.4×0.7). Cacti are added to obstacles_root so the
+# existing bullet-vs-obstacle collision treats them as targets.
+func _setup_test_range_3d() -> void:
+	# Cancel any pre-spawned obstacles + outlaws from the normal flow.
+	for child in obstacles_root.get_children():
+		child.queue_free()
+	for child in outlaws_root.get_children():
+		child.queue_free()
+	for child in boss_root.get_children():
+		child.queue_free()
+	# Build the grid. Centered on x, rows extend forward in -z.
+	for row in range(TEST_RANGE_ROWS):
+		for col in range(TEST_RANGE_COLS):
+			var x: float = (float(col) - float(TEST_RANGE_COLS - 1) * 0.5) * TEST_RANGE_SPACING_X
+			var z: float = -3.0 - float(row) * TEST_RANGE_SPACING_Z
+			var c := CSGBox3D.new()
+			c.size = Vector3(0.7, 2.4, 0.7)
+			var mat := StandardMaterial3D.new()
+			mat.albedo_color = Color(0.22, 0.45, 0.18, 1)
+			c.material = mat
+			c.position = Vector3(x, 1.2, z)
+			obstacles_root.add_child(c)
+	DebugLog.add("level_3d: test range cactus field — %d cacti spawned" % (TEST_RANGE_ROWS * TEST_RANGE_COLS))
 
 # Iter 75: spawn a gate with two random door effects. Each door is a
 # semi-transparent ColorRect-style 3D quad (CSGBox3D, very thin in z)
@@ -1519,9 +1556,12 @@ func _outlaw_fire(outlaw: Node3D) -> void:
 	b.radial_segments = 8
 	b.rings = 6
 	var mat := StandardMaterial3D.new()
-	mat.albedo_color = Color(1.0, 0.3, 0.2, 1)
+	# Iter 124: brighter emission + larger bullet so the player can
+	# actually see incoming fire and dodge it. Was so dim/small that
+	# posse depletion felt random — invisible bullet damage is bad UX.
+	mat.albedo_color = Color(1.0, 0.20, 0.15, 1)
 	mat.emission_enabled = true
-	mat.emission = mat.albedo_color * 0.5
+	mat.emission = Color(1.0, 0.30, 0.20, 1) * 1.5
 	b.material = mat
 	b.position = outlaw.position
 	# Velocity: from outlaw toward cowboy, normalized × speed
@@ -1535,6 +1575,15 @@ func _outlaw_fire(outlaw: Node3D) -> void:
 	outlaw_bullets_root.add_child(b)
 
 var _process_first_tick_logged: bool = false
+# Iter 124: test-range mode flag, mirrors 2D level.gd's _test_range_mode.
+# When DebugPreview.pending_test_range is set, level_3d._ready strips
+# normal outlaw/prospector spawning and seeds a static cactus grid for
+# weapon-tuning practice (cowboy can shoot, nothing fires back).
+var _test_range_mode: bool = false
+const TEST_RANGE_ROWS: int = 6
+const TEST_RANGE_COLS: int = 5
+const TEST_RANGE_SPACING_X: float = 1.0
+const TEST_RANGE_SPACING_Z: float = 2.5
 # Iter 123: gate-combo tracking (ported from 2D level.gd's iter-41
 # flourish system). _gate_combo_decay counts down each frame after the
 # last gate; if it expires before the next gate, the streak resets.
@@ -1634,7 +1683,9 @@ func _process(delta: float) -> void:
 	# Iter 76: outlaws — spawn / scroll / fire / despawn.
 	# Iter 118: only spawn during PLAYING (not BOSS — boss fight has its
 	# own focus). Outlaws already spawned keep moving via _world_motion.
-	if _level_state == LevelState.PLAYING:
+	# Iter 124: skip all outlaw + prospector spawning in test range mode
+	# (cactus-only practice — nothing fires back).
+	if _level_state == LevelState.PLAYING and not _test_range_mode:
 		_outlaw_spawn_timer -= delta
 		if _outlaw_spawn_timer <= 0.0:
 			_outlaw_spawn_timer = OUTLAW_SPAWN_INTERVAL
@@ -1772,9 +1823,9 @@ func _process(delta: float) -> void:
 		elif bonus.position.z > OBSTACLE_DESPAWN_Z:
 			bonus.queue_free()
 	# Iter 77: spawn Pete after PETE_SPAWN_DELAY.
-	# Iter 118: only counts elapsed during PLAYING. Transitions level
-	# state to BOSS, which freezes world scrolling for the duel.
-	if _level_state == LevelState.PLAYING and not _pete_spawned and _level_elapsed >= PETE_SPAWN_DELAY:
+	# Iter 118: only counts elapsed during PLAYING.
+	# Iter 124: skip Pete in test range mode.
+	if _level_state == LevelState.PLAYING and not _pete_spawned and not _test_range_mode and _level_elapsed >= PETE_SPAWN_DELAY:
 		_pete_spawned = true
 		_spawn_pete()
 		_level_state = LevelState.BOSS
