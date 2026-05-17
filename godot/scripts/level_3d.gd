@@ -161,8 +161,13 @@ const STARTING_POSSE_3D: int = 1  # iter 118: 5 → 1 (gates grow it from there)
 # scroll toward camera + fire red bullets at the cowboy.
 const OUTLAW_SPAWN_INTERVAL: float = 0.5  # iter 118: 3.0 → 0.5 (~14 alive at once)
 const OUTLAW_SPEED: float = 4.0  # slower than obstacles — they're shooters
-const OUTLAW_FIRE_INTERVAL: float = 1.8
-const OUTLAW_BULLET_SPEED: float = 14.0
+const OUTLAW_FIRE_INTERVAL: float = 3.6  # iter 121: 1.8 → 3.6 (halved fire rate)
+# Iter 121: only fire when within this many world units of cowboy z.
+# Halves the effective bullet range since outlaws spawn at z=-24 but
+# only start shooting when z > cowboy.z - OUTLAW_FIRE_RANGE_Z. Gives
+# player visible reaction time before bullets start coming.
+const OUTLAW_FIRE_RANGE_Z: float = 10.0
+const OUTLAW_BULLET_SPEED: float = 8.0  # iter 121: 14 → 8 (dodgeable — was too fast to react to)
 const OUTLAW_BULLET_RADIUS: float = 0.06  # iter 114 0.35→0.12; iter 120 0.12→0.06 (still felt huge)
 const OUTLAW_BULLET_DESPAWN_Z: float = 4.0
 const OUTLAW_BULLET_HIT_X: float = 0.5  # iter 119: bullet only hits if within this x of any posse member
@@ -1197,8 +1202,13 @@ func _render_countdown() -> void:
 	var t: float = _countdown_remaining
 	var phase: int
 	var preset: String
+	# Iter 121: preset names use plain alpha (READY/GO) instead of "GO!" —
+	# the previous iter saw "COUNT_3" displayed on-screen because the iter
+	# 120 PRESET-edit didn't actually land in flourish_banner.gd, so the
+	# fallback path used the preset_name AS the text. Now the names match
+	# what's in PRESETS verbatim.
 	if t > 2.5:
-		phase = 0; preset = "READY!"
+		phase = 0; preset = "READY"
 	elif t > 1.5:
 		phase = 1; preset = "COUNT_3"
 	elif t > 0.5:
@@ -1206,7 +1216,7 @@ func _render_countdown() -> void:
 	elif t > -0.5:
 		phase = 3; preset = "COUNT_1"
 	else:
-		phase = 4; preset = "GO!"
+		phase = 4; preset = "GO"
 	if phase != _countdown_last_phase:
 		_countdown_last_phase = phase
 		var ui_canvas: Node = get_node_or_null("UI")
@@ -1613,7 +1623,12 @@ func _process(delta: float) -> void:
 		ft -= delta
 		if ft <= 0.0:
 			ft = OUTLAW_FIRE_INTERVAL
-			_outlaw_fire(outlaw)
+			# Iter 121: only fire when within OUTLAW_FIRE_RANGE_Z of cowboy z.
+			# Halves the effective bullet range — far outlaws hold their fire
+			# until they're close enough to be visually threatening.
+			var z_gap: float = cowboy_3d.position.z - outlaw.position.z
+			if z_gap >= 0.0 and z_gap <= OUTLAW_FIRE_RANGE_Z:
+				_outlaw_fire(outlaw)
 		outlaw.set_meta("fire_timer", ft)
 		if outlaw.position.z > OBSTACLE_DESPAWN_Z:
 			outlaw.queue_free()

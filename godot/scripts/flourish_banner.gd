@@ -28,6 +28,7 @@ const LIFESPAN: float = 1.25
 const POP_DURATION: float = 0.22
 const DRIFT_UP: float = -90.0
 const SHOCK_RING_DURATION: float = 0.45
+const STACK_PUSH: float = 220.0  # iter 121: vertical offset existing banners move up when a new one spawns
 
 # Preset library. Each entry: text, primary color, font size, ring color,
 # trauma (camera shake intensity, 0..1). Adding a preset is a 1-line
@@ -69,6 +70,16 @@ const PRESETS: Dictionary = {
 	"LOCOMOTIVE":     {"text": "LOCOMOTIVE!",     "color": Color(0.85, 0.45, 1.00, 1), "size": 160, "ring": Color(0.75, 0.35, 1.00, 0.85), "trauma": 0.90},
 	"AVALANCHE":      {"text": "AVALANCHE!",      "color": Color(0.55, 0.85, 1.00, 1), "size": 180, "ring": Color(0.45, 0.75, 1.00, 0.85), "trauma": 0.95},
 	"STAMPEDE":       {"text": "STAMPEDE!",       "color": Color(1.00, 0.45, 0.35, 1), "size": 180, "ring": Color(1.00, 0.35, 0.25, 0.85), "trauma": 0.95},
+	# Iter 121: 3D PREVIEW countdown — reuse banner system so the start-
+	# of-level "3 / 2 / 1 / GO!" gets the same big-Rye-font + sparkles +
+	# shock-ring treatment as sugar rush. (Iter 120 attempt at this didn't
+	# actually land in the file even though the commit said it did —
+	# Edit silently no-op'd on a unicode mismatch in old_string.)
+	"READY":          {"text": "READY",          "color": Color(0.95, 0.78, 0.35, 1), "size": 180, "ring": Color(1.00, 0.85, 0.40, 0.70), "trauma": 0.30},
+	"COUNT_3":        {"text": "3",              "color": Color(1.00, 0.55, 0.30, 1), "size": 280, "ring": Color(1.00, 0.50, 0.30, 0.80), "trauma": 0.40},
+	"COUNT_2":        {"text": "2",              "color": Color(1.00, 0.70, 0.30, 1), "size": 280, "ring": Color(1.00, 0.60, 0.30, 0.80), "trauma": 0.40},
+	"COUNT_1":        {"text": "1",              "color": Color(1.00, 0.85, 0.30, 1), "size": 280, "ring": Color(1.00, 0.70, 0.30, 0.80), "trauma": 0.40},
+	"GO":             {"text": "GO",             "color": Color(0.42, 1.00, 0.55, 1), "size": 300, "ring": Color(0.40, 1.00, 0.50, 0.80), "trauma": 0.70},
 }
 
 @onready var label: Label = $Label
@@ -89,7 +100,18 @@ static func spawn(parent: Node, preset_name: String, shake_source: Node = null) 
 		"text": preset_name, "color": Color(1, 1, 1, 1), "size": 156,
 		"ring": Color(1, 1, 1, 0.6), "trauma": 0.5,
 	})
+	# Iter 121: stack — when a new banner spawns, push existing FlourishBanner
+	# siblings UPWARD by STACK_PUSH so they don't overlap. They keep their
+	# fade-out lifecycle; this just slides them above the newcomer.
+	for child in parent.get_children():
+		if child is Control and child.has_meta("is_flourish_banner"):
+			var existing_y: float = (child as Control).position.y
+			var push_tween: Tween = (child as Control).create_tween()
+			push_tween.tween_property(child, "position:y",
+				existing_y - STACK_PUSH, 0.25) \
+				.set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
 	var banner: Control = SPAWN_SCENE.instantiate()
+	banner.set_meta("is_flourish_banner", true)
 	parent.add_child(banner)
 	banner.play(data.text, data.color, data.size, data.ring)
 	if shake_source and "shake" in shake_source and shake_source.shake \
