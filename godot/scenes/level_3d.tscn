@@ -15,6 +15,7 @@
 
 [ext_resource type="Script" path="res://scripts/level_3d.gd" id="1_lvl3d"]
 [ext_resource type="PackedScene" path="res://scenes/terrain_3d.tscn" id="2_terrain"]
+[ext_resource type="Theme" path="res://assets/theme.tres" id="3_theme"]
 
 [node name="Level3D" type="Node2D"]
 script = ExtResource("1_lvl3d")
@@ -37,17 +38,20 @@ mouse_filter = 2
 
 ; Iter 79: HUD now split into 3 stacked labels — HEARTS / POSSE / HITS.
 ; InfoLabel kept for debug/status display at the very top.
+; Iter 120: theme = Rye-Regular (matches 2D level.tscn). Bumped sizes
+; for portrait-mobile readability + ammo pip-glyph visibility.
 [node name="InfoLabel" type="Label" parent="UI"]
 anchors_preset = -1
 anchor_right = 1.0
-offset_left = 60.0
+offset_left = 30.0
 offset_top = 30.0
-offset_right = -60.0
-offset_bottom = 80.0
+offset_right = -30.0
+offset_bottom = 130.0
+theme = ExtResource("3_theme")
 theme_override_colors/font_color = Color(0.95, 0.78, 0.35, 1)
 theme_override_colors/font_outline_color = Color(0.18, 0.10, 0.05, 1)
-theme_override_constants/outline_size = 4
-theme_override_font_sizes/font_size = 26
+theme_override_constants/outline_size = 6
+theme_override_font_sizes/font_size = 64
 text = "3D PREVIEW · drag to steer"
 horizontal_alignment = 1
 mouse_filter = 2
@@ -56,13 +60,14 @@ mouse_filter = 2
 anchors_preset = -1
 anchor_right = 1.0
 offset_left = 60.0
-offset_top = 100.0
+offset_top = 150.0
 offset_right = -60.0
-offset_bottom = 200.0
+offset_bottom = 260.0
+theme = ExtResource("3_theme")
 theme_override_colors/font_color = Color(1.00, 0.45, 0.40, 1)
 theme_override_colors/font_outline_color = Color(0.18, 0.05, 0.05, 1)
-theme_override_constants/outline_size = 8
-theme_override_font_sizes/font_size = 72
+theme_override_constants/outline_size = 10
+theme_override_font_sizes/font_size = 80
 text = "♥ ♥ ♥ ♥ ♥"
 horizontal_alignment = 1
 mouse_filter = 2
@@ -71,13 +76,14 @@ mouse_filter = 2
 anchors_preset = -1
 anchor_right = 1.0
 offset_left = 60.0
-offset_top = 220.0
+offset_top = 280.0
 offset_right = -60.0
-offset_bottom = 320.0
+offset_bottom = 380.0
+theme = ExtResource("3_theme")
 theme_override_colors/font_color = Color(0.831, 0.659, 0.341, 1)
 theme_override_colors/font_outline_color = Color(0.18, 0.10, 0.03, 1)
-theme_override_constants/outline_size = 6
-theme_override_font_sizes/font_size = 64
+theme_override_constants/outline_size = 8
+theme_override_font_sizes/font_size = 72
 text = "POSSE: 5"
 horizontal_alignment = 1
 mouse_filter = 2
@@ -86,13 +92,14 @@ mouse_filter = 2
 anchors_preset = -1
 anchor_right = 1.0
 offset_left = 60.0
-offset_top = 340.0
+offset_top = 400.0
 offset_right = -60.0
-offset_bottom = 400.0
+offset_bottom = 470.0
+theme = ExtResource("3_theme")
 theme_override_colors/font_color = Color(0.95, 0.78, 0.35, 0.75)
 theme_override_colors/font_outline_color = Color(0.18, 0.10, 0.05, 1)
-theme_override_constants/outline_size = 5
-theme_override_font_sizes/font_size = 40
+theme_override_constants/outline_size = 6
+theme_override_font_sizes/font_size = 52
 text = "HITS: 0"
 horizontal_alignment = 1
 mouse_filter = 2
@@ -129,8 +136,11 @@ offset_left = -400.0
 offset_top = -160.0
 offset_right = 400.0
 offset_bottom = 100.0
-theme_override_font_sizes/font_size = 80
+theme = ExtResource("3_theme")
+theme_override_font_sizes/font_size = 96
 theme_override_colors/font_color = Color(0.95, 0.78, 0.35, 1)
+theme_override_colors/font_outline_color = Color(0.18, 0.10, 0.05, 1)
+theme_override_constants/outline_size = 10
 text = "BOUNTY!"
 horizontal_alignment = 1
 vertical_alignment = 1
@@ -145,6 +155,7 @@ offset_left = -200.0
 offset_top = 160.0
 offset_right = 200.0
 offset_bottom = 260.0
+theme = ExtResource("3_theme")
 theme_override_font_sizes/font_size = 48
 text = "RETRY"
 
@@ -167,8 +178,11 @@ offset_left = -400.0
 offset_top = -160.0
 offset_right = 400.0
 offset_bottom = 100.0
-theme_override_font_sizes/font_size = 80
+theme = ExtResource("3_theme")
+theme_override_font_sizes/font_size = 96
 theme_override_colors/font_color = Color(0.98, 0.32, 0.22, 1)
+theme_override_colors/font_outline_color = Color(0.18, 0.05, 0.05, 1)
+theme_override_constants/outline_size = 10
 text = "DEAD"
 horizontal_alignment = 1
 vertical_alignment = 1
@@ -183,5 +197,6 @@ offset_left = -200.0
 offset_top = 160.0
 offset_right = 200.0
 offset_bottom = 260.0
+theme = ExtResource("3_theme")
 theme_override_font_sizes/font_size = 48
 text = "RETRY"

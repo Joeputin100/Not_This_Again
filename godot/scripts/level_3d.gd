@@ -93,6 +93,7 @@ const BULLET_COLLISION_DIST_SQ: float = 1.5 * 1.5  # 1.5 world unit radius
 const BULLET_PIXEL_SIZE: float = 0.18  # CSGSphere3D radius — iter 107: 0.5 → 0.18 (jelly-bean sized, was nearly cowboy-sized)
 const BULLET_SPAWN_Y: float = 1.2  # waist-high at cowboy
 
+@onready var terrain_3d_node: Node = $Terrain3D
 @onready var subviewport: SubViewport = $Terrain3D/SubViewport
 @onready var camera: Camera3D = $Terrain3D/SubViewport/Camera3D
 # Iter 95: 3D content vars below were @onready against .tscn nodes
@@ -162,7 +163,7 @@ const OUTLAW_SPAWN_INTERVAL: float = 0.5  # iter 118: 3.0 → 0.5 (~14 alive at 
 const OUTLAW_SPEED: float = 4.0  # slower than obstacles — they're shooters
 const OUTLAW_FIRE_INTERVAL: float = 1.8
 const OUTLAW_BULLET_SPEED: float = 14.0
-const OUTLAW_BULLET_RADIUS: float = 0.12  # iter 114: 0.35 → 0.12 (was nearly as wide as the outlaw was tall)
+const OUTLAW_BULLET_RADIUS: float = 0.06  # iter 114 0.35→0.12; iter 120 0.12→0.06 (still felt huge)
 const OUTLAW_BULLET_DESPAWN_Z: float = 4.0
 const OUTLAW_BULLET_HIT_X: float = 0.5  # iter 119: bullet only hits if within this x of any posse member
 const OUTLAW_HIT_RADIUS_SQ: float = 1.5 * 1.5
@@ -1186,33 +1187,31 @@ func _spawn_popup_3d(world_pos: Vector3, text: String, color: Color, size: int) 
 # Iter 79: render the 3-label HUD from current state. Called after any
 # event that changes hearts/posse/hits (gate pass, outlaw kill, posse
 # damage). Hearts read from GameState if available.
-# Iter 118: countdown overlay during LevelState.COUNTDOWN. Hijacks
-# info_label since we're not firing yet — countdown precedes ammo UI.
+# Iter 120: countdown now uses FlourishBanner (same big scale-pop +
+# sparkles + shock-ring + camera shake treatment as the sugar rush).
+# Track the most-recently-displayed phase so each step pops exactly
+# once instead of spamming a banner every frame.
+const FlourishBanner = preload("res://scripts/flourish_banner.gd")
+var _countdown_last_phase: int = -1
 func _render_countdown() -> void:
-	if info_label == null:
-		return
-	# Phase breakdown across COUNTDOWN_TOTAL (3.5s):
-	#   t > 2.5  → "READY..."  (0.5-1.5s prep)
-	#   t > 1.5  → "3"
-	#   t > 0.5  → "2"
-	#   t > -0.5 → "1"
-	#   else     → "GO!"
 	var t: float = _countdown_remaining
+	var phase: int
+	var preset: String
 	if t > 2.5:
-		info_label.text = "READY..."
-		info_label.modulate = Color(0.95, 0.78, 0.35, 1)
+		phase = 0; preset = "READY!"
 	elif t > 1.5:
-		info_label.text = "3"
-		info_label.modulate = Color(1.0, 0.55, 0.30, 1)
+		phase = 1; preset = "COUNT_3"
 	elif t > 0.5:
-		info_label.text = "2"
-		info_label.modulate = Color(1.0, 0.65, 0.30, 1)
+		phase = 2; preset = "COUNT_2"
 	elif t > -0.5:
-		info_label.text = "1"
-		info_label.modulate = Color(1.0, 0.75, 0.30, 1)
+		phase = 3; preset = "COUNT_1"
 	else:
-		info_label.text = "GO!"
-		info_label.modulate = Color(0.42, 1.0, 0.55, 1)
+		phase = 4; preset = "GO!"
+	if phase != _countdown_last_phase:
+		_countdown_last_phase = phase
+		var ui_canvas: Node = get_node_or_null("UI")
+		if ui_canvas != null:
+			FlourishBanner.spawn(ui_canvas, preset)
 
 # Iter 115/117: render the cowboy's ammo + reload status on a HUD label.
 # Iter 117: ported the EXACT 2D pip-glyph infographic from level.gd
@@ -1344,6 +1343,8 @@ func _gold_rush_salute_3d() -> void:
 
 # Iter 76: spawn a red outlaw at a random lane position at far z.
 const VAGRANT_IDLE_STREAM := preload("res://assets/videos/vagrant/idle_wobble.ogv")
+const VAGRANT_DEATH_STREAM := preload("res://assets/videos/vagrant/death.ogv")
+const VAGRANT_DEATH_LIFETIME: float = 1.2  # seconds before queue_free
 
 var _outlaw_spawn_count: int = 0
 # Iter 114/118: outlaw spawn x narrowed to ±2.5 to fit the visible road.
@@ -1380,9 +1381,21 @@ func _spawn_outlaw() -> void:
 	outlaw.position = Vector3(lane_x, 1.0, OBSTACLE_SPAWN_Z + 4.0)
 	outlaw.set_meta("hp", OUTLAW_HP)
 	outlaw.set_meta("fire_timer", _rng.randf() * OUTLAW_FIRE_INTERVAL)
+	# Iter 120: per-unit horizontal offset around the cowboy. Without this,
+	# all outlaws lerp to the SAME cowboy_3d.position.x and form a single
+	# vertical column — what the user called 'standing in a line'.
+	# With a stable random offset in ±1.2, outlaws crowd around the posse
+	# at varied x positions, looking like a swarm instead of a queue.
+	outlaw.set_meta("track_offset_x", _rng.randf_range(-1.2, 1.2))
+	outlaw.set_meta("dying", false)
+	outlaw.set_meta("death_timer", 0.0)
 	outlaws_root.add_child(outlaw)
 	var billboard: Node3D = _make_video_billboard(VAGRANT_IDLE_STREAM, 2.5)
 	outlaw.add_child(billboard)
+	# Stash the Sprite3D ref so death-anim swap can replace its texture
+	# without searching the tree.
+	if billboard.get_child_count() > 0:
+		outlaw.set_meta("sprite_3d", billboard.get_child(0))
 	_outlaw_spawn_count += 1
 	if _outlaw_spawn_count == 1 or _outlaw_spawn_count % 5 == 0:
 		DebugLog.add("outlaw spawn #%d at x=%.1f z=%.1f (outlaws_root.size=%d)" % [
@@ -1480,6 +1493,12 @@ func _process(delta: float) -> void:
 	if _pete_defeated or _failed:
 		_level_state = LevelState.FINISHED
 		return
+	# Iter 120: terrain UV scroll is independent of the obstacle/scenery
+	# motion_delta gate — it lives in terrain_3d.gd as its own _process
+	# animating uv1_offset. Call set_scroll_active() so the dirt freezes
+	# during COUNTDOWN and BOSS too (matching the visual stop).
+	if terrain_3d_node != null and terrain_3d_node.has_method("set_scroll_active"):
+		terrain_3d_node.set_scroll_active(_level_state == LevelState.PLAYING)
 	# Iter 118: COUNTDOWN phase — show 3/2/1/GO, freeze world motion.
 	if _level_state == LevelState.COUNTDOWN:
 		_countdown_remaining -= delta
@@ -1565,12 +1584,31 @@ func _process(delta: float) -> void:
 	for outlaw in outlaws_root.get_children():
 		if not (outlaw is Node3D):
 			continue
-		outlaw.position.z += OUTLAW_SPEED * motion_delta
-		# Iter 110: outlaws slowly track the cowboy's x position so
-		# they aren't just sliding straight forward in a single lane.
-		# Iter 118: gated on motion_delta so they freeze during BOSS.
-		outlaw.position.x = lerpf(outlaw.position.x, cowboy_3d.position.x,
-			clampf(1.2 * motion_delta, 0.0, 1.0))
+		# Iter 120: dying outlaws skip movement + fire + collision and
+		# just tick their death timer. queue_free when the death.ogv
+		# animation has played out.
+		if outlaw.get_meta("dying", false):
+			var dt: float = outlaw.get_meta("death_timer", 0.0) - delta
+			outlaw.set_meta("death_timer", dt)
+			if dt <= 0.0:
+				outlaw.queue_free()
+			continue
+		# Iter 120: slow z-scroll once outlaw is close to the cowboy so
+		# they cluster around the posse instead of marching past at
+		# constant speed. Beyond cowboy_z - 2.0 (= still in front), full
+		# OUTLAW_SPEED. Within 2.0 of cowboy_z, slow to 20% speed.
+		var z_speed: float = OUTLAW_SPEED
+		if outlaw.position.z > cowboy_3d.position.z - 2.0:
+			z_speed = OUTLAW_SPEED * 0.20
+		outlaw.position.z += z_speed * motion_delta
+		# Iter 120: x-tracking with PER-OUTLAW offset (set at spawn).
+		# Each outlaw heads for cowboy.x + their personal offset so the
+		# group reads as a crowd, not a column. Clamped to road bounds.
+		var ox: float = outlaw.get_meta("track_offset_x", 0.0)
+		var target_x: float = clampf(cowboy_3d.position.x + ox,
+			-COWBOY_X_BOUND, COWBOY_X_BOUND)
+		outlaw.position.x = lerpf(outlaw.position.x, target_x,
+			clampf(1.5 * motion_delta, 0.0, 1.0))
 		var ft: float = outlaw.get_meta("fire_timer", 0.0)
 		ft -= delta
 		if ft <= 0.0:
@@ -1592,7 +1630,16 @@ func _process(delta: float) -> void:
 					"-1", Color(1, 0.32, 0.22, 1), 56)
 				bullet.queue_free()
 				if hp <= 0:
-					outlaw.queue_free()
+					# Iter 120: swap to vagrant death stream + delay
+					# queue_free so the death animation plays. The
+					# shared-SubViewport pattern means all dying outlaws
+					# share one death-stream render (they sync, acceptable).
+					outlaw.set_meta("dying", true)
+					outlaw.set_meta("death_timer", VAGRANT_DEATH_LIFETIME)
+					var death_sprite: Sprite3D = outlaw.get_meta("sprite_3d", null)
+					if death_sprite != null and is_instance_valid(death_sprite):
+						var death_sv: SubViewport = _get_or_create_shared_video_viewport(VAGRANT_DEATH_STREAM)
+						death_sprite.texture = death_sv.get_texture()
 					_hits += 1
 					_refresh_hud()
 				break
