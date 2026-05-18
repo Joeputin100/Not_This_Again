@@ -543,6 +543,15 @@ func _spawn_scenery_item_inner() -> void:
 			_spawn_building(side, spawn_z)
 
 func _spawn_fence_post(side: float, z: float) -> void:
+	# Iter 131: if a fence_post PNG exists, spawn as breathing billboard
+	# pair (matches the iter-112 two-post-plus-rail composition but as
+	# sprites with sway). Falls back to CSG if PNG missing.
+	if ResourceLoader.exists(PROP_TEX_REGISTRY["fence_post"].path):
+		var x1: float = side * (SCENERY_ROAD_SHOULDER + _rng.randf_range(-0.2, 0.2))
+		var x2: float = side * (SCENERY_ROAD_SHOULDER + _rng.randf_range(-0.2, 0.2))
+		_spawn_prop_from_slug("fence_post", x1, z, scenery_root)
+		_spawn_prop_from_slug("fence_post", x2, z + 0.8, scenery_root)
+		return
 	# Iter 112: two posts + a connecting horizontal rail. Reads as a
 	# fence section instead of two unrelated sticks. Slight per-post
 	# height variance gives a hand-built look.
@@ -577,6 +586,13 @@ func _spawn_fence_post(side: float, z: float) -> void:
 	scenery_root.add_child(rail)
 
 func _spawn_rock(side: float, z: float) -> void:
+	# Iter 131: try sprite billboards first. Small vs large picked by
+	# random so the road has a mix of pebbles and boulders.
+	var rock_slug: String = "rock_small" if _rng.randf() < 0.7 else "rock_large"
+	if ResourceLoader.exists(PROP_TEX_REGISTRY[rock_slug].path):
+		var rx: float = side * (SCENERY_ROAD_SHOULDER + _rng.randf_range(0.3, 2.5))
+		_spawn_prop_from_slug(rock_slug, rx, z, scenery_root)
+		return
 	# Iter 112: per-rock color jitter + random Y rotation breaks up the
 	# repetitive look. Asymmetric x/z scale makes rocks look like rocks
 	# instead of squashed marbles.
@@ -608,6 +624,19 @@ func _spawn_rock(side: float, z: float) -> void:
 	scenery_root.add_child(rock)
 
 func _spawn_cactus_scenery(side: float, z: float) -> void:
+	# Iter 131: try sprite billboard first — pick from 3 variants based on
+	# which PNGs the user has generated. Falls back to CSG composition if
+	# no cactus PNGs found.
+	var cactus_slugs: Array[String] = ["cactus_saguaro", "cactus_barrel", "cactus_prickly"]
+	var available: Array[String] = []
+	for s in cactus_slugs:
+		if ResourceLoader.exists(PROP_TEX_REGISTRY[s].path):
+			available.append(s)
+	if available.size() > 0:
+		var slug: String = available[_rng.randi() % available.size()]
+		var cx: float = side * (SCENERY_ROAD_SHOULDER + _rng.randf_range(1.0, 4.0))
+		_spawn_prop_from_slug(slug, cx, z, scenery_root)
+		return
 	# Iter 112: three cactus variants. Saguaro (tall + arms), barrel
 	# cactus (squat round), prickly pear (stacked flat ovals). All share
 	# the same green palette but their silhouettes are distinct enough
@@ -677,6 +706,11 @@ func _spawn_cactus_scenery(side: float, z: float) -> void:
 	scenery_root.add_child(cactus)
 
 func _spawn_scrub(side: float, z: float) -> void:
+	# Iter 131: try sprite billboard first.
+	if ResourceLoader.exists(PROP_TEX_REGISTRY["scrub"].path):
+		var sx: float = side * (SCENERY_ROAD_SHOULDER + _rng.randf_range(0.5, 5.0))
+		_spawn_prop_from_slug("scrub", sx, z, scenery_root)
+		return
 	# Sagebrush — low matted sphere flattened on y.
 	var scrub := CSGSphere3D.new()
 	scrub.radius = _rng.randf_range(0.35, 0.55)
@@ -708,6 +742,22 @@ func _spawn_building(side: float, z: float) -> void:
 		_spawn_building_one(side, z - 8.0)
 
 func _spawn_building_one(side: float, z: float) -> void:
+	# Iter 131: try sprite billboard first. 5 building variants — saloon,
+	# general store, bank, jail, stables. Pick a random one of those the
+	# user has generated. If none available, fall back to CSG-composed
+	# building (iter 112 false-front + gable + awning + label).
+	var bld_slugs: Array[String] = [
+		"building_saloon", "building_general_store", "building_bank",
+		"building_jail", "building_stables"]
+	var available: Array[String] = []
+	for s in bld_slugs:
+		if ResourceLoader.exists(PROP_TEX_REGISTRY[s].path):
+			available.append(s)
+	if available.size() > 0:
+		var slug: String = available[_rng.randi() % available.size()]
+		var bx: float = side * (SCENERY_FAR_BAND + _rng.randf_range(-1.0, 1.5))
+		_spawn_prop_from_slug(slug, bx, z, scenery_root)
+		return
 	var building := Node3D.new()
 	# Body: tall + narrow (4.5w × 4.5h × 2.5d) — Western false-front
 	# style, much more vertical than the iter 111 cube.
@@ -2665,6 +2715,68 @@ func _make_breathing_prop(
 # Iter 130: 64×96 transparent-checker placeholder texture for props
 # that don't yet have a real PNG. Filled procedurally on first call.
 var _PLACEHOLDER_PROP_TEX: Texture2D = null
+
+# Iter 131: NB2-generated prop PNG slot registry. Each entry declares
+# the expected file path + nominal world size + per-type sway params.
+# When user drops a real PNG at the listed path, it slots into the
+# breathing system automatically (no code changes needed). Missing
+# PNGs fall back to the magenta-checker placeholder so it's obvious
+# what's not yet generated.
+#
+# All paths under res://assets/sprites/props/ — keep that directory
+# clean so the user can rsync NB2 batches in/out without affecting
+# character sprites in res://assets/sprites/.
+const PROP_TEX_REGISTRY: Dictionary = {
+	# Cacti — 3 variants for visual variety along the road shoulder.
+	"cactus_saguaro":  {"path": "res://assets/sprites/props/cactus_saguaro.png",  "w": 1.4, "h": 2.8, "sway_amp": 0.04, "bob_amp": 0.012},
+	"cactus_barrel":   {"path": "res://assets/sprites/props/cactus_barrel.png",   "w": 1.2, "h": 1.4, "sway_amp": 0.02, "bob_amp": 0.020},
+	"cactus_prickly":  {"path": "res://assets/sprites/props/cactus_prickly.png",  "w": 1.3, "h": 1.6, "sway_amp": 0.03, "bob_amp": 0.018},
+	# Rocks (mostly static; tiny bob)
+	"rock_small":      {"path": "res://assets/sprites/props/rock_small.png",      "w": 0.8, "h": 0.6, "sway_amp": 0.0,  "bob_amp": 0.008},
+	"rock_large":      {"path": "res://assets/sprites/props/rock_large.png",      "w": 1.4, "h": 1.1, "sway_amp": 0.0,  "bob_amp": 0.006},
+	# Fence post (rigid, slight sway as if wind hits it)
+	"fence_post":      {"path": "res://assets/sprites/props/fence_post.png",      "w": 0.4, "h": 1.1, "sway_amp": 0.05, "bob_amp": 0.0},
+	# Scrub / sagebrush — most flexible, biggest sway
+	"scrub":           {"path": "res://assets/sprites/props/scrub.png",           "w": 1.0, "h": 0.6, "sway_amp": 0.10, "bob_amp": 0.022},
+	# Buildings — near-zero sway (heavy timber doesn't breathe), tiny bob
+	"building_saloon":         {"path": "res://assets/sprites/props/building_saloon.png",         "w": 4.5, "h": 5.5, "sway_amp": 0.003, "bob_amp": 0.004},
+	"building_general_store":  {"path": "res://assets/sprites/props/building_general_store.png",  "w": 4.5, "h": 5.5, "sway_amp": 0.003, "bob_amp": 0.004},
+	"building_bank":           {"path": "res://assets/sprites/props/building_bank.png",           "w": 4.5, "h": 5.5, "sway_amp": 0.003, "bob_amp": 0.004},
+	"building_jail":           {"path": "res://assets/sprites/props/building_jail.png",           "w": 4.5, "h": 5.0, "sway_amp": 0.003, "bob_amp": 0.004},
+	"building_stables":        {"path": "res://assets/sprites/props/building_stables.png",        "w": 5.0, "h": 4.5, "sway_amp": 0.003, "bob_amp": 0.004},
+	# Tumbleweed — for FUTURE conversion of obstacle CSGSphere. Tumble
+	# applied via UV-rotation in a shader variant (iter 132+).
+	"tumbleweed":      {"path": "res://assets/sprites/props/tumbleweed.png",      "w": 1.4, "h": 1.4, "sway_amp": 0.0,  "bob_amp": 0.020},
+}
+
+# Iter 131: try-load a prop texture by slug. Returns null if the file
+# isn't there yet (user hasn't generated it). Caller wraps with the
+# placeholder fallback inside _make_breathing_prop.
+func _load_prop_tex(slug: String) -> Texture2D:
+	var entry: Variant = PROP_TEX_REGISTRY.get(slug, null)
+	if entry == null:
+		return null
+	var path: String = entry.path
+	if not ResourceLoader.exists(path):
+		return null
+	return load(path) as Texture2D
+
+# Iter 131: convenience — spawn a fully-configured breathing prop by
+# slug (looks up registry entry for w/h/sway/bob). Falls back to
+# placeholder texture if PNG missing. Returns MeshInstance3D positioned
+# with bottom at y=0 so the caller just sets x/z.
+func _spawn_prop_from_slug(slug: String, x: float, z: float, parent: Node) -> MeshInstance3D:
+	var entry: Variant = PROP_TEX_REGISTRY.get(slug, null)
+	if entry == null:
+		push_warning("unknown prop slug: %s" % slug)
+		return null
+	var tex: Texture2D = _load_prop_tex(slug)
+	var prop: MeshInstance3D = _make_breathing_prop(
+		tex, entry.w, entry.h, entry.sway_amp, 1.5, entry.bob_amp, 2.2)
+	# Plane is centered on origin; raise so bottom touches y=0
+	prop.position = Vector3(x, entry.h * 0.5, z)
+	parent.add_child(prop)
+	return prop
 
 func _ensure_placeholder_prop_tex() -> void:
 	if _PLACEHOLDER_PROP_TEX != null:
