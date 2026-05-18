@@ -47,28 +47,59 @@ uniform float time_offset : hint_range(0.0, 6.283185) = 0.0;
 uniform float damage_strength : hint_range(0.0, 1.0) = 0.0;
 uniform float bonk_squash : hint_range(0.5, 1.5) = 1.0;
 
+// Iter 132: glitz layer — emission pulse / hue cycle / rotation / halo.
+//   pulse_glow      — emission amplitude on a sin(TIME*4) wave
+//   hue_cycle       — slow color rotation amount (0..1)
+//   halo_strength   — additive bright fringe behind silhouette
+//   sparkle_orbit   — texture-coordinate noise glitter intensity
+//   rotation_mode   — 0=none (keeps Y-billboard), 1=UV-spin (texture spins
+//                     in place but billboard frame is static), 2=Y-spin
+//                     (sprite physically rotates around vertical axis,
+//                     billboard disabled, flashes edge-on each half-rotation)
+//   rotation_speed  — rotations per second baseline
+uniform float pulse_glow : hint_range(0.0, 2.0) = 0.0;
+uniform float hue_cycle : hint_range(0.0, 1.0) = 0.0;
+uniform float halo_strength : hint_range(0.0, 2.0) = 0.0;
+uniform float sparkle_orbit : hint_range(0.0, 1.0) = 0.0;
+uniform int rotation_mode : hint_range(0, 2) = 0;
+uniform float rotation_speed : hint_range(0.0, 5.0) = 1.0;
+
 void vertex() {
-	// Y-axis billboard: face camera around vertical axis only. Keeps the
-	// prop's "up" pointing world-up so sway reads correctly.
-	vec3 cam_pos = INV_VIEW_MATRIX[3].xyz;
+	// Iter 132: rotation_mode 2 (Y-SPIN) disables billboard — the plane
+	// physically rotates around its vertical axis. Edge-on every half
+	// rotation gives the "paper sign spinning in wind" effect.
 	vec3 obj_pos = MODEL_MATRIX[3].xyz;
-	vec3 to_cam = cam_pos - obj_pos;
-	to_cam.y = 0.0;
-	if (length(to_cam) < 0.001) { to_cam = vec3(0, 0, 1); }
-	to_cam = normalize(to_cam);
-	vec3 up = vec3(0.0, 1.0, 0.0);
-	vec3 right = normalize(cross(up, to_cam));
-	mat3 billboard_rot = mat3(right, up, to_cam);
-	// Preserve original mesh scale
 	vec3 scale = vec3(
 		length(MODEL_MATRIX[0].xyz),
 		length(MODEL_MATRIX[1].xyz),
 		length(MODEL_MATRIX[2].xyz));
-	MODELVIEW_MATRIX = VIEW_MATRIX * mat4(
-		vec4(billboard_rot[0] * scale.x, 0.0),
-		vec4(billboard_rot[1] * scale.y, 0.0),
-		vec4(billboard_rot[2] * scale.z, 0.0),
-		vec4(obj_pos, 1.0));
+	if (rotation_mode == 2) {
+		float ang = TIME * rotation_speed * 6.2831853;
+		mat3 spin_rot = mat3(
+			vec3(cos(ang), 0.0, sin(ang)),
+			vec3(0.0, 1.0, 0.0),
+			vec3(-sin(ang), 0.0, cos(ang)));
+		MODELVIEW_MATRIX = VIEW_MATRIX * mat4(
+			vec4(spin_rot[0] * scale.x, 0.0),
+			vec4(spin_rot[1] * scale.y, 0.0),
+			vec4(spin_rot[2] * scale.z, 0.0),
+			vec4(obj_pos, 1.0));
+	} else {
+		// Y-axis billboard: face camera around vertical axis only.
+		vec3 cam_pos = INV_VIEW_MATRIX[3].xyz;
+		vec3 to_cam = cam_pos - obj_pos;
+		to_cam.y = 0.0;
+		if (length(to_cam) < 0.001) { to_cam = vec3(0, 0, 1); }
+		to_cam = normalize(to_cam);
+		vec3 up = vec3(0.0, 1.0, 0.0);
+		vec3 right = normalize(cross(up, to_cam));
+		mat3 billboard_rot = mat3(right, up, to_cam);
+		MODELVIEW_MATRIX = VIEW_MATRIX * mat4(
+			vec4(billboard_rot[0] * scale.x, 0.0),
+			vec4(billboard_rot[1] * scale.y, 0.0),
+			vec4(billboard_rot[2] * scale.z, 0.0),
+			vec4(obj_pos, 1.0));
+	}
 
 	float t = TIME + time_offset;
 
@@ -96,12 +127,45 @@ void vertex() {
 }
 
 void fragment() {
-	vec4 tex = texture(albedo_tex, UV) * modulate;
+	// Iter 132: UV-spin (rotation_mode 1) rotates texture coordinates
+	// around (0.5, 0.5) — texture spins inside the static billboard frame.
+	vec2 uv = UV;
+	if (rotation_mode == 1) {
+		float ang = TIME * rotation_speed * 6.2831853;
+		vec2 c = vec2(0.5);
+		vec2 d = uv - c;
+		uv = c + vec2(d.x * cos(ang) - d.y * sin(ang),
+		              d.x * sin(ang) + d.y * cos(ang));
+	}
+	vec4 tex = texture(albedo_tex, uv) * modulate;
 	if (tex.a < alpha_cutoff) { discard; }
 	ALBEDO = tex.rgb;
 	ALPHA = tex.a;
 	// damage tint: flash white on impact, decay with damage_strength
 	if (damage_strength > 0.001) {
 		ALBEDO = mix(ALBEDO, vec3(1.0, 1.0, 0.85), damage_strength * 0.6);
+	}
+	// Iter 132: glitz layers
+	if (pulse_glow > 0.001) {
+		float pulse = sin(TIME * 4.0) * 0.5 + 0.5;
+		EMISSION = ALBEDO * pulse * pulse_glow;
+	}
+	if (hue_cycle > 0.001) {
+		// Cheap "hue cycle": cyclic permutation of RGB channels at low amplitude
+		vec3 cycled = mix(ALBEDO.rgb, ALBEDO.brg, sin(TIME * 1.5) * 0.5 + 0.5);
+		cycled = mix(cycled, cycled.gbr, sin(TIME * 1.5 + 2.094) * 0.3);
+		ALBEDO = mix(ALBEDO, cycled, hue_cycle);
+	}
+	if (halo_strength > 0.001) {
+		// Bright outer fringe: ALPHA close to alpha_cutoff = edge pixels
+		float edge = smoothstep(alpha_cutoff, alpha_cutoff + 0.15, tex.a) *
+		             (1.0 - smoothstep(alpha_cutoff + 0.15, alpha_cutoff + 0.45, tex.a));
+		EMISSION += vec3(1.0, 0.85, 0.40) * edge * halo_strength * (0.7 + sin(TIME * 3.0) * 0.3);
+	}
+	if (sparkle_orbit > 0.001) {
+		// Glittery noise dots
+		float n = fract(sin(dot(uv * 80.0, vec2(12.9898, 78.233)) + TIME * 3.0) * 43758.5453);
+		float glitter = step(0.985, n);
+		EMISSION += vec3(1.0, 1.0, 0.85) * glitter * sparkle_orbit * 2.0;
 	}
 }

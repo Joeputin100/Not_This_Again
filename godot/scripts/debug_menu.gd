@@ -113,6 +113,13 @@ func _build_sections() -> void:
 		btn.pressed.connect(_on_preview_hero.bind(h))
 		content.add_child(btn)
 
+	# Iter 132: glitz/spin picker — pick the visual treatment for each
+	# bonus pickup type via live 3D preview, saved automatically.
+	_add_section_header("GLITZ PICKER")
+	var glitz_btn := _make_button("PICK BONUS GLITZ + SPIN PRESETS")
+	glitz_btn.pressed.connect(_on_open_glitz_picker)
+	content.add_child(glitz_btn)
+
 	_add_section_header("TEST RANGE")
 	var range_btn := _make_button("OPEN CACTUS FIELD (weapon + posse test)")
 	range_btn.pressed.connect(_on_open_test_range)
@@ -181,6 +188,11 @@ func _on_preview_hero(slug: String) -> void:
 	DebugPreview.pending_posse_unlock = slug
 	DebugLog.add("debug: preview hero %s" % slug)
 	get_tree().change_scene_to_file("res://scenes/level_3d.tscn")
+
+func _on_open_glitz_picker() -> void:
+	AudioBus.play_tap()
+	DebugLog.add("debug: open glitz picker")
+	get_tree().change_scene_to_file("res://scenes/glitz_picker.tscn")
 
 func _on_open_test_range() -> void:
 	AudioBus.play_tap()
