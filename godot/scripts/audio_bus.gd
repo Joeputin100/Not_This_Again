@@ -24,6 +24,13 @@ var _gate_pass_player: AudioStreamPlayer
 var _gunfire_players: Array[AudioStreamPlayer] = []
 var _gunfire_index: int = 0
 
+# Iter 139: ElevenLabs voice-overs for FlourishBanner.spawn() — Matilda
+# (free-tier "Knowledgable, Professional, upbeat") as a placeholder for
+# Bill for Books (8Es4...) which needs paid-tier API. Lazy-loaded so
+# we don't pay 21 stream preload costs at boot — each slug warms its
+# own AudioStreamPlayer on first play, reuses it after.
+var _flourish_players: Dictionary = {}  # slug:String -> AudioStreamPlayer
+
 func _ready() -> void:
 	_tap_player = _make_player(TAP_SOUND)
 	_gate_pass_player = _make_player(GATE_PASS_SOUND)
@@ -64,3 +71,30 @@ func stop_gunfire() -> void:
 	for p in _gunfire_players:
 		if p and p.playing:
 			p.stop()
+
+# Iter 139: play a flourish voice clip by slug — matches the .mp3 filename
+# without extension or 'flourish_' prefix. Eg slug='sugar_cascade' →
+# res://assets/audio/flourishes/flourish_sugar_cascade.mp3. Silently no-ops
+# if the file is missing (so a typo in spawn() doesn't crash a level).
+func play_flourish(slug: String) -> void:
+	if not _flourish_players.has(slug):
+		var path := "res://assets/audio/flourishes/flourish_%s.mp3" % slug
+		if not ResourceLoader.exists(path):
+			push_warning("flourish voice missing: %s" % path)
+			_flourish_players[slug] = null
+			return
+		var stream: AudioStream = load(path)
+		if stream == null:
+			_flourish_players[slug] = null
+			return
+		var p := AudioStreamPlayer.new()
+		p.stream = stream
+		p.bus = "Master"
+		# Voice-over volume slightly above SFX — these are the "money moment"
+		# announcements and should cut through the gunfire mix.
+		p.volume_db = 8.0
+		add_child(p)
+		_flourish_players[slug] = p
+	var player: AudioStreamPlayer = _flourish_players[slug]
+	if player != null:
+		player.play()

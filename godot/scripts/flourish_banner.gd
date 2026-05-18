@@ -117,6 +117,12 @@ static func spawn(parent: Node, preset_name: String, shake_source: Node = null) 
 	if shake_source and "shake" in shake_source and shake_source.shake \
 			and shake_source.shake.has_method("add_trauma"):
 		shake_source.shake.add_trauma(data.trauma)
+	# Iter 139: ElevenLabs voice-over per banner. Slug derived from the
+	# trigger key — drop the trailing "!" if any, lowercase. So
+	# "TASTY!" → tasty, "JELLY_FRENZY" → jelly_frenzy, "COUNT_3" → count_3.
+	if Engine.has_singleton("AudioBus") or get_node_or_null("/root/AudioBus"):
+		var slug: String = preset_name.replace("!", "").to_lower()
+		AudioBus.play_flourish(slug)
 
 # Iter 89/91: max horizontal width the banner text should occupy. The
 # iter 44 scale-pop tween briefly overshoots to scale 1.15× before
