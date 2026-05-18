@@ -381,12 +381,18 @@ func _ready() -> void:
 		elif DebugPreview.pending_captive_hero != "":
 			var ch: String = DebugPreview.pending_captive_hero
 			var cc: String = DebugPreview.pending_captive_container
+			var pc: int = DebugPreview.pending_pushed_count
 			DebugPreview.pending_captive_hero = ""
 			DebugPreview.pending_captive_container = ""
+			DebugPreview.pending_pushed_count = 0
 			_preview_mode = true
 			_level_state = LevelState.FINISHED
-			DebugLog.add("level_3d: captive preview %s in %s" % [ch, cc])
-			call_deferred("_preview_captive_3d", ch, cc)
+			if pc > 0:
+				DebugLog.add("level_3d: pushed wagon preview %s/%s × %d pushers" % [ch, cc, pc])
+				call_deferred("_preview_pushed_wagon_3d", ch, cc, pc)
+			else:
+				DebugLog.add("level_3d: captive preview %s in %s" % [ch, cc])
+				call_deferred("_preview_captive_3d", ch, cc)
 	# Iter 79: initial HUD render.
 	_refresh_hud()
 	# Iter 77: win-modal Retry button.
@@ -2738,6 +2744,25 @@ func _spawn_captive_hero(container_slug: String, hero_slug: String,
 
 	return captive
 
+# Iter 134: handle bullet hitting a pusher — instant kill, fade out.
+func _pusher_take_damage(pusher: Node3D) -> void:
+	if pusher.get_meta("is_dead", false):
+		return
+	pusher.set_meta("is_dead", true)
+	var sprite: Sprite3D = pusher.get_meta("sprite", null)
+	if sprite != null and is_instance_valid(sprite):
+		var tw: Tween = sprite.create_tween().set_parallel(true)
+		tw.tween_property(sprite, "modulate", Color(1.5, 0.3, 0.3, 0.0), 0.30)
+		tw.tween_property(sprite, "position:y", sprite.position.y - 0.4, 0.30)
+	# Cleanup after fade
+	var free_tw: Tween = create_tween()
+	free_tw.tween_interval(0.35)
+	free_tw.tween_callback(pusher.queue_free)
+	_spawn_popup_3d(pusher.position + Vector3(0, 1.2, 0),
+		"-1", Color(1, 0.55, 0.30, 1), 36)
+	_hits += 1
+	_refresh_hud()
+
 # Iter 133: handle bullet hitting a captive — damages container, on
 # HP=0 triggers the release ceremony. Called from the bullet/outlaw
 # collision loop when outlaw.get_meta("is_captive") is true.
@@ -2759,10 +2784,17 @@ func _captive_take_damage(captive: Node3D, bullet_pos: Vector3) -> void:
 		var flash_tw: Tween = container_sprite.create_tween()
 		flash_tw.tween_property(container_sprite, "modulate", Color.WHITE, 0.12)
 	if hp <= 0:
-		_release_captive_hero(captive)
+		_release_captive_hero_pushed_aware(captive)
 
 # Iter 133: container shatters → hero pops out → flips to face forward
 # → joins posse formation.
+# Iter 134: pushed wagon's release adds pusher-melee conversion.
+func _release_captive_hero_pushed_aware(captive: Node3D) -> void:
+	if captive.get_meta("is_pushed", false):
+		captive.set_meta("is_pushed", false)
+		_convert_pushers_to_melee(captive)
+	_release_captive_hero(captive)
+
 func _release_captive_hero(captive: Node3D) -> void:
 	var hero_slug: String = captive.get_meta("hero_slug", "marshmallow_sheriff")
 	var hero_sprite: Sprite3D = captive.get_meta("hero_sprite", null)
@@ -2825,6 +2857,226 @@ func _preview_captive_3d(hero_slug: String, container_slug: String) -> void:
 	# Switch state back to PLAYING so cowboy can fire at it
 	_level_state = LevelState.PLAYING
 	_preview_mode = false  # let firing happen normally
+
+# ============================================================================
+# Iter 134: Pushed-wagon mob mechanic.
+# A captive hero in a wagon is being shoved toward a cliff by 10-100
+# beagle-boy pushers. Player must allocate bullets across attacking
+# outlaws, pushers (to slow the wagon), and the wagon itself (to free
+# the hero before it goes over).
+#
+# v1 scope (this iter):
+#   - Linear push only — wagon moves in cliff direction at speed
+#     proportional to alive-pusher count. Asymmetric tug-of-war
+#     (kill-corner-to-swerve) deferred to v2.
+#   - Pushers are 1-shot kill, smaller sprite (~70% normal outlaw)
+#   - Pusher sprite: pusher_left if on wagon's right side, pusher_right
+#     if on wagon's left side (they face the wagon)
+#   - Wagon HP scales with hero tier (uses iter 133 CONTAINER_HP_BY_TIER)
+#   - HP reaches 0 → release ceremony from iter 133 + pushers convert
+#     to melee mode (pusher_melee sprite, rush posse)
+#   - Wagon position.x > CLIFF_X → hero dies, pushers convert to melee
+#   - Visual: cliff edge marker at CLIFF_X (rope + red zone tint)
+# ============================================================================
+
+const CLIFF_X: float = 7.0
+const PUSH_FORCE_PER_PUSHER: float = 0.18  # world units / sec
+const PUSHER_TEX_LEFT := "res://assets/sprites/props/pusher_left.png"
+const PUSHER_TEX_RIGHT := "res://assets/sprites/props/pusher_right.png"
+const PUSHER_TEX_MELEE := "res://assets/sprites/props/pusher_melee.png"
+const PUSHER_HEIGHT_WORLD: float = 1.2  # ~70% of regular outlaw
+const PUSHER_MELEE_DPS: float = 0.5  # posse members / sec while in contact
+const PUSHER_MELEE_RANGE: float = 1.5
+
+func _spawn_pushed_wagon(hero_slug: String, container_slug: String,
+		n_pushers: int, hero_tier: int = 2) -> Node3D:
+	# Reuse iter 133 captive hero spawn; mark it as pushed.
+	var captive: Node3D = _spawn_captive_hero(container_slug, hero_slug,
+		0.0, -5.0, hero_tier)
+	captive.set_meta("is_pushed", true)
+	# Pusher tracking via meta array (we'd lose references if pushers were
+	# children of captive — they need to be in outlaws_root for the
+	# existing bullet collision loop to find them).
+	var pushers: Array = []
+	captive.set_meta("pushers", pushers)
+	# Spawn pushers in a grid behind + flanking the wagon. For visual
+	# density at 10-100 count, lay out cols × rows behind the wagon.
+	var cols: int = clampi(int(ceil(sqrt(float(n_pushers)))), 3, 8)
+	var rows: int = int(ceil(float(n_pushers) / float(cols)))
+	for i in range(n_pushers):
+		var col: int = i % cols
+		var row: int = i / cols
+		# col centered around 0, row stacking BEHIND wagon (-x = away from cliff)
+		var ox: float = -1.5 - float(row) * 0.7
+		var oz: float = (float(col) - float(cols - 1) * 0.5) * 0.55
+		var is_left_side: bool = oz < 0.0  # left side of wagon
+		var pusher: Node3D = _spawn_pusher(
+			captive.position + Vector3(ox, 0, oz), is_left_side)
+		pushers.append(pusher)
+	captive.set_meta("pushers", pushers)
+	# Cliff marker — red zone strip at CLIFF_X with rope
+	_spawn_cliff_marker(captive.position.z)
+	# UI: 'PUSHED' label above captive (replaces TRAPPED!)
+	var trapped: Label3D = captive.get_meta("trapped_label", null)
+	if trapped != null:
+		trapped.text = "PUSHED!"
+		trapped.modulate = Color(1.0, 0.30, 0.30, 1.0)
+	DebugLog.add("pushed wagon: %s in %s with %d pushers" % [hero_slug, container_slug, n_pushers])
+	return captive
+
+func _spawn_pusher(world_pos: Vector3, is_left_side: bool) -> Node3D:
+	var p := Node3D.new()
+	p.position = world_pos
+	p.set_meta("hp", 1)
+	p.set_meta("is_pusher", true)
+	p.set_meta("is_dead", false)
+	p.set_meta("state", "pushing")  # or "melee" after release
+	# Critical: also set generic outlaw flags so the existing bullet
+	# loop's collision check finds it. fire_timer = huge → never fires.
+	p.set_meta("fire_timer", 999999.0)
+	outlaws_root.add_child(p)
+	var sprite := Sprite3D.new()
+	# Pusher faces the wagon; pushers ON the LEFT push toward the right
+	# (so use pusher_right sprite facing right). Vice versa.
+	var tex_path: String = PUSHER_TEX_RIGHT if is_left_side else PUSHER_TEX_LEFT
+	if ResourceLoader.exists(tex_path):
+		sprite.texture = load(tex_path)
+		sprite.pixel_size = PUSHER_HEIGHT_WORLD / float(sprite.texture.get_height())
+	sprite.billboard = 1
+	sprite.alpha_cut = 1
+	sprite.position = Vector3(0, PUSHER_HEIGHT_WORLD * 0.5, 0)
+	p.add_child(sprite)
+	p.set_meta("sprite", sprite)
+	p.set_meta("is_left_side", is_left_side)
+	return p
+
+# Iter 134: cliff marker — a red ground strip at the cliff edge to
+# telegraph the danger zone to the player.
+func _spawn_cliff_marker(wagon_z: float) -> void:
+	var marker := MeshInstance3D.new()
+	var plane := PlaneMesh.new()
+	plane.size = Vector2(0.5, 8.0)
+	marker.mesh = plane
+	var mat := StandardMaterial3D.new()
+	mat.albedo_color = Color(1.0, 0.20, 0.10, 0.85)
+	mat.emission_enabled = true
+	mat.emission = Color(1.0, 0.20, 0.10, 1.0)
+	mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	marker.material_override = mat
+	marker.position = Vector3(CLIFF_X, 0.05, wagon_z)
+	# Pulse the marker so it draws the eye
+	var pulse_tw: Tween = marker.create_tween().set_loops()
+	pulse_tw.tween_property(marker, "scale", Vector3(1.2, 1.0, 1.0), 0.5)
+	pulse_tw.tween_property(marker, "scale", Vector3(1.0, 1.0, 1.0), 0.5)
+	popups_root.add_child(marker)
+
+# Iter 134: every frame, advance each pushed-wagon by alive-pusher count.
+# Called from _process during PLAYING/BOSS.
+func _update_pushed_wagons(delta: float) -> void:
+	for child in outlaws_root.get_children():
+		if not child.get_meta("is_pushed", false):
+			continue
+		# Skip if hero already released (captive will queue_free after ceremony)
+		if not is_instance_valid(child):
+			continue
+		var captive: Node3D = child
+		var pushers: Array = captive.get_meta("pushers", [])
+		var alive: int = 0
+		for p in pushers:
+			if is_instance_valid(p) and not p.get_meta("is_dead", false) and \
+					p.get_meta("state", "pushing") == "pushing":
+				alive += 1
+		if alive == 0:
+			continue
+		captive.position.x += float(alive) * PUSH_FORCE_PER_PUSHER * delta
+		# Move pushers with the wagon (they're chasing it)
+		for p in pushers:
+			if is_instance_valid(p) and not p.get_meta("is_dead", false) and \
+					p.get_meta("state", "pushing") == "pushing":
+				p.position.x += float(alive) * PUSH_FORCE_PER_PUSHER * delta
+		# Cliff check
+		if captive.position.x > CLIFF_X:
+			_wagon_fall_off_cliff(captive)
+	# Pusher melee phase: pushers in 'melee' state slowly chase cowboy
+	# and deal damage when in range.
+	for p in outlaws_root.get_children():
+		if not p.get_meta("is_pusher", false):
+			continue
+		if p.get_meta("is_dead", false):
+			continue
+		if p.get_meta("state", "pushing") != "melee":
+			continue
+		# Move toward cowboy
+		var to_cb: Vector3 = cowboy_3d.position - p.position
+		to_cb.y = 0
+		var dist: float = to_cb.length()
+		if dist > 0.001:
+			p.position += to_cb.normalized() * 3.0 * delta
+		if dist < PUSHER_MELEE_RANGE:
+			# Apply damage tick-style
+			var accum: float = p.get_meta("melee_accum", 0.0) + delta * PUSHER_MELEE_DPS
+			if accum >= 1.0:
+				p.set_meta("melee_accum", accum - 1.0)
+				_posse_count_3d = maxi(0, _posse_count_3d - 1)
+				_sync_followers_to_count(_posse_count_3d)
+				_refresh_hud()
+			else:
+				p.set_meta("melee_accum", accum)
+
+# Iter 134: wagon went over cliff. Hero "dies", pushers convert to melee
+# to harass the player as punishment for losing the hero.
+func _wagon_fall_off_cliff(captive: Node3D) -> void:
+	if not is_instance_valid(captive):
+		return
+	captive.set_meta("is_pushed", false)  # stop further updates
+	# Falling tween — wagon drops below ground + spins
+	var fall_tw: Tween = captive.create_tween().set_parallel(true)
+	fall_tw.tween_property(captive, "position:y", -3.0, 0.7) \
+		.set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_IN)
+	fall_tw.tween_property(captive, "rotation:z", -PI * 0.5, 0.7) \
+		.set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_IN)
+	# Narrator beat
+	var ui_canvas: Node = get_node_or_null("UI")
+	if ui_canvas != null:
+		FlourishBanner.spawn(ui_canvas, "HERO LOST!")
+	_spawn_popup_3d(captive.position + Vector3(0, 2.0, 0),
+		"-200 PENALTY", Color(1.0, 0.20, 0.10, 1), 64)
+	_add_bounty(-200)
+	# Convert all pushers to melee mode
+	_convert_pushers_to_melee(captive)
+	# Cleanup captive after fall animation
+	var cleanup_tw: Tween = create_tween()
+	cleanup_tw.tween_interval(1.0)
+	cleanup_tw.tween_callback(captive.queue_free)
+
+# Iter 134: when hero released OR cliff fall, all alive pushers swap
+# sprite to pusher_melee and start hunting the posse.
+func _convert_pushers_to_melee(captive: Node3D) -> void:
+	var pushers: Array = captive.get_meta("pushers", [])
+	for p in pushers:
+		if not is_instance_valid(p) or p.get_meta("is_dead", false):
+			continue
+		p.set_meta("state", "melee")
+		p.set_meta("melee_accum", 0.0)
+		var sprite: Sprite3D = p.get_meta("sprite", null)
+		if sprite != null and is_instance_valid(sprite) and ResourceLoader.exists(PUSHER_TEX_MELEE):
+			sprite.texture = load(PUSHER_TEX_MELEE)
+			sprite.pixel_size = PUSHER_HEIGHT_WORLD / float(sprite.texture.get_height())
+
+# Iter 134: extended _release_captive_hero — when called on a pushed
+# wagon, also convert pushers to melee. We wrap by checking is_pushed.
+# Done via post-call check below since iter 133's _release_captive_hero
+# is reused as-is.
+
+# Iter 134: debug preview entry for pushed wagon.
+func _preview_pushed_wagon_3d(hero_slug: String, container_slug: String, n_pushers: int) -> void:
+	var ui_canvas: Node = get_node_or_null("UI")
+	if ui_canvas != null:
+		FlourishBanner.spawn(ui_canvas, "PUSHED WAGON")
+	await get_tree().create_timer(0.5).timeout
+	_spawn_pushed_wagon(hero_slug, container_slug, n_pushers, 2)
+	_level_state = LevelState.PLAYING
+	_preview_mode = false
 
 func _spawn_outlaw() -> void:
 	# Iter 116: re-enable video billboard, but this time via SHARED top-
@@ -3278,6 +3530,11 @@ func _process(delta: float) -> void:
 			var dx: float = bullet.position.x - outlaw.position.x
 			var dz: float = bullet.position.z - outlaw.position.z
 			if dx * dx + dz * dz < OUTLAW_HIT_RADIUS_SQ:
+				# Iter 134: pushers route to specialized 1-shot-kill handler.
+				if outlaw.get_meta("is_pusher", false):
+					_pusher_take_damage(outlaw)
+					bullet.queue_free()
+					break
 				# Iter 133: captives route to specialized damage handler
 				# (HP scales with hero tier, no death-stream, release ceremony).
 				if outlaw.get_meta("is_captive", false):

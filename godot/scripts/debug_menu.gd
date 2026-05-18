@@ -129,6 +129,14 @@ func _build_sections() -> void:
 			btn.pressed.connect(_on_preview_captive.bind(h, c))
 			content.add_child(btn)
 
+	# Iter 134: pushed-wagon previews — 10/25/50/100 beagle pusher counts
+	# for the sheriff in a covered wagon. Tests the mob mechanic.
+	_add_section_header("PUSHED WAGONS (beagle mob)")
+	for n in [10, 25, 50, 100]:
+		var btn := _make_button("SHERIFF in WAGON with %d PUSHERS" % n)
+		btn.pressed.connect(_on_preview_pushed_wagon.bind("marshmallow_sheriff", "wagon_covered", n))
+		content.add_child(btn)
+
 	_add_section_header("TEST RANGE")
 	var range_btn := _make_button("OPEN CACTUS FIELD (weapon + posse test)")
 	range_btn.pressed.connect(_on_open_test_range)
@@ -208,6 +216,14 @@ func _on_preview_captive(hero_slug: String, container_slug: String) -> void:
 	DebugPreview.pending_captive_hero = hero_slug
 	DebugPreview.pending_captive_container = container_slug
 	DebugLog.add("debug: preview captive %s in %s" % [hero_slug, container_slug])
+	get_tree().change_scene_to_file("res://scenes/level_3d.tscn")
+
+func _on_preview_pushed_wagon(hero_slug: String, container_slug: String, n_pushers: int) -> void:
+	AudioBus.play_tap()
+	DebugPreview.pending_captive_hero = hero_slug
+	DebugPreview.pending_captive_container = container_slug
+	DebugPreview.pending_pushed_count = n_pushers
+	DebugLog.add("debug: preview pushed wagon %s/%s × %d" % [hero_slug, container_slug, n_pushers])
 	get_tree().change_scene_to_file("res://scenes/level_3d.tscn")
 
 func _on_open_test_range() -> void:
