@@ -2309,40 +2309,37 @@ func _spawn_pete() -> void:
 	pete.position = Vector3(0.0, pete_height * 0.5, OBSTACLE_SPAWN_Z + 4.0)
 	pete.set_meta("hp", PETE_HP)
 	boss_root.add_child(pete)
+	# Iter 142: removed static fallback Sprite3D — user reported it was
+	# superimposed over the video billboard creating doubled-image artifact.
+	# The video billboard renders reliably on the device now, so the belt-
+	# and-suspenders is unnecessary.
 	var billboard: Node3D = _make_video_billboard(PETE_IDLE_STREAM, pete_height)
 	pete.add_child(billboard)
-	var pete_png_path := "res://assets/sprites/slippery_pete.png"
-	if ResourceLoader.exists(pete_png_path):
-		var fallback := Sprite3D.new()
-		fallback.texture = load(pete_png_path)
-		fallback.pixel_size = pete_height / float(fallback.texture.get_height())
-		fallback.billboard = 1
-		fallback.alpha_cut = 1
-		fallback.modulate = Color(1, 1, 1, 0.85)
-		pete.add_child(fallback)
-		DebugLog.add("pete: static fallback sprite added (%.1f tall)" % pete_height)
 	DebugLog.add("pete spawned at (%.1f, %.1f, %.1f), HP=%d, height=%.1f" % [pete.position.x, pete.position.y, pete.position.z, PETE_HP, pete_height])
-	# Big "BOSS" label floating above him
+	# Iter 142: label + HP bar positioned ABOVE Pete's head (was inside
+	# the billboard silhouette and hidden). Pete's billboard quad spans
+	# y_local = -pete_height/2 to +pete_height/2 = -3.5 to +3.5. Anything
+	# at y_local < 3.5 sits in front of the video plane and gets blocked.
+	# Push label to 4.5 (clearly above head) and HP bar to 4.0 (just below
+	# label). z offset 0.5 (was 0.01) for clean separation from the
+	# billboard quad to avoid z-fight.
 	var label := Label3D.new()
 	label.text = "SLIPPERY PETE"
 	label.font_size = 80
 	label.outline_size = 14
 	label.modulate = Color(1, 0.45, 0.30, 1)
-	label.position = Vector3(0, 3.2, 0)
+	label.position = Vector3(0, 4.5, 0.5)
 	pete.add_child(label)
-	# Iter 84: HP bar above name. Background bar (dark) + foreground
-	# (red) that shrinks as HP drops. Stored under meta 'hp_fg' so the
-	# bullet-hit handler can refresh it.
 	var hp_bg := CSGBox3D.new()
 	hp_bg.size = Vector3(2.5, 0.25, 0.05)
-	hp_bg.position = Vector3(0, 2.7, 0)
+	hp_bg.position = Vector3(0, 4.0, 0.5)
 	var bg_mat := StandardMaterial3D.new()
 	bg_mat.albedo_color = Color(0.05, 0.05, 0.05, 0.85)
 	hp_bg.material = bg_mat
 	pete.add_child(hp_bg)
 	var hp_fg := CSGBox3D.new()
 	hp_fg.size = Vector3(2.5, 0.20, 0.08)
-	hp_fg.position = Vector3(0, 2.7, 0.01)  # forward of bg to avoid z-fight
+	hp_fg.position = Vector3(0, 4.0, 0.55)
 	var fg_mat := StandardMaterial3D.new()
 	fg_mat.albedo_color = Color(0.95, 0.25, 0.25, 1)
 	fg_mat.emission_enabled = true

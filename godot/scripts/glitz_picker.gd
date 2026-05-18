@@ -30,6 +30,14 @@ const BREATHING_SHADER := preload("res://shaders/breathing_prop.gdshader")
 var _current_bonus: String = "rifle"
 var _preview_mesh: MeshInstance3D = null
 var _preview_halo: MeshInstance3D = null
+# Iter 142: track buttons so we can restyle the selected ones.
+var _bonus_btns: Dictionary = {}    # bonus_slug -> Button
+var _preset_btns: Dictionary = {}   # preset_name -> Button
+
+const SELECTED_BG := Color(0.95, 0.78, 0.35, 1)  # warm amber
+const SELECTED_FG := Color(0.12, 0.08, 0.04, 1)
+const UNSELECTED_BG := Color(0.22, 0.17, 0.10, 1)
+const UNSELECTED_FG := Color(0.92, 0.85, 0.65, 1)
 
 func _ready() -> void:
 	get_tree().set_quit_on_go_back(false)
@@ -50,6 +58,7 @@ func _build_bonus_tabs() -> void:
 		btn.add_theme_font_size_override("font_size", 36)
 		btn.pressed.connect(_on_bonus_tab_pressed.bind(bonus))
 		bonus_tabs.add_child(btn)
+		_bonus_btns[bonus] = btn
 
 func _build_preset_grid() -> void:
 	# Iter 137: 18 presets — keep buttons readable on a 3-col grid.
@@ -64,6 +73,25 @@ func _build_preset_grid() -> void:
 		btn.autowrap_mode = TextServer.AUTOWRAP_OFF
 		btn.pressed.connect(_on_preset_pressed.bind(preset_name))
 		preset_grid.add_child(btn)
+		_preset_btns[preset_name] = btn
+
+# Iter 142: paint the active bonus tab and preset button so user can see
+# which one is currently chosen (user feedback: "make the activated
+# buttons change color").
+func _restyle_buttons() -> void:
+	var active_preset: String = GlitzPrefs.get_preset_for_bonus(_current_bonus)
+	for bonus in _bonus_btns.keys():
+		var b: Button = _bonus_btns[bonus]
+		var sel := (bonus == _current_bonus)
+		b.add_theme_color_override("font_color", SELECTED_FG if sel else UNSELECTED_FG)
+		b.add_theme_color_override("font_color_hover", SELECTED_FG if sel else UNSELECTED_FG)
+		b.modulate = Color(1.20, 1.10, 0.85, 1) if sel else Color(1, 1, 1, 1)
+	for preset in _preset_btns.keys():
+		var pb: Button = _preset_btns[preset]
+		var sel := (preset == active_preset)
+		pb.add_theme_color_override("font_color", SELECTED_FG if sel else UNSELECTED_FG)
+		pb.add_theme_color_override("font_color_hover", SELECTED_FG if sel else UNSELECTED_FG)
+		pb.modulate = Color(1.20, 1.10, 0.85, 1) if sel else Color(1, 1, 1, 1)
 
 # Spawns the preview billboard mesh (uses bonus_crate_rifle texture
 # as a placeholder for whichever bonus type is selected; texture swaps
@@ -123,6 +151,8 @@ func _apply_current_selection() -> void:
 	GlitzPrefs.apply_preset_to_material(preset, mat, speed_mult)
 	status_label.text = "BONUS: %s    PRESET: %s    SPEED: %.2f×    (saved)" % [
 		_current_bonus.to_upper(), preset.replace("_", "+").to_upper(), speed_mult]
+	# Iter 142: highlight the active bonus tab + preset button
+	_restyle_buttons()
 
 func _on_back_pressed() -> void:
 	get_tree().change_scene_to_file("res://scenes/debug_menu.tscn")

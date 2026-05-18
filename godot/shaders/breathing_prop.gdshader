@@ -136,6 +136,12 @@ void fragment() {
 		vec2 d = uv - c;
 		uv = c + vec2(d.x * cos(ang) - d.y * sin(ang),
 		              d.x * sin(ang) + d.y * cos(ang));
+		// Iter 142: discard pixels outside [0,1] to prevent texture-repeat
+		// "wraparound tile" artifact at rotated corners (user reported
+		// "uvspin shows weird artifacts").
+		if (uv.x < 0.0 || uv.x > 1.0 || uv.y < 0.0 || uv.y > 1.0) {
+			discard;
+		}
 	}
 	vec4 tex = texture(albedo_tex, uv) * modulate;
 	if (tex.a < alpha_cutoff) { discard; }
@@ -159,15 +165,26 @@ void fragment() {
 		ALBEDO = mix(ALBEDO, cycled, hue_cycle);
 	}
 	if (halo_strength > 0.001) {
-		// Bright outer fringe: pixels near alpha cutoff = silhouette edge.
-		float edge = smoothstep(alpha_cutoff, alpha_cutoff + 0.18, tex.a) *
-		             (1.0 - smoothstep(alpha_cutoff + 0.18, alpha_cutoff + 0.55, tex.a));
+		// Iter 142: chromakeyed PNGs have hard alpha (0 / 255 with 1-px
+		// feather) so the old smoothstep-on-alpha approach produced no
+		// edge. Sample 4-neighbor alpha at small UV offset; if any neighbor
+		// is transparent and current is opaque, we're at silhouette edge.
+		float k = 0.012;
+		float a_n = texture(albedo_tex, uv + vec2( 0.0,   -k)).a;
+		float a_s = texture(albedo_tex, uv + vec2( 0.0,    k)).a;
+		float a_e = texture(albedo_tex, uv + vec2( k,    0.0)).a;
+		float a_w = texture(albedo_tex, uv + vec2(-k,    0.0)).a;
+		float min_neighbor = min(min(a_n, a_s), min(a_e, a_w));
+		float edge = step(min_neighbor, alpha_cutoff) * step(alpha_cutoff, tex.a);
 		ALBEDO += vec3(1.0, 0.85, 0.40) * edge * halo_strength * (0.7 + sin(TIME * 3.0) * 0.3);
 	}
 	if (sparkle_orbit > 0.001) {
-		// Glittery noise dots scattered across the surface
-		float n = fract(sin(dot(uv * 80.0, vec2(12.9898, 78.233)) + TIME * 3.0) * 43758.5453);
-		float glitter = step(0.985, n);
-		ALBEDO = mix(ALBEDO, vec3(1.0, 1.0, 0.95), glitter * sparkle_orbit);
+		// Iter 142: more visible — step threshold 0.985 → 0.97 (3% pixels
+		// active vs 1.5%), larger noise dots (uv*80 → uv*45), pulsing
+		// brightness, only on opaque pixels so it doesn't bleed into halo
+		// area.
+		float n = fract(sin(dot(uv * 45.0, vec2(12.9898, 78.233)) + TIME * 3.0) * 43758.5453);
+		float glitter = step(0.97, n) * (0.7 + sin(TIME * 5.0) * 0.3);
+		ALBEDO = mix(ALBEDO, vec3(1.0, 1.0, 0.70), clamp(glitter * sparkle_orbit, 0.0, 1.0));
 	}
 }
