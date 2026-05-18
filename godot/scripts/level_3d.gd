@@ -294,6 +294,9 @@ func _ready() -> void:
 	# seed (6464) was only useful for early reproduction; now we want
 	# variety across runs.
 	_rng.randomize()
+	# Iter 130: prepare the breathing-prop placeholder texture for any
+	# props the user hasn't yet authored. Idempotent.
+	_ensure_placeholder_prop_tex()
 	# Iter 96: terrain_3d.gd (attached to the Terrain3D instance) now
 	# does its own subviewport→sprite binding in its _ready, so the
 	# manual binding from iter 69 is no longer needed. Keeping a
@@ -2607,6 +2610,108 @@ func _spawn_outlaw() -> void:
 # vagrants WERE being spawned (logs showed outlaws_root.size=1) but
 # the inner SubViewport never got its render pass propagated.
 const _CHROMAKEY_SHADER := preload("res://shaders/chromakey.gdshader")
+# Iter 130: breathing/sway shader for paper-cutout props. Single shader
+# instance reused across all prop billboards; per-instance variation via
+# uniforms (sway_amp/freq, bob_amp/freq, time_offset, damage/bonk pulses).
+const _BREATHING_SHADER := preload("res://shaders/breathing_prop.gdshader")
+
+# Iter 130: helper to create a billboard prop sprite with the breathing
+# shader applied. Returns a MeshInstance3D with a subdivided PlaneMesh
+# (needed because vertex displacement requires more than 4 verts to
+# read as wave motion — Sprite3D's 4-vert quad can only flap corners).
+#
+# Args:
+#   texture        — Texture2D for the prop (alpha-cutout PNG)
+#   width, height  — world-space size (matches Sprite3D's pixel_size scaling)
+#   sway_amp/freq  — top-vertex lateral wobble in world units / Hz
+#   bob_amp/freq   — full-mesh breathing pulse magnitude / Hz
+# Per-spawn random time_offset is set so props don't sway in unison.
+func _make_breathing_prop(
+		texture: Texture2D,
+		width: float,
+		height: float,
+		sway_amp: float = 0.06,
+		sway_freq: float = 1.5,
+		bob_amp: float = 0.015,
+		bob_freq: float = 2.2,
+		) -> MeshInstance3D:
+	var mesh := MeshInstance3D.new()
+	var plane := PlaneMesh.new()
+	plane.size = Vector2(width, height)
+	plane.subdivide_width = 5
+	plane.subdivide_depth = 7
+	# orientation 2 = FACE_Z (vertical plane facing +Z) which lines up
+	# with our billboard shader's expected mesh frame.
+	plane.orientation = 2
+	mesh.mesh = plane
+	var mat := ShaderMaterial.new()
+	mat.shader = _BREATHING_SHADER
+	if texture != null:
+		mat.set_shader_parameter("albedo_tex", texture)
+	else:
+		# Fallback: 1×1 solid color so the prop is at least visible while
+		# the user is still generating PNGs. Color picked from caller via
+		# modulate uniform if desired.
+		mat.set_shader_parameter("albedo_tex", _PLACEHOLDER_PROP_TEX)
+	mat.set_shader_parameter("modulate", Color(1, 1, 1, 1))
+	mat.set_shader_parameter("sway_amp", sway_amp)
+	mat.set_shader_parameter("sway_freq", sway_freq)
+	mat.set_shader_parameter("bob_amp", bob_amp)
+	mat.set_shader_parameter("bob_freq", bob_freq)
+	mat.set_shader_parameter("time_offset", _rng.randf_range(0.0, 6.28))
+	mesh.material_override = mat
+	return mesh
+
+# Iter 130: 64×96 transparent-checker placeholder texture for props
+# that don't yet have a real PNG. Filled procedurally on first call.
+var _PLACEHOLDER_PROP_TEX: Texture2D = null
+
+func _ensure_placeholder_prop_tex() -> void:
+	if _PLACEHOLDER_PROP_TEX != null:
+		return
+	var img := Image.create(64, 96, false, Image.FORMAT_RGBA8)
+	# Magenta-on-transparent checker so "missing texture" is obvious
+	for y in range(96):
+		for x in range(64):
+			var checker: bool = ((x / 8) + (y / 8)) % 2 == 0
+			img.set_pixel(x, y, Color(0.95, 0.30, 0.85, 1) if checker else Color(0.20, 0.10, 0.20, 1))
+	_PLACEHOLDER_PROP_TEX = ImageTexture.create_from_image(img)
+
+# Iter 130: trigger a one-shot damage pulse on a breathing prop. Tweens
+# damage_strength 1.0 → 0.0 over 0.4s. Use this when a bullet hits a
+# scenery prop, or when an enemy melees a cactus, etc.
+func _damage_pulse_prop(mesh_inst: MeshInstance3D) -> void:
+	if mesh_inst == null or not is_instance_valid(mesh_inst):
+		return
+	var mat: ShaderMaterial = mesh_inst.material_override as ShaderMaterial
+	if mat == null:
+		return
+	var tw: Tween = create_tween()
+	tw.tween_method(_set_damage_strength.bind(mat), 1.0, 0.0, 0.4) \
+		.set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
+
+func _set_damage_strength(value: float, mat: ShaderMaterial) -> void:
+	if mat != null:
+		mat.set_shader_parameter("damage_strength", value)
+
+# Iter 130: bonk-squash pulse. Tweens bonk_squash 1.0 → 0.6 → 1.0 over
+# 0.25s. Triggered by collisions where the prop doesn't break (e.g.,
+# tumbleweed bouncing off a fence).
+func _bonk_pulse_prop(mesh_inst: MeshInstance3D) -> void:
+	if mesh_inst == null or not is_instance_valid(mesh_inst):
+		return
+	var mat: ShaderMaterial = mesh_inst.material_override as ShaderMaterial
+	if mat == null:
+		return
+	var tw: Tween = create_tween()
+	tw.tween_method(_set_bonk_squash.bind(mat), 1.0, 0.6, 0.08) \
+		.set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
+	tw.tween_method(_set_bonk_squash.bind(mat), 0.6, 1.0, 0.17) \
+		.set_trans(Tween.TRANS_ELASTIC).set_ease(Tween.EASE_OUT)
+
+func _set_bonk_squash(value: float, mat: ShaderMaterial) -> void:
+	if mat != null:
+		mat.set_shader_parameter("bonk_squash", value)
 const _BILLBOARD_VIEWPORT_PX := Vector2i(150, 270)
 var _shared_video_viewports: Dictionary = {}  # VideoStream → SubViewport
 
