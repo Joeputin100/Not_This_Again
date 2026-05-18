@@ -212,18 +212,20 @@ func _on_open_glitz_picker() -> void:
 	get_tree().change_scene_to_file("res://scenes/glitz_picker.tscn")
 
 func _on_preview_captive(hero_slug: String, container_slug: String) -> void:
+	# Iter 135: extra DebugLog at entry so the COPY log will prove the
+	# tap is reaching this handler (user reported buttons seemed unwired).
+	DebugLog.add("CAPTIVE BUTTON pressed: hero=%s container=%s" % [hero_slug, container_slug])
 	AudioBus.play_tap()
 	DebugPreview.pending_captive_hero = hero_slug
 	DebugPreview.pending_captive_container = container_slug
-	DebugLog.add("debug: preview captive %s in %s" % [hero_slug, container_slug])
 	get_tree().change_scene_to_file("res://scenes/level_3d.tscn")
 
 func _on_preview_pushed_wagon(hero_slug: String, container_slug: String, n_pushers: int) -> void:
+	DebugLog.add("PUSHED WAGON BUTTON pressed: hero=%s container=%s count=%d" % [hero_slug, container_slug, n_pushers])
 	AudioBus.play_tap()
 	DebugPreview.pending_captive_hero = hero_slug
 	DebugPreview.pending_captive_container = container_slug
 	DebugPreview.pending_pushed_count = n_pushers
-	DebugLog.add("debug: preview pushed wagon %s/%s × %d" % [hero_slug, container_slug, n_pushers])
 	get_tree().change_scene_to_file("res://scenes/level_3d.tscn")
 
 func _on_open_test_range() -> void:

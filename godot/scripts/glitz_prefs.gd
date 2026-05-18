@@ -21,12 +21,17 @@ const DEFAULT_PRESET := "pulse_halo_yspin"
 # Preset library — uniform values applied to the breathing_prop shader.
 const PRESETS: Dictionary = {
 	"none":             {"pulse_glow": 0.0, "hue_cycle": 0.0, "halo_strength": 0.0, "sparkle_orbit": 0.0, "rotation_mode": 0, "rotation_speed": 0.0},
-	"pulse":            {"pulse_glow": 0.8, "hue_cycle": 0.0, "halo_strength": 0.0, "sparkle_orbit": 0.0, "rotation_mode": 0, "rotation_speed": 0.0},
-	"pulse_halo":       {"pulse_glow": 0.8, "hue_cycle": 0.0, "halo_strength": 1.0, "sparkle_orbit": 0.0, "rotation_mode": 0, "rotation_speed": 0.0},
-	"pulse_halo_yspin": {"pulse_glow": 0.8, "hue_cycle": 0.0, "halo_strength": 1.0, "sparkle_orbit": 0.5, "rotation_mode": 2, "rotation_speed": 1.5},
-	"all_yspin":        {"pulse_glow": 1.2, "hue_cycle": 0.6, "halo_strength": 1.5, "sparkle_orbit": 1.0, "rotation_mode": 2, "rotation_speed": 2.0},
-	"all_uvspin":       {"pulse_glow": 1.2, "hue_cycle": 0.6, "halo_strength": 1.5, "sparkle_orbit": 1.0, "rotation_mode": 1, "rotation_speed": 2.5},
+	"pulse":            {"pulse_glow": 1.0, "hue_cycle": 0.0, "halo_strength": 0.0, "sparkle_orbit": 0.0, "rotation_mode": 0, "rotation_speed": 0.0},
+	"pulse_halo":       {"pulse_glow": 1.0, "hue_cycle": 0.0, "halo_strength": 1.2, "sparkle_orbit": 0.0, "rotation_mode": 0, "rotation_speed": 0.0},
+	"pulse_halo_yspin": {"pulse_glow": 1.0, "hue_cycle": 0.0, "halo_strength": 1.2, "sparkle_orbit": 0.7, "rotation_mode": 2, "rotation_speed": 0.35},
+	"all_yspin":        {"pulse_glow": 1.4, "hue_cycle": 0.6, "halo_strength": 1.5, "sparkle_orbit": 1.0, "rotation_mode": 2, "rotation_speed": 0.45},
+	"all_uvspin":       {"pulse_glow": 1.4, "hue_cycle": 0.6, "halo_strength": 1.5, "sparkle_orbit": 1.0, "rotation_mode": 1, "rotation_speed": 0.55},
 }
+
+# Iter 135: spin-speed multiplier override saved per bonus. Slider in
+# the picker scales each preset's base rotation_speed. Default 1.0 =
+# use preset's value as-is. Range 0.1-2.0 in the picker.
+const DEFAULT_SPEED_MULT: float = 1.0
 
 # Display order for picker UI (most subtle → most extreme)
 const PRESET_ORDER: Array[String] = [
@@ -54,10 +59,23 @@ func set_preset_for_bonus(bonus_type: String, preset: String) -> void:
 	_config.set_value(section, "preset", preset)
 	_config.save(PREFS_PATH)
 
+# Iter 135: per-bonus rotation-speed multiplier override.
+func get_speed_mult_for_bonus(bonus_type: String) -> float:
+	var section := "bonus_%s" % bonus_type
+	return _config.get_value(section, "speed_mult", DEFAULT_SPEED_MULT)
+
+func set_speed_mult_for_bonus(bonus_type: String, mult: float) -> void:
+	var section := "bonus_%s" % bonus_type
+	_config.set_value(section, "speed_mult", mult)
+	_config.save(PREFS_PATH)
+
 # Convenience: apply a preset's uniforms to a ShaderMaterial in one call.
-func apply_preset_to_material(preset: String, mat: ShaderMaterial) -> void:
+func apply_preset_to_material(preset: String, mat: ShaderMaterial, speed_mult: float = 1.0) -> void:
 	if mat == null:
 		return
 	var data: Dictionary = PRESETS.get(preset, PRESETS[DEFAULT_PRESET])
 	for key in data.keys():
-		mat.set_shader_parameter(key, data[key])
+		var v = data[key]
+		if key == "rotation_speed":
+			v = float(v) * speed_mult
+		mat.set_shader_parameter(key, v)

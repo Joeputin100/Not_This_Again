@@ -145,10 +145,12 @@ void fragment() {
 	if (damage_strength > 0.001) {
 		ALBEDO = mix(ALBEDO, vec3(1.0, 1.0, 0.85), damage_strength * 0.6);
 	}
-	// Iter 132: glitz layers
+	// Iter 132/135: glitz layers — add to ALBEDO directly since the
+	// `unshaded` render_mode ignores EMISSION. iter 132 used EMISSION
+	// which silently dropped these effects.
 	if (pulse_glow > 0.001) {
 		float pulse = sin(TIME * 4.0) * 0.5 + 0.5;
-		EMISSION = ALBEDO * pulse * pulse_glow;
+		ALBEDO = mix(ALBEDO, vec3(1.0, 0.95, 0.50), pulse * pulse_glow * 0.35);
 	}
 	if (hue_cycle > 0.001) {
 		// Cheap "hue cycle": cyclic permutation of RGB channels at low amplitude
@@ -157,15 +159,15 @@ void fragment() {
 		ALBEDO = mix(ALBEDO, cycled, hue_cycle);
 	}
 	if (halo_strength > 0.001) {
-		// Bright outer fringe: ALPHA close to alpha_cutoff = edge pixels
-		float edge = smoothstep(alpha_cutoff, alpha_cutoff + 0.15, tex.a) *
-		             (1.0 - smoothstep(alpha_cutoff + 0.15, alpha_cutoff + 0.45, tex.a));
-		EMISSION += vec3(1.0, 0.85, 0.40) * edge * halo_strength * (0.7 + sin(TIME * 3.0) * 0.3);
+		// Bright outer fringe: pixels near alpha cutoff = silhouette edge.
+		float edge = smoothstep(alpha_cutoff, alpha_cutoff + 0.18, tex.a) *
+		             (1.0 - smoothstep(alpha_cutoff + 0.18, alpha_cutoff + 0.55, tex.a));
+		ALBEDO += vec3(1.0, 0.85, 0.40) * edge * halo_strength * (0.7 + sin(TIME * 3.0) * 0.3);
 	}
 	if (sparkle_orbit > 0.001) {
-		// Glittery noise dots
+		// Glittery noise dots scattered across the surface
 		float n = fract(sin(dot(uv * 80.0, vec2(12.9898, 78.233)) + TIME * 3.0) * 43758.5453);
 		float glitter = step(0.985, n);
-		EMISSION += vec3(1.0, 1.0, 0.85) * glitter * sparkle_orbit * 2.0;
+		ALBEDO = mix(ALBEDO, vec3(1.0, 1.0, 0.95), glitter * sparkle_orbit);
 	}
 }

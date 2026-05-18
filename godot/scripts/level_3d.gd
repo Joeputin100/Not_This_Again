@@ -3347,6 +3347,10 @@ func _outlaw_fire(outlaw: Node3D) -> void:
 	mat.emission = Color(1.0, 0.30, 0.20, 1) * 1.5
 	b.material = mat
 	b.position = outlaw.position
+	# Iter 135: clamp bullet spawn height to posse-shoulder level so big
+	# enemies (Pete is 16.8 tall, center at y=8.4) don't fire invisible
+	# bullets way overhead that still trigger x-plane damage on the posse.
+	b.position.y = 1.0
 	# Velocity: from outlaw toward cowboy, normalized × speed
 	var to_cowboy: Vector3 = cowboy_3d.position - outlaw.position
 	to_cowboy.y = 0.0  # keep bullets level
