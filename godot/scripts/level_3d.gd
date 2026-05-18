@@ -378,6 +378,15 @@ func _ready() -> void:
 			_level_state = LevelState.FINISHED
 			DebugLog.add("level_3d: hero preview %s" % h)
 			call_deferred("_preview_hero_3d", h)
+		elif DebugPreview.pending_captive_hero != "":
+			var ch: String = DebugPreview.pending_captive_hero
+			var cc: String = DebugPreview.pending_captive_container
+			DebugPreview.pending_captive_hero = ""
+			DebugPreview.pending_captive_container = ""
+			_preview_mode = true
+			_level_state = LevelState.FINISHED
+			DebugLog.add("level_3d: captive preview %s in %s" % [ch, cc])
+			call_deferred("_preview_captive_3d", ch, cc)
 	# Iter 79: initial HUD render.
 	_refresh_hud()
 	# Iter 77: win-modal Retry button.
@@ -2619,6 +2628,204 @@ func _spawn_prospector() -> void:
 	_prospector_spawn_count += 1
 	DebugLog.add("prospector spawn #%d at x=%.1f" % [_prospector_spawn_count, lane_x])
 
+# ============================================================================
+# Iter 133: Captive hero release ceremony.
+# Container holds a trapped hero. Player shoots container; on HP=0,
+# container shatters and hero detaches + flips to face forward + joins
+# formation. Glitz preset from GlitzPrefs applied during release.
+# ============================================================================
+
+const CONTAINER_HP_BY_TIER: Dictionary = {1: 30, 2: 60, 3: 100}
+const CONTAINER_TEX: Dictionary = {
+	"wagon_covered": {"path": "res://assets/sprites/props/wagon_covered.png", "w": 2.4, "h": 1.6},
+	"mining_cart":   {"path": "res://assets/sprites/props/mining_cart.png",   "w": 2.0, "h": 1.4},
+	"barrel":        {"path": "res://assets/sprites/props/barrel.png",        "w": 1.2, "h": 1.6},
+}
+const HERO_TEX: Dictionary = {
+	"marshmallow_sheriff": "res://assets/sprites/props/hero_marshmallow_sheriff.png",
+	"laughing_horse":      "res://assets/sprites/props/hero_laughing_horse.png",
+	"scarecrow":           "res://assets/sprites/props/hero_scarecrow.png",
+	"chocolate_outlaw":    "res://assets/sprites/props/hero_chocolate_outlaw.png",
+	"sugar_doc":           "res://assets/sprites/props/hero_sugar_doc.png",
+	"taffy_kid":           "res://assets/sprites/props/hero_taffy_kid.png",
+}
+
+# Captive root structure (added to outlaws_root for bullet-collision reuse):
+#   captive Node3D                          (the gameplay actor, has hp+hero meta)
+#     ├── container_sprite Sprite3D         (the wagon/cart/barrel body)
+#     ├── hero_sprite Sprite3D              (smaller, layered front, Y-billboard)
+#     ├── halo_sprite Sprite3D              (behind, Y-spin to signal "shoot me")
+#     └── hp_label Label3D                  (overhead, shrinks text as hp drops)
+func _spawn_captive_hero(container_slug: String, hero_slug: String,
+		lane_x: float, lane_z: float, hero_tier: int = 2) -> Node3D:
+	var c_data: Dictionary = CONTAINER_TEX.get(container_slug, CONTAINER_TEX["wagon_covered"])
+	var c_tex: Texture2D = load(c_data.path) if ResourceLoader.exists(c_data.path) else null
+	var h_tex_path: String = HERO_TEX.get(hero_slug, "")
+	var h_tex: Texture2D = load(h_tex_path) if (h_tex_path != "" and ResourceLoader.exists(h_tex_path)) else null
+	var halo_tex: Texture2D = load("res://assets/sprites/props/bonus_halo.png") if ResourceLoader.exists("res://assets/sprites/props/bonus_halo.png") else null
+	var hp: int = CONTAINER_HP_BY_TIER.get(hero_tier, 60)
+
+	var captive := Node3D.new()
+	captive.position = Vector3(lane_x, 0, lane_z)
+	captive.set_meta("hp", hp)
+	captive.set_meta("max_hp", hp)
+	captive.set_meta("hero_slug", hero_slug)
+	captive.set_meta("container_slug", container_slug)
+	captive.set_meta("is_captive", true)
+	captive.set_meta("fire_timer", 999999.0)  # captives don't fire
+	outlaws_root.add_child(captive)
+
+	# Halo behind — Y-spinning to signal "shoot me"
+	if halo_tex != null:
+		var halo := Sprite3D.new()
+		halo.texture = halo_tex
+		halo.pixel_size = (c_data.h + 0.6) / float(halo_tex.get_height())
+		halo.billboard = 1
+		halo.alpha_cut = 0
+		halo.modulate = Color(1.0, 0.92, 0.45, 0.7)
+		halo.position = Vector3(0, c_data.h * 0.5, -0.05)
+		captive.add_child(halo)
+		# Continuous Y rotation tween
+		var halo_tw: Tween = halo.create_tween().set_loops()
+		halo_tw.tween_property(halo, "rotation_degrees:y", 360.0, 4.0) \
+			.set_trans(Tween.TRANS_LINEAR)
+		halo_tw.tween_callback(func(): halo.rotation_degrees.y = 0.0)
+
+	# Container body
+	var container_sprite := Sprite3D.new()
+	if c_tex != null:
+		container_sprite.texture = c_tex
+		container_sprite.pixel_size = c_data.h / float(c_tex.get_height())
+	container_sprite.billboard = 1
+	container_sprite.alpha_cut = 1
+	container_sprite.position = Vector3(0, c_data.h * 0.5, 0)
+	captive.add_child(container_sprite)
+	captive.set_meta("container_sprite", container_sprite)
+
+	# Hero sprite layered ON TOP — billboard so always faces player
+	if h_tex != null:
+		var hero_sprite := Sprite3D.new()
+		hero_sprite.texture = h_tex
+		# Hero is ~70% the container height visually
+		hero_sprite.pixel_size = (c_data.h * 0.7) / float(h_tex.get_height())
+		hero_sprite.billboard = 1
+		hero_sprite.alpha_cut = 1
+		hero_sprite.position = Vector3(0, c_data.h * 0.65, 0.15)
+		captive.add_child(hero_sprite)
+		captive.set_meta("hero_sprite", hero_sprite)
+
+	# HP label overhead
+	var hp_label := Label3D.new()
+	hp_label.text = "%d / %d" % [hp, hp]
+	hp_label.font_size = 48
+	hp_label.outline_size = 8
+	hp_label.modulate = Color(1.0, 0.55, 0.55, 1.0)
+	hp_label.billboard = 1
+	hp_label.position = Vector3(0, c_data.h + 0.6, 0)
+	captive.add_child(hp_label)
+	captive.set_meta("hp_label", hp_label)
+
+	# Trapped! label
+	var trapped_label := Label3D.new()
+	trapped_label.text = "TRAPPED!"
+	trapped_label.font_size = 56
+	trapped_label.outline_size = 10
+	trapped_label.modulate = Color(1.0, 0.85, 0.30, 1.0)
+	trapped_label.billboard = 1
+	trapped_label.position = Vector3(0, c_data.h + 1.1, 0)
+	captive.add_child(trapped_label)
+	captive.set_meta("trapped_label", trapped_label)
+
+	return captive
+
+# Iter 133: handle bullet hitting a captive — damages container, on
+# HP=0 triggers the release ceremony. Called from the bullet/outlaw
+# collision loop when outlaw.get_meta("is_captive") is true.
+func _captive_take_damage(captive: Node3D, bullet_pos: Vector3) -> void:
+	var hp: int = captive.get_meta("hp", 0) - 1
+	captive.set_meta("hp", hp)
+	var max_hp: int = captive.get_meta("max_hp", 60)
+	# Update HP label
+	var hp_label: Label3D = captive.get_meta("hp_label", null)
+	if hp_label != null and is_instance_valid(hp_label):
+		hp_label.text = "%d / %d" % [maxi(hp, 0), max_hp]
+	# Damage popup
+	_spawn_popup_3d(bullet_pos + Vector3(0, 0.5, 0),
+		"-1", Color(1.0, 0.55, 0.40, 1), 36)
+	# Small flash modulate on container
+	var container_sprite: Sprite3D = captive.get_meta("container_sprite", null)
+	if container_sprite != null and is_instance_valid(container_sprite):
+		container_sprite.modulate = Color(1.5, 1.5, 1.5, 1.0)
+		var flash_tw: Tween = container_sprite.create_tween()
+		flash_tw.tween_property(container_sprite, "modulate", Color.WHITE, 0.12)
+	if hp <= 0:
+		_release_captive_hero(captive)
+
+# Iter 133: container shatters → hero pops out → flips to face forward
+# → joins posse formation.
+func _release_captive_hero(captive: Node3D) -> void:
+	var hero_slug: String = captive.get_meta("hero_slug", "marshmallow_sheriff")
+	var hero_sprite: Sprite3D = captive.get_meta("hero_sprite", null)
+	var container_sprite: Sprite3D = captive.get_meta("container_sprite", null)
+	var hp_label: Label3D = captive.get_meta("hp_label", null)
+	var trapped_label: Label3D = captive.get_meta("trapped_label", null)
+	# Hide HUD labels immediately
+	if hp_label != null: hp_label.visible = false
+	if trapped_label != null: trapped_label.visible = false
+	# Container shatter — scale to 0 with TRANS_BACK + bonk
+	if container_sprite != null and is_instance_valid(container_sprite):
+		var shatter_tw: Tween = container_sprite.create_tween().set_parallel(true)
+		shatter_tw.tween_property(container_sprite, "scale", Vector3(0.01, 0.01, 0.01), 0.4) \
+			.set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_IN)
+		shatter_tw.tween_property(container_sprite, "modulate:a", 0.0, 0.4)
+	# Splinter burst
+	_burst_at(captive.position + Vector3(0, 0.8, 0), 18,
+		Color(0.85, 0.65, 0.40, 1), 1.2, 0.6)
+	# Hero scale-pop reveal
+	if hero_sprite != null and is_instance_valid(hero_sprite):
+		var pop_tw: Tween = hero_sprite.create_tween()
+		pop_tw.tween_property(hero_sprite, "scale", Vector3(1.5, 1.5, 1.5), 0.25) \
+			.set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
+		pop_tw.tween_property(hero_sprite, "scale", Vector3.ONE, 0.20) \
+			.set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_IN_OUT)
+	# Banner + bounty
+	var ui_canvas: Node = get_node_or_null("UI")
+	if ui_canvas != null:
+		FlourishBanner.spawn(ui_canvas, "%s RESCUED" % hero_slug.to_upper().replace("_", " "))
+	_spawn_popup_3d(captive.position + Vector3(0, 2.0, 0),
+		"+500 BOUNTY", Color(1.0, 0.92, 0.30, 1), 64)
+	_add_bounty(500)
+	# Posse +1
+	_posse_count_3d += 1
+	_sync_followers_to_count(_posse_count_3d)
+	_refresh_hud()
+	# Hero slides to posse formation: tween hero_sprite to leader area, then queue_free
+	if hero_sprite != null and is_instance_valid(hero_sprite):
+		var target_pos: Vector3 = cowboy_3d.position + Vector3(_rng.randf_range(-0.6, 0.6), 0.5, 0.6)
+		var slide_tw: Tween = hero_sprite.create_tween().set_parallel(true)
+		slide_tw.tween_property(hero_sprite, "global_position", target_pos, 0.6) \
+			.set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
+		slide_tw.tween_property(hero_sprite, "scale", Vector3(0.6, 0.6, 0.6), 0.6)
+	# Cleanup container after ceremony
+	var cleanup_tw: Tween = captive.create_tween()
+	cleanup_tw.tween_interval(1.5)
+	cleanup_tw.tween_callback(captive.queue_free)
+
+# Iter 133: debug preview entry for captive hero rescue.
+func _preview_captive_3d(hero_slug: String, container_slug: String) -> void:
+	if container_slug == "":
+		container_slug = "wagon_covered"
+	# Big banner
+	var ui_canvas: Node = get_node_or_null("UI")
+	if ui_canvas != null:
+		FlourishBanner.spawn(ui_canvas, "CAPTIVE HERO")
+	await get_tree().create_timer(0.5).timeout
+	# Spawn captive in front of cowboy
+	var captive: Node3D = _spawn_captive_hero(container_slug, hero_slug, 0.0, -4.0, 2)
+	# Switch state back to PLAYING so cowboy can fire at it
+	_level_state = LevelState.PLAYING
+	_preview_mode = false  # let firing happen normally
+
 func _spawn_outlaw() -> void:
 	# Iter 116: re-enable video billboard, but this time via SHARED top-
 	# level SubViewports (see _make_video_billboard) — iter 114 confirmed
@@ -3071,6 +3278,12 @@ func _process(delta: float) -> void:
 			var dx: float = bullet.position.x - outlaw.position.x
 			var dz: float = bullet.position.z - outlaw.position.z
 			if dx * dx + dz * dz < OUTLAW_HIT_RADIUS_SQ:
+				# Iter 133: captives route to specialized damage handler
+				# (HP scales with hero tier, no death-stream, release ceremony).
+				if outlaw.get_meta("is_captive", false):
+					_captive_take_damage(outlaw, bullet.position)
+					bullet.queue_free()
+					break
 				var hp: int = outlaw.get_meta("hp", 1) - 1
 				outlaw.set_meta("hp", hp)
 				_spawn_popup_3d(outlaw.position + Vector3(0, 1.2, 0),

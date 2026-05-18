@@ -120,6 +120,15 @@ func _build_sections() -> void:
 	glitz_btn.pressed.connect(_on_open_glitz_picker)
 	content.add_child(glitz_btn)
 
+	# Iter 133: captive hero rescue previews. Heroes trapped in containers
+	# the player must shoot to free. Basic static version (no pushers).
+	_add_section_header("CAPTIVE HEROES (basic)")
+	for h in HERO_SLUGS:
+		for c in ["wagon_covered", "mining_cart", "barrel"]:
+			var btn := _make_button("%s in %s" % [HERO_NAMES.get(h, h), c.replace("_", " ").to_upper()])
+			btn.pressed.connect(_on_preview_captive.bind(h, c))
+			content.add_child(btn)
+
 	_add_section_header("TEST RANGE")
 	var range_btn := _make_button("OPEN CACTUS FIELD (weapon + posse test)")
 	range_btn.pressed.connect(_on_open_test_range)
@@ -193,6 +202,13 @@ func _on_open_glitz_picker() -> void:
 	AudioBus.play_tap()
 	DebugLog.add("debug: open glitz picker")
 	get_tree().change_scene_to_file("res://scenes/glitz_picker.tscn")
+
+func _on_preview_captive(hero_slug: String, container_slug: String) -> void:
+	AudioBus.play_tap()
+	DebugPreview.pending_captive_hero = hero_slug
+	DebugPreview.pending_captive_container = container_slug
+	DebugLog.add("debug: preview captive %s in %s" % [hero_slug, container_slug])
+	get_tree().change_scene_to_file("res://scenes/level_3d.tscn")
 
 func _on_open_test_range() -> void:
 	AudioBus.play_tap()
