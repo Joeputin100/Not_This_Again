@@ -77,24 +77,38 @@ func stop_gunfire() -> void:
 # res://assets/audio/flourishes/flourish_sugar_cascade.mp3. Silently no-ops
 # if the file is missing (so a typo in spawn() doesn't crash a level).
 func play_flourish(slug: String) -> void:
-	if not _flourish_players.has(slug):
-		var path := "res://assets/audio/flourishes/flourish_%s.mp3" % slug
+	_play_lazy_voice(_flourish_players, slug,
+		"res://assets/audio/flourishes/flourish_%s.mp3" % slug, 8.0)
+
+# Iter 140: same pattern for character banter (Pete + heroes). Slug
+# matches the .mp3 filename: 'pete_intro', 'marshmallow_sheriff_rescue',
+# etc. Each character is voiced by a different ElevenLabs premade voice
+# (see [[project_flourish_voiceover]] for the assignment map).
+var _character_players: Dictionary = {}
+
+func play_character_line(slug: String) -> void:
+	_play_lazy_voice(_character_players, slug,
+		"res://assets/audio/characters/%s.mp3" % slug, 6.0)
+
+# Shared lazy-load + cache pattern for voice clips. Stores one
+# AudioStreamPlayer per slug in the provided dict; reuses on repeat
+# play so we don't reload the stream every trigger.
+func _play_lazy_voice(cache: Dictionary, slug: String, path: String, volume_db: float) -> void:
+	if not cache.has(slug):
 		if not ResourceLoader.exists(path):
-			push_warning("flourish voice missing: %s" % path)
-			_flourish_players[slug] = null
+			push_warning("voice missing: %s" % path)
+			cache[slug] = null
 			return
 		var stream: AudioStream = load(path)
 		if stream == null:
-			_flourish_players[slug] = null
+			cache[slug] = null
 			return
 		var p := AudioStreamPlayer.new()
 		p.stream = stream
 		p.bus = "Master"
-		# Voice-over volume slightly above SFX — these are the "money moment"
-		# announcements and should cut through the gunfire mix.
-		p.volume_db = 8.0
+		p.volume_db = volume_db
 		add_child(p)
-		_flourish_players[slug] = p
-	var player: AudioStreamPlayer = _flourish_players[slug]
+		cache[slug] = p
+	var player: AudioStreamPlayer = cache[slug]
 	if player != null:
 		player.play()
