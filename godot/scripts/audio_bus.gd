@@ -77,8 +77,10 @@ func stop_gunfire() -> void:
 # res://assets/audio/flourishes/flourish_sugar_cascade.mp3. Silently no-ops
 # if the file is missing (so a typo in spawn() doesn't crash a level).
 func play_flourish(slug: String) -> void:
+	# Iter 141: louder per user request (+8 → +12 dB). Bill voice is rich
+	# and rolls into the mix at +8 too quietly when gunfire is firing.
 	_play_lazy_voice(_flourish_players, slug,
-		"res://assets/audio/flourishes/flourish_%s.mp3" % slug, 8.0)
+		"res://assets/audio/flourishes/flourish_%s.mp3" % slug, 12.0)
 
 # Iter 140: same pattern for character banter (Pete + heroes). Slug
 # matches the .mp3 filename: 'pete_intro', 'marshmallow_sheriff_rescue',
