@@ -168,7 +168,7 @@ const OUTLAW_FIRE_INTERVAL: float = 3.6  # iter 121: 1.8 → 3.6 (halved fire ra
 # player visible reaction time before bullets start coming.
 const OUTLAW_FIRE_RANGE_Z: float = 10.0
 const OUTLAW_BULLET_SPEED: float = 8.0  # iter 121: 14 → 8 (dodgeable — was too fast to react to)
-const OUTLAW_BULLET_RADIUS: float = 0.15  # iter 124: 0.06 → 0.15 (was so small player couldn't see them coming)
+const OUTLAW_BULLET_RADIUS: float = 0.25  # iter 136: 0.15 → 0.25 + brighter unshaded emission
 const OUTLAW_BULLET_DESPAWN_Z: float = 4.0
 const OUTLAW_BULLET_HIT_X: float = 0.5  # iter 119: bullet only hits if within this x of any posse member
 const OUTLAW_HIT_RADIUS_SQ: float = 1.5 * 1.5
@@ -2307,8 +2307,23 @@ func _spawn_pete() -> void:
 	pete.position = Vector3(0.0, 8.4, OBSTACLE_SPAWN_Z + 4.0)
 	pete.set_meta("hp", PETE_HP)
 	boss_root.add_child(pete)
+	# Iter 136: Pete invisibility report. Spawn BOTH a video billboard
+	# AND a static fallback Sprite3D using slippery_pete.png if it exists.
+	# The static sprite acts as a 'belt and suspenders' so if the video
+	# pipeline drops Pete on Android, we still see his silhouette.
 	var billboard: Node3D = _make_video_billboard(PETE_IDLE_STREAM, 16.8)
 	pete.add_child(billboard)
+	var pete_png_path := "res://assets/sprites/slippery_pete.png"
+	if ResourceLoader.exists(pete_png_path):
+		var fallback := Sprite3D.new()
+		fallback.texture = load(pete_png_path)
+		fallback.pixel_size = 16.8 / float(fallback.texture.get_height())
+		fallback.billboard = 1
+		fallback.alpha_cut = 1
+		fallback.modulate = Color(1, 1, 1, 0.85)  # slight transparency so video shows through if it renders
+		pete.add_child(fallback)
+		DebugLog.add("pete: static fallback sprite added (16.8 tall)")
+	DebugLog.add("pete spawned at (%.1f, %.1f, %.1f), HP=%d" % [pete.position.x, pete.position.y, pete.position.z, PETE_HP])
 	# Big "BOSS" label floating above him
 	var label := Label3D.new()
 	label.text = "SLIPPERY PETE"
@@ -3339,12 +3354,14 @@ func _outlaw_fire(outlaw: Node3D) -> void:
 	b.radial_segments = 8
 	b.rings = 6
 	var mat := StandardMaterial3D.new()
-	# Iter 124: brighter emission + larger bullet so the player can
-	# actually see incoming fire and dodge it. Was so dim/small that
-	# posse depletion felt random — invisible bullet damage is bad UX.
-	mat.albedo_color = Color(1.0, 0.20, 0.15, 1)
+	# Iter 124/136: bright emission + larger bullet so the player can
+	# see incoming fire and dodge it. iter 136 also adds an unshaded
+	# render so bullets glow consistently even in low-light scenes.
+	mat.albedo_color = Color(1.00, 0.20, 0.15, 1)
 	mat.emission_enabled = true
-	mat.emission = Color(1.0, 0.30, 0.20, 1) * 1.5
+	mat.emission = Color(1.00, 0.40, 0.25, 1)
+	mat.emission_energy_multiplier = 2.5
+	mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
 	b.material = mat
 	b.position = outlaw.position
 	# Iter 135: clamp bullet spawn height to posse-shoulder level so big
@@ -3505,15 +3522,17 @@ func _process(delta: float) -> void:
 		var z_speed: float = OUTLAW_SPEED
 		if outlaw.position.z > cowboy_3d.position.z - 2.0:
 			z_speed = OUTLAW_SPEED * 0.20
-		outlaw.position.z += z_speed * motion_delta
+		# Iter 136: real delta (not motion_delta) so vagrants keep advancing during BOSS
+		outlaw.position.z += z_speed * delta
 		# Iter 120: x-tracking with PER-OUTLAW offset (set at spawn).
 		# Each outlaw heads for cowboy.x + their personal offset so the
 		# group reads as a crowd, not a column. Clamped to road bounds.
 		var ox: float = outlaw.get_meta("track_offset_x", 0.0)
 		var target_x: float = clampf(cowboy_3d.position.x + ox,
 			-COWBOY_X_BOUND, COWBOY_X_BOUND)
+		# Iter 136: real delta so x-tracking continues during BOSS state too
 		outlaw.position.x = lerpf(outlaw.position.x, target_x,
-			clampf(1.5 * motion_delta, 0.0, 1.0))
+			clampf(1.5 * delta, 0.0, 1.0))
 		var ft: float = outlaw.get_meta("fire_timer", 0.0)
 		ft -= delta
 		if ft <= 0.0:
@@ -3902,5 +3921,13 @@ func _on_back_pressed() -> void:
 
 # Iter 77: retry button on the WIN modal reloads the level_3d scene.
 func _on_retry_pressed() -> void:
-	AudioBus.play_tap()
+	# Iter 136: diagnostic + ensure DebugPreview state is cleared so
+	# the reloaded scene doesn't accidentally re-trigger a preview that
+	# was pending from the original entry. Also call clear() so test
+	# range / captive / pushed flags don't repeat.
+	DebugLog.add("RETRY button pressed → reloading scene")
+	if get_node_or_null("/root/AudioBus"):
+		AudioBus.play_tap()
+	if get_node_or_null("/root/DebugPreview") and DebugPreview.has_method("clear"):
+		DebugPreview.clear()
 	get_tree().reload_current_scene()
