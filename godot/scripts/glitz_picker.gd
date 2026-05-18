@@ -52,11 +52,16 @@ func _build_bonus_tabs() -> void:
 		bonus_tabs.add_child(btn)
 
 func _build_preset_grid() -> void:
+	# Iter 137: 18 presets — keep buttons readable on a 3-col grid.
+	# Per-row height shrinks (120 → 100), font_size shrinks (28 → 22)
+	# so the longest preset name "PULSE+HALO+YSPIN" fits without ellipsis.
 	for preset_name in GlitzPrefs.PRESET_ORDER:
 		var btn := Button.new()
 		btn.text = preset_name.replace("_", "+").to_upper()
-		btn.custom_minimum_size = Vector2(0, 120)
-		btn.add_theme_font_size_override("font_size", 28)
+		btn.custom_minimum_size = Vector2(0, 100)
+		btn.add_theme_font_size_override("font_size", 22)
+		btn.clip_text = false
+		btn.autowrap_mode = TextServer.AUTOWRAP_OFF
 		btn.pressed.connect(_on_preset_pressed.bind(preset_name))
 		preset_grid.add_child(btn)
 

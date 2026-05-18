@@ -34,6 +34,16 @@ var pending_posse_unlock: String = ""
 # Posse is made invulnerable to keep the test loop running.
 var pending_test_range: bool = false
 
+# Iter 133/134: pending captive hero + pushed-wagon previews. The
+# debug-menu wagon button was logging but the scene was crashing
+# silently because these fields weren't declared on the autoload —
+# debug_menu.gd set them as dynamic properties (succeeds), but
+# level_3d._ready's read raised 'Invalid get index' and bounced the
+# user back to main_menu. Declaring them here fixes the read path.
+var pending_captive_hero: String = ""
+var pending_captive_container: String = ""
+var pending_pushed_count: int = 0
+
 # Called by level.gd after consuming a pending field so back-to-back
 # debug launches don't leak state across scenes.
 func clear() -> void:
@@ -42,6 +52,9 @@ func clear() -> void:
 	pending_weapon = ""
 	pending_posse_unlock = ""
 	pending_test_range = false
+	pending_captive_hero = ""
+	pending_captive_container = ""
+	pending_pushed_count = 0
 
 # True if any preview is pending. Level.gd can short-circuit normal
 # gate/boss spawning when this is true (so the rush plays in an
@@ -49,4 +62,4 @@ func clear() -> void:
 func has_pending() -> bool:
 	return pending_rush != "" or pending_sugar_rush or \
 		pending_weapon != "" or pending_posse_unlock != "" or \
-		pending_test_range
+		pending_test_range or pending_captive_hero != ""

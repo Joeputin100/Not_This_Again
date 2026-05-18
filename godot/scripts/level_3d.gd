@@ -2300,30 +2300,28 @@ func _spawn_pete() -> void:
 	# follow-up — for now IDLE on loop while we verify the billboard
 	# pipeline works at all on Android.
 	var pete := Node3D.new()
-	# Iter 122: Pete +300% — world_height 4.2 → 16.8 (4×). y position
-	# moved from 2.1 → 8.4 because Sprite3D pivots from center; without
-	# raising the position by half-the-new-height, his feet would bury
-	# 6.3 units underground.
-	pete.position = Vector3(0.0, 8.4, OBSTACLE_SPAWN_Z + 4.0)
+	# Iter 137: Pete sizing fix. cowboy_3d uses pixel_size=0.002 against
+	# a ~1024px-tall texture → cowboy is ~2.0 world units tall. User wants
+	# Pete 3-4× cowboy = 6-8 units. Settled on 7.0 (3.5× cowboy). y=3.5
+	# so feet touch ground. Previous 16.8 was ~8.4× — visually "30× cowboy"
+	# because the close camera magnified the silhouette.
+	var pete_height: float = 7.0
+	pete.position = Vector3(0.0, pete_height * 0.5, OBSTACLE_SPAWN_Z + 4.0)
 	pete.set_meta("hp", PETE_HP)
 	boss_root.add_child(pete)
-	# Iter 136: Pete invisibility report. Spawn BOTH a video billboard
-	# AND a static fallback Sprite3D using slippery_pete.png if it exists.
-	# The static sprite acts as a 'belt and suspenders' so if the video
-	# pipeline drops Pete on Android, we still see his silhouette.
-	var billboard: Node3D = _make_video_billboard(PETE_IDLE_STREAM, 16.8)
+	var billboard: Node3D = _make_video_billboard(PETE_IDLE_STREAM, pete_height)
 	pete.add_child(billboard)
 	var pete_png_path := "res://assets/sprites/slippery_pete.png"
 	if ResourceLoader.exists(pete_png_path):
 		var fallback := Sprite3D.new()
 		fallback.texture = load(pete_png_path)
-		fallback.pixel_size = 16.8 / float(fallback.texture.get_height())
+		fallback.pixel_size = pete_height / float(fallback.texture.get_height())
 		fallback.billboard = 1
 		fallback.alpha_cut = 1
-		fallback.modulate = Color(1, 1, 1, 0.85)  # slight transparency so video shows through if it renders
+		fallback.modulate = Color(1, 1, 1, 0.85)
 		pete.add_child(fallback)
-		DebugLog.add("pete: static fallback sprite added (16.8 tall)")
-	DebugLog.add("pete spawned at (%.1f, %.1f, %.1f), HP=%d" % [pete.position.x, pete.position.y, pete.position.z, PETE_HP])
+		DebugLog.add("pete: static fallback sprite added (%.1f tall)" % pete_height)
+	DebugLog.add("pete spawned at (%.1f, %.1f, %.1f), HP=%d, height=%.1f" % [pete.position.x, pete.position.y, pete.position.z, PETE_HP, pete_height])
 	# Big "BOSS" label floating above him
 	var label := Label3D.new()
 	label.text = "SLIPPERY PETE"

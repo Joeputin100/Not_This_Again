@@ -40,7 +40,7 @@ custom_minimum_size = Vector2(0, 100)
 alignment = 1
 
 [node name="PreviewBox" type="SubViewportContainer" parent="VBox"]
-custom_minimum_size = Vector2(0, 720)
+custom_minimum_size = Vector2(0, 600)
 stretch = true
 
 [node name="Viewport" type="SubViewport" parent="VBox/PreviewBox"]
@@ -63,7 +63,7 @@ light_energy = 0.35
 light_color = Color(0.7, 0.78, 1.0, 1)
 
 [node name="PresetGrid" type="GridContainer" parent="VBox"]
-custom_minimum_size = Vector2(0, 280)
+custom_minimum_size = Vector2(0, 660)
 columns = 3
 
 [node name="SpeedRow" type="HBoxContainer" parent="VBox"]
