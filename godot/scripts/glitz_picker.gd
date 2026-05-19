@@ -30,6 +30,7 @@ const BREATHING_SHADER := preload("res://shaders/breathing_prop.gdshader")
 var _current_bonus: String = "rifle"
 var _preview_mesh: MeshInstance3D = null
 var _preview_halo: MeshInstance3D = null
+var _preview_aura: CPUParticles3D = null  # iter 146 particle aura
 # Iter 142: track buttons so we can restyle the selected ones.
 var _bonus_btns: Dictionary = {}    # bonus_slug -> Button
 var _preset_btns: Dictionary = {}   # preset_name -> Button
@@ -120,6 +121,52 @@ func _spawn_preview_mesh() -> void:
 	mesh.position = Vector3(0, 0.9, 0)
 	viewport.add_child(mesh)
 	_preview_mesh = mesh
+	# Iter 146: particle aura — radial sparkles around the silhouette.
+	# Emits when halo_strength > 0 (via _apply_current_selection). User
+	# feedback: "halo effect is too static. do a particle aura."
+	var aura := CPUParticles3D.new()
+	aura.amount = 60
+	aura.lifetime = 1.4
+	aura.one_shot = false
+	aura.preprocess = 0.5  # pre-warm so aura isn't empty when picker opens
+	aura.emission_shape = CPUParticles3D.EMISSION_SHAPE_SPHERE_SURFACE
+	aura.emission_sphere_radius = 0.95
+	aura.direction = Vector3(0, 0.4, 0)
+	aura.spread = 180.0  # omnidirectional outward
+	aura.initial_velocity_min = 0.05
+	aura.initial_velocity_max = 0.45
+	aura.gravity = Vector3(0, 0.3, 0)  # subtle upward drift
+	aura.scale_amount_min = 0.05
+	aura.scale_amount_max = 0.12
+	aura.color = Color(1.0, 0.85, 0.40, 1.0)
+	# Brightness curve: fade in then out
+	aura.alpha_curve = _make_alpha_curve()
+	# Small quad mesh for each particle
+	var quad := QuadMesh.new()
+	quad.size = Vector2(0.18, 0.18)
+	aura.mesh = quad
+	var aura_mat := StandardMaterial3D.new()
+	aura_mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	aura_mat.albedo_color = Color(1.0, 0.85, 0.40, 1.0)
+	aura_mat.emission_enabled = true
+	aura_mat.emission = Color(1.0, 0.92, 0.55, 1)
+	aura_mat.emission_energy_multiplier = 2.5
+	aura_mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	aura_mat.billboard_mode = BaseMaterial3D.BILLBOARD_ENABLED
+	aura_mat.use_particle_trails = false
+	quad.material = aura_mat
+	aura.position = Vector3(0, 0.9, 0)
+	aura.emitting = false  # gated on halo_strength
+	viewport.add_child(aura)
+	_preview_aura = aura
+
+func _make_alpha_curve() -> Curve:
+	var c := Curve.new()
+	c.add_point(Vector2(0.00, 0.0))
+	c.add_point(Vector2(0.20, 1.0))
+	c.add_point(Vector2(0.70, 0.7))
+	c.add_point(Vector2(1.00, 0.0))
+	return c
 
 func _on_bonus_tab_pressed(bonus: String) -> void:
 	_current_bonus = bonus
@@ -156,6 +203,11 @@ func _apply_current_selection() -> void:
 		_current_bonus.to_upper(), preset.replace("_", "+").to_upper(), speed_mult]
 	# Iter 142: highlight the active bonus tab + preset button
 	_restyle_buttons()
+	# Iter 146: gate the particle aura on halo_strength.
+	if _preview_aura != null:
+		var halo: float = float(GlitzPrefs.PRESETS.get(preset, {}).get("halo_strength", 0.0))
+		_preview_aura.emitting = halo > 0.001
+		_preview_aura.amount = clampi(int(40.0 + halo * 40.0), 20, 120)
 
 func _on_back_pressed() -> void:
 	get_tree().change_scene_to_file("res://scenes/debug_menu.tscn")

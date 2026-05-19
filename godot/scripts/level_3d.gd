@@ -2295,14 +2295,30 @@ func _collect_bonus(bonus: Node3D) -> void:
 # Iter 77: spawn the Slippery Pete boss. Big yellow CSGBox3D with an
 # HP meta field + state machine. Stops at PETE_STAY_Z for the duel.
 const PETE_IDLE_STREAM := preload("res://assets/videos/pete/taps_foot_idle.ogv")
+const PETE_FORWARD_STREAM := preload("res://assets/videos/pete/steps_forward.ogv")
+const PETE_SHOOT_STREAM := preload("res://assets/videos/pete/shoots_at_player.ogv")
+const PETE_HIT_STREAM := preload("res://assets/videos/pete/hit_by_gunfire.ogv")
+const PETE_SHOUT_STREAM := preload("res://assets/videos/pete/shouts.ogv")
+const PETE_CELEBRATE_STREAM := preload("res://assets/videos/pete/celebrate.ogv")
+const PETE_COMPLAINS_STREAM := preload("res://assets/videos/pete/complains.ogv")
+const PETE_DEATH_STREAM := preload("res://assets/videos/pete/death.ogv")
+
+# Iter 146: Pete animation state machine. Helper to swap his video billboard
+# texture to a different stream's SubViewport without recreating the sprite.
+# Stores the active anim slug as meta + a return-to-idle timer.
+func _set_pete_anim(pete: Node3D, stream: VideoStream, duration: float = 0.0) -> void:
+	var sprite: Sprite3D = pete.get_meta("video_sprite", null) as Sprite3D
+	if sprite == null:
+		return
+	var sv: SubViewport = _get_or_create_shared_video_viewport(stream)
+	sprite.texture = sv.get_texture()
+	pete.set_meta("anim_revert_t", duration)
 
 func _spawn_pete() -> void:
 	# Iter 109: video-driven billboard using pete/taps_foot_idle.ogv +
 	# chromakey shader (matches the 2D gameplay outlaw.tscn pattern).
-	# State-machine swapping between Pete's other 8 streams (FORWARD,
-	# STRAFE, SHOOT, HIT, DEATH, CELEBRATE, SHOUTS, COMPLAINS) is a
-	# follow-up — for now IDLE on loop while we verify the billboard
-	# pipeline works at all on Android.
+	# Iter 146: state machine wired — IDLE default, SHOOT on fire,
+	# SHOUT on taunt, HIT on damage, FORWARD during approach.
 	var pete := Node3D.new()
 	# Iter 137: Pete sizing fix. cowboy_3d uses pixel_size=0.002 against
 	# a ~1024px-tall texture → cowboy is ~2.0 world units tall. User wants
@@ -2315,7 +2331,18 @@ func _spawn_pete() -> void:
 	boss_root.add_child(pete)
 	var billboard: Node3D = _make_video_billboard(PETE_IDLE_STREAM, pete_height)
 	pete.add_child(billboard)
+	# Iter 146: store the Sprite3D so the anim state machine can swap its
+	# texture between stream viewports.
+	if billboard.get_child_count() > 0:
+		var sprite: Sprite3D = billboard.get_child(0) as Sprite3D
+		if sprite != null:
+			pete.set_meta("video_sprite", sprite)
+	pete.set_meta("anim_revert_t", 0.0)
 	DebugLog.add("pete spawned at (%.1f, %.1f, %.1f), HP=%d, height=%.1f" % [pete.position.x, pete.position.y, pete.position.z, PETE_HP, pete_height])
+	# Iter 146: play arrival intro voice + shout animation.
+	if get_node_or_null("/root/AudioBus") and AudioBus.has_method("play_character_line"):
+		AudioBus.play_character_line("pete_intro")
+	_set_pete_anim(pete, PETE_SHOUT_STREAM, 2.5)
 	# Iter 144: HP bar lives on 2D HUD (top of screen) instead of attached
 	# to Pete in 3D. With Pete head at world y=7 = camera y=7 and a -55°
 	# pitch, anything at Pete's head height or above is off-screen at the
@@ -2411,11 +2438,9 @@ func _pete_fire() -> void:
 	var pete: Node3D = boss_root.get_child(0)
 	if not (pete is Node3D):
 		return
-	# Iter 119: alternate left/right gun by offsetting Pete's position
-	# briefly during the _outlaw_fire call (which uses outlaw.position
-	# as the bullet origin). Net effect: shots originate from his L gun
-	# on even fires, R gun on odd, giving a visual telegraph the player
-	# can read for dodge timing.
+	# Iter 146: swap to SHOOT animation during fire, revert to IDLE in 0.6s
+	# (handled by _process tick on anim_revert_t).
+	_set_pete_anim(pete, PETE_SHOOT_STREAM, 0.6)
 	var gun_offset_x: float = -0.6 if (_pete_fire_count % 2 == 0) else 0.6
 	var orig_pos: Vector3 = pete.position
 	pete.position = orig_pos + Vector3(gun_offset_x, 0, 0)
@@ -2434,6 +2459,12 @@ func _pete_spawn_taunt(pete: Node3D) -> void:
 	var line: String = Text.random("boss.slippery_pete_dialog_taunts")
 	if line == "" or line == "boss.slippery_pete_dialog_taunts":
 		return
+	# Iter 146: SHOUT animation flash + voice line. Bubble lowered from
+	# Pete's head (y+4 = off-screen at top) to chest level so the user
+	# actually sees the banter.
+	_set_pete_anim(pete, PETE_SHOUT_STREAM, 1.5)
+	if get_node_or_null("/root/AudioBus") and AudioBus.has_method("play_character_line"):
+		AudioBus.play_character_line("pete_intro")  # reuse intro until per-taunt clips exist
 	var bubble := Label3D.new()
 	bubble.text = line
 	bubble.font_size = 56
@@ -2441,7 +2472,7 @@ func _pete_spawn_taunt(pete: Node3D) -> void:
 	bubble.modulate = Color(1, 0.92, 0.55, 1)
 	bubble.billboard = BaseMaterial3D.BILLBOARD_ENABLED
 	bubble.no_depth_test = true
-	bubble.position = pete.position + Vector3(0, 4.0, 0)
+	bubble.position = pete.position + Vector3(0, 0.5, 0.8)
 	popups_root.add_child(bubble)
 	var t := create_tween().set_parallel(true)
 	t.tween_property(bubble, "position:y",
@@ -3391,19 +3422,27 @@ func _outlaw_fire(outlaw: Node3D) -> void:
 	mat.emission_energy_multiplier = 2.5
 	mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
 	b.material = mat
+	# Iter 146: bullet emerges from gun-height (outlaw.position.y + 0.5
+	# offset). User reported "bullets do not emerge from Pete's guns, they
+	# emerge from between his legs" — iter 135 had clamped Y=1.0 for ALL
+	# outlaws which puts Pete's bullet (Pete y=3.5) below his crotch. Now
+	# the ballistic Y velocity descends to cowboy chest height by arrival
+	# so the collision check (x-z plane) still hits correctly.
 	b.position = outlaw.position
-	# Iter 135: clamp bullet spawn height to posse-shoulder level so big
-	# enemies (Pete is 16.8 tall, center at y=8.4) don't fire invisible
-	# bullets way overhead that still trigger x-plane damage on the posse.
-	b.position.y = 1.0
-	# Velocity: from outlaw toward cowboy, normalized × speed
-	var to_cowboy: Vector3 = cowboy_3d.position - outlaw.position
-	to_cowboy.y = 0.0  # keep bullets level
-	if to_cowboy.length() > 0.001:
-		to_cowboy = to_cowboy.normalized() * OUTLAW_BULLET_SPEED
+	b.position.y = outlaw.position.y + 0.5
+	var to_cowboy_xz: Vector3 = cowboy_3d.position - outlaw.position
+	to_cowboy_xz.y = 0.0
+	var xz_dist: float = to_cowboy_xz.length()
+	var vel: Vector3
+	if xz_dist > 0.001:
+		vel = to_cowboy_xz.normalized() * OUTLAW_BULLET_SPEED
+		var travel_time: float = xz_dist / OUTLAW_BULLET_SPEED
+		# Drop from gun-height to cowboy chest (~1.0) over the travel time.
+		var y_drop: float = b.position.y - 1.0
+		vel.y = -y_drop / max(travel_time, 0.001)
 	else:
-		to_cowboy = Vector3(0, 0, OUTLAW_BULLET_SPEED)
-	b.set_meta("velocity", to_cowboy)
+		vel = Vector3(0, 0, OUTLAW_BULLET_SPEED)
+	b.set_meta("velocity", vel)
 	outlaw_bullets_root.add_child(b)
 
 var _process_first_tick_logged: bool = false
@@ -3684,9 +3723,25 @@ func _process(delta: float) -> void:
 	if _pete_spawned and boss_root.get_child_count() > 0:
 		var pete: Node3D = boss_root.get_child(0)
 		if is_instance_valid(pete) and pete is Node3D:
-			# Approach until STAY_Z
+			# Iter 146: anim revert timer — if running, count down; on
+			# expiry switch Pete back to IDLE.
+			var revert_t: float = pete.get_meta("anim_revert_t", 0.0)
+			if revert_t > 0.0:
+				revert_t -= delta
+				if revert_t <= 0.0:
+					_set_pete_anim(pete, PETE_IDLE_STREAM, 0.0)
+				else:
+					pete.set_meta("anim_revert_t", revert_t)
+			# Approach until STAY_Z — use FORWARD animation while walking
 			if pete.position.z < PETE_STAY_Z:
 				pete.position.z += PETE_SPEED * delta
+				# Only switch to FORWARD if not currently in a transient
+				# (e.g., shout / shoot still has time left).
+				if revert_t <= 0.0:
+					var current: Sprite3D = pete.get_meta("video_sprite", null) as Sprite3D
+					var forward_sv: SubViewport = _get_or_create_shared_video_viewport(PETE_FORWARD_STREAM)
+					if current != null and current.texture != forward_sv.get_texture():
+						_set_pete_anim(pete, PETE_FORWARD_STREAM, 0.0)
 			else:
 				# Iter 119: Pete is at duel distance. After
 				# PETE_MELEE_TRIGGER_T seconds of holding still, he
