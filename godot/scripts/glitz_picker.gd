@@ -34,10 +34,13 @@ var _preview_halo: MeshInstance3D = null
 var _bonus_btns: Dictionary = {}    # bonus_slug -> Button
 var _preset_btns: Dictionary = {}   # preset_name -> Button
 
-const SELECTED_BG := Color(0.95, 0.78, 0.35, 1)  # warm amber
-const SELECTED_FG := Color(0.12, 0.08, 0.04, 1)
-const UNSELECTED_BG := Color(0.22, 0.17, 0.10, 1)
-const UNSELECTED_FG := Color(0.92, 0.85, 0.65, 1)
+# Iter 143: explicit Color type + 1.0 alpha; iter 142's `const SELECTED_FG := Color(... 1)`
+# (int alpha) was rejected as non-constant on Godot 4 release builds, causing the
+# entire glitz_picker.gd to fail to parse — scene showed as a blank gray rectangle.
+const SELECTED_FG: Color = Color(0.12, 0.08, 0.04, 1.0)
+const UNSELECTED_FG: Color = Color(0.92, 0.85, 0.65, 1.0)
+const SELECTED_MOD: Color = Color(1.20, 1.10, 0.85, 1.0)
+const UNSELECTED_MOD: Color = Color(1.0, 1.0, 1.0, 1.0)
 
 func _ready() -> void:
 	get_tree().set_quit_on_go_back(false)
@@ -82,16 +85,16 @@ func _restyle_buttons() -> void:
 	var active_preset: String = GlitzPrefs.get_preset_for_bonus(_current_bonus)
 	for bonus in _bonus_btns.keys():
 		var b: Button = _bonus_btns[bonus]
-		var sel := (bonus == _current_bonus)
+		var sel: bool = (bonus == _current_bonus)
 		b.add_theme_color_override("font_color", SELECTED_FG if sel else UNSELECTED_FG)
 		b.add_theme_color_override("font_color_hover", SELECTED_FG if sel else UNSELECTED_FG)
-		b.modulate = Color(1.20, 1.10, 0.85, 1) if sel else Color(1, 1, 1, 1)
+		b.modulate = SELECTED_MOD if sel else UNSELECTED_MOD
 	for preset in _preset_btns.keys():
 		var pb: Button = _preset_btns[preset]
-		var sel := (preset == active_preset)
+		var sel: bool = (preset == active_preset)
 		pb.add_theme_color_override("font_color", SELECTED_FG if sel else UNSELECTED_FG)
 		pb.add_theme_color_override("font_color_hover", SELECTED_FG if sel else UNSELECTED_FG)
-		pb.modulate = Color(1.20, 1.10, 0.85, 1) if sel else Color(1, 1, 1, 1)
+		pb.modulate = SELECTED_MOD if sel else UNSELECTED_MOD
 
 # Spawns the preview billboard mesh (uses bonus_crate_rifle texture
 # as a placeholder for whichever bonus type is selected; texture swaps

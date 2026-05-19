@@ -179,7 +179,7 @@ var _outlaw_spawn_timer: float = 0.0
 # level. Slow approach, much higher HP, drops the WIN modal on defeat.
 const PETE_SPAWN_DELAY: float = 8.0  # iter 118: 12 → 8
 const PETE_HP: int = 1000  # iter 119: 40 → 1000 (×-gates can build huge posse)
-const PETE_SPEED: float = 4.0  # iter 124: 1.6 → 4.0 (was too slow — user quit before he arrived)
+const PETE_SPEED: float = 10.0  # iter 124: 1.6 → 4.0 → iter 143: 4.0 → 10.0 (user reported "doesn't advance fast enough")
 const PETE_FIRE_INTERVAL: float = 0.5  # iter 119: 1.0 → 0.5 (alternates L/R guns)
 const PETE_HIT_RADIUS_SQ: float = 2.6 * 2.6
 const PETE_STAY_Z: float = -6.0  # holds at duel distance until melee phase
@@ -1877,33 +1877,32 @@ func _preview_hero_3d(slug: String) -> void:
 	if ui_canvas != null:
 		FlourishBanner.spawn(ui_canvas, data.name)
 	await get_tree().create_timer(0.5).timeout
-	# Spawn the hero stand-in next to the cowboy.
-	# Body: small color-coded CSG box. Hat: darker box on top. Trim
-	# accent stripe: thin trim-colored box across the body.
+	# Iter 143: hero preview uses the actual hero PNG via Sprite3D billboard.
+	# Iter 129 used color-coded CSG boxes as placeholders; the PNGs have
+	# existed since iter 131 but the preview was never updated to use them
+	# (user reported "debug menu heroes — still polygons, PNGs not showing").
 	var hero := Node3D.new()
 	hero.position = cowboy_3d.position + Vector3(1.2, 0.0, 0.0)
 	subviewport.add_child(hero)
-	var body := CSGBox3D.new()
-	body.size = Vector3(0.5, 1.2, 0.4)
-	var body_mat := StandardMaterial3D.new()
-	body_mat.albedo_color = data.color
-	body_mat.emission_enabled = true
-	body_mat.emission = data.color * 0.4
-	body.material = body_mat
-	body.position = Vector3(0, 0.6, 0)
-	hero.add_child(body)
-	var hat := CSGBox3D.new()
-	hat.size = Vector3(0.6, 0.15, 0.5)
-	var hat_mat := StandardMaterial3D.new()
-	hat_mat.albedo_color = data.trim
-	hat.material = hat_mat
-	hat.position = Vector3(0, 1.32, 0)
-	hero.add_child(hat)
-	var trim := CSGBox3D.new()
-	trim.size = Vector3(0.5, 0.12, 0.42)
-	trim.material = hat_mat  # share material
-	trim.position = Vector3(0, 0.85, 0)
-	hero.add_child(trim)
+	var hero_png_path := "res://assets/sprites/props/hero_%s.png" % slug
+	if ResourceLoader.exists(hero_png_path):
+		var hero_sprite := Sprite3D.new()
+		hero_sprite.texture = load(hero_png_path)
+		hero_sprite.pixel_size = 2.0 / float(hero_sprite.texture.get_height())
+		hero_sprite.billboard = 1  # BILLBOARD_ENABLED
+		hero_sprite.alpha_cut = 1  # ALPHA_CUT_DISCARD
+		hero_sprite.texture_filter = BaseMaterial3D.TEXTURE_FILTER_LINEAR_WITH_MIPMAPS
+		hero_sprite.position = Vector3(0, 1.0, 0)
+		hero.add_child(hero_sprite)
+	else:
+		# Fallback: legacy CSG box (in case the hero PNG is missing)
+		var body := CSGBox3D.new()
+		body.size = Vector3(0.5, 1.2, 0.4)
+		var body_mat := StandardMaterial3D.new()
+		body_mat.albedo_color = data.color
+		body.material = body_mat
+		body.position = Vector3(0, 0.6, 0)
+		hero.add_child(body)
 	# Floating name plate
 	var name_label := Label3D.new()
 	name_label.text = data.name
@@ -2309,37 +2308,31 @@ func _spawn_pete() -> void:
 	pete.position = Vector3(0.0, pete_height * 0.5, OBSTACLE_SPAWN_Z + 4.0)
 	pete.set_meta("hp", PETE_HP)
 	boss_root.add_child(pete)
-	# Iter 142: removed static fallback Sprite3D — user reported it was
-	# superimposed over the video billboard creating doubled-image artifact.
-	# The video billboard renders reliably on the device now, so the belt-
-	# and-suspenders is unnecessary.
 	var billboard: Node3D = _make_video_billboard(PETE_IDLE_STREAM, pete_height)
 	pete.add_child(billboard)
 	DebugLog.add("pete spawned at (%.1f, %.1f, %.1f), HP=%d, height=%.1f" % [pete.position.x, pete.position.y, pete.position.z, PETE_HP, pete_height])
-	# Iter 142: label + HP bar positioned ABOVE Pete's head (was inside
-	# the billboard silhouette and hidden). Pete's billboard quad spans
-	# y_local = -pete_height/2 to +pete_height/2 = -3.5 to +3.5. Anything
-	# at y_local < 3.5 sits in front of the video plane and gets blocked.
-	# Push label to 4.5 (clearly above head) and HP bar to 4.0 (just below
-	# label). z offset 0.5 (was 0.01) for clean separation from the
-	# billboard quad to avoid z-fight.
+	# Iter 143: label + HP bar moved to Pete's CHEST area (was above head
+	# in iter 142 → off-screen because Pete's head sits at world y=7 = same
+	# height as camera, which with the -55° pitch puts head near top of
+	# frame). Chest-level overlay stays on Pete regardless of screen pos.
+	# z offset 0.6 keeps them clear of the billboard quad to avoid z-fight.
 	var label := Label3D.new()
 	label.text = "SLIPPERY PETE"
 	label.font_size = 80
 	label.outline_size = 14
 	label.modulate = Color(1, 0.45, 0.30, 1)
-	label.position = Vector3(0, 4.5, 0.5)
+	label.position = Vector3(0, 1.2, 0.6)
 	pete.add_child(label)
 	var hp_bg := CSGBox3D.new()
 	hp_bg.size = Vector3(2.5, 0.25, 0.05)
-	hp_bg.position = Vector3(0, 4.0, 0.5)
+	hp_bg.position = Vector3(0, 0.4, 0.6)
 	var bg_mat := StandardMaterial3D.new()
-	bg_mat.albedo_color = Color(0.05, 0.05, 0.05, 0.85)
+	bg_mat.albedo_color = Color(0.05, 0.05, 0.05, 0.95)
 	hp_bg.material = bg_mat
 	pete.add_child(hp_bg)
 	var hp_fg := CSGBox3D.new()
 	hp_fg.size = Vector3(2.5, 0.20, 0.08)
-	hp_fg.position = Vector3(0, 4.0, 0.55)
+	hp_fg.position = Vector3(0, 0.4, 0.65)
 	var fg_mat := StandardMaterial3D.new()
 	fg_mat.albedo_color = Color(0.95, 0.25, 0.25, 1)
 	fg_mat.emission_enabled = true
@@ -3339,6 +3332,11 @@ func _make_video_billboard(
 	sprite.pixel_size = world_height / float(viewport_px.y)
 	sprite.billboard = 1   # BILLBOARD_ENABLED
 	sprite.alpha_cut = 0   # ALPHA_CUT_DISABLED — chromakey's smooth edge needs alpha blending
+	# Iter 143: force LINEAR filter so smaller-billboard scaling stays smooth
+	# (user reported Pete looking pixelated after iter 142's 16.8→7.0 height
+	# shrink). Default texture_filter inherits from project; explicit override
+	# guarantees consistent quality regardless of project setting.
+	sprite.texture_filter = BaseMaterial3D.TEXTURE_FILTER_LINEAR_WITH_MIPMAPS
 	wrap.add_child(sprite)
 	return wrap
 

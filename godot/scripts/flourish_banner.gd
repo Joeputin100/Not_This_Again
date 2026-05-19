@@ -159,10 +159,26 @@ func _fit_font_size_measured(target_label: Label, text: String, base: int) -> in
 # Plays the banner. Static spawn() calls this on the freshly-instantiated
 # node; can also be called directly if the caller wants custom text
 # outside the preset library.
+const GLITTER_SHADER: Shader = preload("res://shaders/flourish_glitter.gdshader")
+
 func play(text: String, color: Color, font_size: int, ring_color: Color) -> void:
 	# ---- Label setup ----
 	label.text = text
 	label.add_theme_color_override("font_color", color)
+	# Iter 143: glitter shader overlay on the text (user request "add a
+	# glitter shader to the sugar rush text"). Tinted to the banner's
+	# primary color so each preset's glitter matches its mood.
+	var glitter_mat := ShaderMaterial.new()
+	glitter_mat.shader = GLITTER_SHADER
+	# Slightly desaturated, brighter version of the banner color makes
+	# the sparkle pop without overpowering the readability.
+	glitter_mat.set_shader_parameter("glitter_color",
+		Color(min(color.r + 0.2, 1.0), min(color.g + 0.2, 1.0), min(color.b + 0.2, 1.0), 1.0))
+	glitter_mat.set_shader_parameter("glitter_intensity", 1.0)
+	glitter_mat.set_shader_parameter("glitter_density", 0.55)
+	glitter_mat.set_shader_parameter("time_speed", 4.5)
+	glitter_mat.set_shader_parameter("hue_shift_amount", 0.18)
+	label.material = glitter_mat
 	# Iter 90: accurate font measurement via the actual theme font.
 	# Previous heuristic (0.55 ratio) under-estimated character widths
 	# for the chunky Western display font — banners like YEEHAW! and
