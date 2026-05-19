@@ -76,7 +76,7 @@ const COWBOY_X_BOUND: float = 3.0  # iter 118: 6.0 → 3.0 to match the actual v
 # the user reported on iter 105 sideload ("cowboy not visible, nothing
 # is tracking left/right" → the lerp was working but the sprite was
 # below the screen so the visual tracking was invisible).
-const COWBOY_Z: float = 0.0  # iter 113: -3.0 → 0.0 (cowboy was at screen center, want near bottom)
+const COWBOY_Z: float = 1.5  # iter 145: 0.0 → 1.5 (was middle of screen, user wants near bottom)
 const OBSTACLE_SPAWN_Z: float = -28.0  # far end of plane
 const OBSTACLE_DESPAWN_Z: float = 3.5   # past the cowboy
 const OBSTACLE_SPEED: float = 5.0    # iter 144: 8.0 → 5.0 (user: "terrain too fast to rescue trapped hero")
@@ -149,7 +149,7 @@ var _rng := RandomNumberGenerator.new()
 # straddling the lane center, math values painted on as Label3D.
 # Posse count starts at STARTING_POSSE (5) and modifies as cowboy
 # walks through gates.
-const GATE_SPAWN_INTERVAL: float = 4.5
+const GATE_SPAWN_INTERVAL: float = 3.0  # iter 145: 4.5 → 3.0 (more gates per second with slower terrain)
 const GATE_WIDTH: float = 4.0       # iter 107: 8.0 → 4.0 (each door is 2.0 wide)
 const GATE_HEIGHT: float = 1.35     # iter 108: 2.5 → 1.35 = 1.5× cowboy height (~0.89)
 const GATE_TRIGGER_Z: float = 0.5   # gates fire when their z passes this
@@ -177,7 +177,7 @@ var _outlaw_spawn_timer: float = 0.0
 
 # Iter 77: Slippery Pete boss. Appears at PETE_SPAWN_DELAY into the
 # level. Slow approach, much higher HP, drops the WIN modal on defeat.
-const PETE_SPAWN_DELAY: float = 8.0  # iter 118: 12 → 8
+const PETE_SPAWN_DELAY: float = 18.0  # iter 145: 8 → 18 (terrain slowed iter 144 → fewer gates pass in 8s; user wants posse to grow more)
 const PETE_HP: int = 1000  # iter 119: 40 → 1000 (×-gates can build huge posse)
 const PETE_SPEED: float = 10.0  # iter 124: 1.6 → 4.0 → iter 143: 4.0 → 10.0 (user reported "doesn't advance fast enough")
 const PETE_FIRE_INTERVAL: float = 0.5  # iter 119: 1.0 → 0.5 (alternates L/R guns)

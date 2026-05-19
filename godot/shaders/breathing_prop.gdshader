@@ -144,10 +144,14 @@ void fragment() {
 		}
 	}
 	vec4 tex = texture(albedo_tex, uv) * modulate;
-	// Iter 144: outward halo — transparent pixels NEAR opaque pixels render
-	// halo color instead of being discarded. Creates the glow-OUTSIDE-the-
-	// silhouette effect the user has been asking about. Sampling 8 directions
-	// at k=0.05 in UV space gives a halo band ~5% of texture wide.
+	// Iter 145: outward halo restructured to avoid early `return` (iter 144
+	// version used return which broke shader on Android Vulkan — preview
+	// rendered as a gray rectangle). Single-pass: compute halo flag, apply
+	// at end. Same visual effect: transparent pixels near opaque pixels
+	// glow with halo color extending past the silhouette.
+	vec3 out_color = tex.rgb;
+	float out_alpha = tex.a;
+	bool is_halo_pixel = false;
 	if (tex.a < alpha_cutoff && halo_strength > 0.001) {
 		float k_outer = 0.05;
 		float max_neighbor = 0.0;
@@ -162,41 +166,37 @@ void fragment() {
 		max_neighbor = max(max_neighbor, texture(albedo_tex, uv + vec2(-k_diag, -k_diag)).a);
 		if (max_neighbor >= alpha_cutoff) {
 			float pulse = 0.7 + sin(TIME * 3.0) * 0.3;
-			ALBEDO = vec3(1.0, 0.85, 0.40);
-			ALPHA = halo_strength * max_neighbor * pulse * 0.85;
-			return;
+			out_color = vec3(1.0, 0.85, 0.40);
+			out_alpha = halo_strength * max_neighbor * pulse * 0.85;
+			is_halo_pixel = true;
 		}
+	}
+	if (!is_halo_pixel && tex.a < alpha_cutoff) {
 		discard;
 	}
-	if (tex.a < alpha_cutoff) { discard; }
-	ALBEDO = tex.rgb;
-	ALPHA = tex.a;
-	// damage tint: flash white on impact, decay with damage_strength
-	if (damage_strength > 0.001) {
-		ALBEDO = mix(ALBEDO, vec3(1.0, 1.0, 0.85), damage_strength * 0.6);
-	}
-	// Iter 132/135: glitz layers — add to ALBEDO directly since the
-	// `unshaded` render_mode ignores EMISSION. iter 132 used EMISSION
-	// which silently dropped these effects.
-	if (pulse_glow > 0.001) {
-		float pulse = sin(TIME * 4.0) * 0.5 + 0.5;
-		ALBEDO = mix(ALBEDO, vec3(1.0, 0.95, 0.50), pulse * pulse_glow * 0.35);
-	}
-	if (hue_cycle > 0.001) {
-		// Cheap "hue cycle": cyclic permutation of RGB channels at low amplitude
-		vec3 cycled = mix(ALBEDO.rgb, ALBEDO.brg, sin(TIME * 1.5) * 0.5 + 0.5);
-		cycled = mix(cycled, cycled.gbr, sin(TIME * 1.5 + 2.094) * 0.3);
-		ALBEDO = mix(ALBEDO, cycled, hue_cycle);
-	}
-	// Iter 144: halo is handled BEFORE the discard above (outward glow on
-	// transparent pixels near opaque ones). No inner-rim work here.
-	if (sparkle_orbit > 0.001) {
-		// Iter 144: cranked further — threshold 0.97 → 0.90 (10% pixels
-		// active), pulse magnitude 0.3 → 0.5, double-band noise for more
-		// "twinkle scatter" feel. User reported sparkle "barely noticeable".
-		float n1 = fract(sin(dot(uv * 40.0, vec2(12.9898, 78.233)) + TIME * 5.0) * 43758.5453);
-		float n2 = fract(sin(dot(uv * 25.0, vec2(8.9, 24.7)) + TIME * 3.0) * 33458.5453);
-		float glitter = max(step(0.90, n1), step(0.93, n2)) * (0.5 + sin(TIME * 8.0) * 0.5);
-		ALBEDO = mix(ALBEDO, vec3(1.0, 0.92, 0.55), clamp(glitter * sparkle_orbit, 0.0, 1.0));
+	ALBEDO = out_color;
+	ALPHA = out_alpha;
+	// Apply glitz only to subject pixels (skip halo so we don't pulse-color
+	// the surrounding glow).
+	if (!is_halo_pixel) {
+		// damage tint: flash white on impact, decay with damage_strength
+		if (damage_strength > 0.001) {
+			ALBEDO = mix(ALBEDO, vec3(1.0, 1.0, 0.85), damage_strength * 0.6);
+		}
+		if (pulse_glow > 0.001) {
+			float pulse = sin(TIME * 4.0) * 0.5 + 0.5;
+			ALBEDO = mix(ALBEDO, vec3(1.0, 0.95, 0.50), pulse * pulse_glow * 0.35);
+		}
+		if (hue_cycle > 0.001) {
+			vec3 cycled = mix(ALBEDO.rgb, ALBEDO.brg, sin(TIME * 1.5) * 0.5 + 0.5);
+			cycled = mix(cycled, cycled.gbr, sin(TIME * 1.5 + 2.094) * 0.3);
+			ALBEDO = mix(ALBEDO, cycled, hue_cycle);
+		}
+		if (sparkle_orbit > 0.001) {
+			float n1 = fract(sin(dot(uv * 40.0, vec2(12.9898, 78.233)) + TIME * 5.0) * 43758.5453);
+			float n2 = fract(sin(dot(uv * 25.0, vec2(8.9, 24.7)) + TIME * 3.0) * 33458.5453);
+			float glitter = max(step(0.90, n1), step(0.93, n2)) * (0.5 + sin(TIME * 8.0) * 0.5);
+			ALBEDO = mix(ALBEDO, vec3(1.0, 0.92, 0.55), clamp(glitter * sparkle_orbit, 0.0, 1.0));
+		}
 	}
 }
