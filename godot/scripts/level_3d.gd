@@ -79,7 +79,7 @@ const COWBOY_X_BOUND: float = 3.0  # iter 118: 6.0 → 3.0 to match the actual v
 const COWBOY_Z: float = 0.0  # iter 113: -3.0 → 0.0 (cowboy was at screen center, want near bottom)
 const OBSTACLE_SPAWN_Z: float = -28.0  # far end of plane
 const OBSTACLE_DESPAWN_Z: float = 3.5   # past the cowboy
-const OBSTACLE_SPEED: float = 8.0    # world units per second
+const OBSTACLE_SPEED: float = 5.0    # iter 144: 8.0 → 5.0 (user: "terrain too fast to rescue trapped hero")
 const OBSTACLE_SPAWN_INTERVAL: float = 1.2
 
 # Iter 66: 3D bullets — small bright spheres that travel from cowboy
@@ -2069,8 +2069,13 @@ func _spawn_gate() -> void:
 			values.append(v)
 			operators.append("+" if v > 0 else "")  # negative sign included in value
 		else:
-			# Multiplicative
-			values.append(2)  # iter 119: capped at ×2 — randi_range(2,3) was producing ×3 that explodes posse
+			# Multiplicative — iter 144: pool [2, 3, 5] (was capped at ×2).
+			# User: "add in a x5 gate so I can get enough posse members to
+			# kill Pete." MAX_VISIBLE_FOLLOWERS already caps the visible tail
+			# (the iter-119 problem was visual explosion, not logic). Weighted
+			# so ×2 stays most common, ×5 is the jackpot.
+			var mult_pool: Array[int] = [2, 2, 2, 3, 3, 5]
+			values.append(mult_pool[_rng.randi() % mult_pool.size()])
 			operators.append("×")
 	gate.set_meta("left_value", values[0])
 	gate.set_meta("left_op", operators[0])
@@ -2311,58 +2316,88 @@ func _spawn_pete() -> void:
 	var billboard: Node3D = _make_video_billboard(PETE_IDLE_STREAM, pete_height)
 	pete.add_child(billboard)
 	DebugLog.add("pete spawned at (%.1f, %.1f, %.1f), HP=%d, height=%.1f" % [pete.position.x, pete.position.y, pete.position.z, PETE_HP, pete_height])
-	# Iter 143: label + HP bar moved to Pete's CHEST area (was above head
-	# in iter 142 → off-screen because Pete's head sits at world y=7 = same
-	# height as camera, which with the -55° pitch puts head near top of
-	# frame). Chest-level overlay stays on Pete regardless of screen pos.
-	# z offset 0.6 keeps them clear of the billboard quad to avoid z-fight.
-	var label := Label3D.new()
-	label.text = "SLIPPERY PETE"
-	label.font_size = 80
-	label.outline_size = 14
-	label.modulate = Color(1, 0.45, 0.30, 1)
-	label.position = Vector3(0, 1.2, 0.6)
-	pete.add_child(label)
-	var hp_bg := CSGBox3D.new()
-	hp_bg.size = Vector3(2.5, 0.25, 0.05)
-	hp_bg.position = Vector3(0, 0.4, 0.6)
-	var bg_mat := StandardMaterial3D.new()
-	bg_mat.albedo_color = Color(0.05, 0.05, 0.05, 0.95)
-	hp_bg.material = bg_mat
-	pete.add_child(hp_bg)
-	var hp_fg := CSGBox3D.new()
-	hp_fg.size = Vector3(2.5, 0.20, 0.08)
-	hp_fg.position = Vector3(0, 0.4, 0.65)
-	var fg_mat := StandardMaterial3D.new()
-	fg_mat.albedo_color = Color(0.95, 0.25, 0.25, 1)
-	fg_mat.emission_enabled = true
-	fg_mat.emission = Color(0.5, 0.1, 0.1, 1)
-	hp_fg.material = fg_mat
-	pete.add_child(hp_fg)
-	pete.set_meta("hp_fg", hp_fg)
-	pete.set_meta("hp_fg_max_width", 2.5)
+	# Iter 144: HP bar lives on 2D HUD (top of screen) instead of attached
+	# to Pete in 3D. With Pete head at world y=7 = camera y=7 and a -55°
+	# pitch, anything at Pete's head height or above is off-screen at the
+	# top. 2D HUD overlay is always visible regardless of 3D position.
+	# Keep a small 3D name plate above Pete so the player can identify
+	# which enemy is the boss.
+	var name_plate := Label3D.new()
+	name_plate.text = "BOSS"
+	name_plate.font_size = 64
+	name_plate.outline_size = 10
+	name_plate.modulate = Color(1, 0.45, 0.30, 1)
+	name_plate.position = Vector3(0, 0.5, 0.6)
+	pete.add_child(name_plate)
+	_install_pete_hud(pete)
 	info_label.text = "BOSS APPEARS — SHOOT PETE"
 
-# Iter 84: refresh Pete's HP bar foreground width + color based on HP %.
+# Iter 144: build the 2D HUD overlay for Pete's HP bar — anchored to top
+# of UI CanvasLayer, always visible. Stores refs in pete meta for refresh.
+func _install_pete_hud(pete: Node3D) -> void:
+	var ui_canvas: CanvasLayer = get_node_or_null("UI") as CanvasLayer
+	if ui_canvas == null:
+		return
+	var hud := Control.new()
+	hud.name = "PeteHPHUD"
+	hud.anchor_left = 0.0
+	hud.anchor_right = 1.0
+	hud.anchor_top = 0.0
+	hud.anchor_bottom = 0.0
+	hud.offset_top = 70.0
+	hud.offset_bottom = 220.0
+	hud.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	var name_label := Label.new()
+	name_label.text = "SLIPPERY PETE"
+	name_label.anchor_left = 0.0
+	name_label.anchor_right = 1.0
+	name_label.offset_top = 0.0
+	name_label.offset_bottom = 80.0
+	name_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	name_label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	name_label.add_theme_font_size_override("font_size", 56)
+	name_label.add_theme_color_override("font_color", Color(1, 0.45, 0.30, 1))
+	name_label.add_theme_color_override("font_outline_color", Color(0.18, 0.10, 0.05, 1))
+	name_label.add_theme_constant_override("outline_size", 10)
+	hud.add_child(name_label)
+	var hp_bg := ColorRect.new()
+	hp_bg.color = Color(0.05, 0.05, 0.05, 0.90)
+	hp_bg.anchor_left = 0.10
+	hp_bg.anchor_right = 0.90
+	hp_bg.anchor_top = 0.0
+	hp_bg.anchor_bottom = 0.0
+	hp_bg.offset_top = 90.0
+	hp_bg.offset_bottom = 130.0
+	hud.add_child(hp_bg)
+	var hp_fg := ColorRect.new()
+	hp_fg.color = Color(0.35, 0.85, 0.32, 1)
+	hp_fg.anchor_left = 0.10
+	hp_fg.anchor_right = 0.90
+	hp_fg.anchor_top = 0.0
+	hp_fg.anchor_bottom = 0.0
+	hp_fg.offset_top = 94.0
+	hp_fg.offset_bottom = 126.0
+	hud.add_child(hp_fg)
+	ui_canvas.add_child(hud)
+	pete.set_meta("hp_hud", hud)
+	pete.set_meta("hp_hud_fg", hp_fg)
+
 func _refresh_pete_hp(pete: Node3D) -> void:
-	var fg: CSGBox3D = pete.get_meta("hp_fg")
+	var fg: ColorRect = pete.get_meta("hp_hud_fg", null) as ColorRect
 	if fg == null or not is_instance_valid(fg):
 		return
 	var hp: int = pete.get_meta("hp", PETE_HP)
-	var max_w: float = pete.get_meta("hp_fg_max_width", 2.5)
 	var pct: float = float(maxi(hp, 0)) / float(PETE_HP)
-	fg.size.x = max_w * pct
-	# Re-center on shrink so the bar shrinks from the right edge.
-	fg.position.x = (max_w * pct - max_w) * 0.5
+	# Bar fills from left edge (0.10) to right edge (0.90). New right anchor
+	# = 0.10 + 0.80 * pct so bar shrinks from the right side as HP drops.
+	fg.anchor_right = 0.10 + 0.80 * pct
 	# Color: green > 60%, yellow > 30%, red below.
-	var c: Color
 	if pct > 0.6:
-		c = Color(0.35, 0.85, 0.32, 1)
+		fg.color = Color(0.35, 0.85, 0.32, 1)
 	elif pct > 0.3:
-		c = Color(0.95, 0.85, 0.25, 1)
+		fg.color = Color(0.95, 0.85, 0.25, 1)
 	else:
-		c = Color(0.95, 0.25, 0.25, 1)
-	(fg.material as StandardMaterial3D).albedo_color = c
+		fg.color = Color(0.95, 0.25, 0.25, 1)
 
 # Iter 77/83: Pete fires a red bullet at the cowboy. Iter 83 adds a
 # random taunt shout above his head every 3rd-4th fire — pulls from
@@ -3286,7 +3321,7 @@ func _bonk_pulse_prop(mesh_inst: MeshInstance3D) -> void:
 func _set_bonk_squash(value: float, mat: ShaderMaterial) -> void:
 	if mat != null:
 		mat.set_shader_parameter("bonk_squash", value)
-const _BILLBOARD_VIEWPORT_PX := Vector2i(150, 270)
+const _BILLBOARD_VIEWPORT_PX := Vector2i(256, 448)  # iter 144: 150×270 → 256×448 (user: "Pete animation dim pixelated")
 var _shared_video_viewports: Dictionary = {}  # VideoStream → SubViewport
 
 func _get_or_create_shared_video_viewport(stream: VideoStream) -> SubViewport:

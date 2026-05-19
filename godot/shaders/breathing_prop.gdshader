@@ -144,6 +144,30 @@ void fragment() {
 		}
 	}
 	vec4 tex = texture(albedo_tex, uv) * modulate;
+	// Iter 144: outward halo — transparent pixels NEAR opaque pixels render
+	// halo color instead of being discarded. Creates the glow-OUTSIDE-the-
+	// silhouette effect the user has been asking about. Sampling 8 directions
+	// at k=0.05 in UV space gives a halo band ~5% of texture wide.
+	if (tex.a < alpha_cutoff && halo_strength > 0.001) {
+		float k_outer = 0.05;
+		float max_neighbor = 0.0;
+		max_neighbor = max(max_neighbor, texture(albedo_tex, uv + vec2(0.0,    -k_outer)).a);
+		max_neighbor = max(max_neighbor, texture(albedo_tex, uv + vec2(0.0,     k_outer)).a);
+		max_neighbor = max(max_neighbor, texture(albedo_tex, uv + vec2( k_outer, 0.0)).a);
+		max_neighbor = max(max_neighbor, texture(albedo_tex, uv + vec2(-k_outer, 0.0)).a);
+		float k_diag = k_outer * 0.707;
+		max_neighbor = max(max_neighbor, texture(albedo_tex, uv + vec2( k_diag,  k_diag)).a);
+		max_neighbor = max(max_neighbor, texture(albedo_tex, uv + vec2(-k_diag,  k_diag)).a);
+		max_neighbor = max(max_neighbor, texture(albedo_tex, uv + vec2( k_diag, -k_diag)).a);
+		max_neighbor = max(max_neighbor, texture(albedo_tex, uv + vec2(-k_diag, -k_diag)).a);
+		if (max_neighbor >= alpha_cutoff) {
+			float pulse = 0.7 + sin(TIME * 3.0) * 0.3;
+			ALBEDO = vec3(1.0, 0.85, 0.40);
+			ALPHA = halo_strength * max_neighbor * pulse * 0.85;
+			return;
+		}
+		discard;
+	}
 	if (tex.a < alpha_cutoff) { discard; }
 	ALBEDO = tex.rgb;
 	ALPHA = tex.a;
@@ -164,27 +188,15 @@ void fragment() {
 		cycled = mix(cycled, cycled.gbr, sin(TIME * 1.5 + 2.094) * 0.3);
 		ALBEDO = mix(ALBEDO, cycled, hue_cycle);
 	}
-	if (halo_strength > 0.001) {
-		// Iter 142: chromakeyed PNGs have hard alpha (0 / 255 with 1-px
-		// feather) so the old smoothstep-on-alpha approach produced no
-		// edge. Sample 4-neighbor alpha at small UV offset; if any neighbor
-		// is transparent and current is opaque, we're at silhouette edge.
-		float k = 0.012;
-		float a_n = texture(albedo_tex, uv + vec2( 0.0,   -k)).a;
-		float a_s = texture(albedo_tex, uv + vec2( 0.0,    k)).a;
-		float a_e = texture(albedo_tex, uv + vec2( k,    0.0)).a;
-		float a_w = texture(albedo_tex, uv + vec2(-k,    0.0)).a;
-		float min_neighbor = min(min(a_n, a_s), min(a_e, a_w));
-		float edge = step(min_neighbor, alpha_cutoff) * step(alpha_cutoff, tex.a);
-		ALBEDO += vec3(1.0, 0.85, 0.40) * edge * halo_strength * (0.7 + sin(TIME * 3.0) * 0.3);
-	}
+	// Iter 144: halo is handled BEFORE the discard above (outward glow on
+	// transparent pixels near opaque ones). No inner-rim work here.
 	if (sparkle_orbit > 0.001) {
-		// Iter 142: more visible — step threshold 0.985 → 0.97 (3% pixels
-		// active vs 1.5%), larger noise dots (uv*80 → uv*45), pulsing
-		// brightness, only on opaque pixels so it doesn't bleed into halo
-		// area.
-		float n = fract(sin(dot(uv * 45.0, vec2(12.9898, 78.233)) + TIME * 3.0) * 43758.5453);
-		float glitter = step(0.97, n) * (0.7 + sin(TIME * 5.0) * 0.3);
-		ALBEDO = mix(ALBEDO, vec3(1.0, 1.0, 0.70), clamp(glitter * sparkle_orbit, 0.0, 1.0));
+		// Iter 144: cranked further — threshold 0.97 → 0.90 (10% pixels
+		// active), pulse magnitude 0.3 → 0.5, double-band noise for more
+		// "twinkle scatter" feel. User reported sparkle "barely noticeable".
+		float n1 = fract(sin(dot(uv * 40.0, vec2(12.9898, 78.233)) + TIME * 5.0) * 43758.5453);
+		float n2 = fract(sin(dot(uv * 25.0, vec2(8.9, 24.7)) + TIME * 3.0) * 33458.5453);
+		float glitter = max(step(0.90, n1), step(0.93, n2)) * (0.5 + sin(TIME * 8.0) * 0.5);
+		ALBEDO = mix(ALBEDO, vec3(1.0, 0.92, 0.55), clamp(glitter * sparkle_orbit, 0.0, 1.0));
 	}
 }

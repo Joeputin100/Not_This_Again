@@ -14,21 +14,27 @@ uniform float hue_shift_amount : hint_range(0.0, 1.0) = 0.25;
 void fragment() {
 	vec4 tex = texture(TEXTURE, UV);
 	if (tex.a < 0.01) {
-		COLOR = tex;
+		COLOR = vec4(0.0, 0.0, 0.0, 0.0);
 	} else {
+		// Iter 144: glyph textures are grayscale-white. Multiply by the
+		// label's modulate (canvas_item COLOR) to get the actual font tint.
+		// Previous version dropped this multiply and rendered every banner
+		// as solid bright white regardless of preset color.
+		vec3 tinted = tex.rgb * COLOR.rgb;
+
 		// Sparkle: high-frequency noise threshold animated over TIME.
-		// Density 0.5 → step(0.975) ≈ 2.5% of pixels active at any moment.
+		// Density 0.5 → step(0.95) ≈ 5% pixels active at any moment.
 		vec2 sparkle_uv = UV * vec2(160.0, 60.0);
 		float n = fract(sin(dot(sparkle_uv, vec2(12.9898, 78.233)) + TIME * time_speed) * 43758.5453);
-		float threshold = mix(1.0, 0.90, glitter_density);
+		float threshold = mix(1.0, 0.88, glitter_density);
 		float sparkle = step(threshold, n);
-		float pulse = 0.6 + sin(TIME * 6.0) * 0.4;
+		float pulse = 0.5 + sin(TIME * 7.0) * 0.5;
 
-		// Slow hue cycle: cyclic RGB permutation at low amplitude
-		vec3 cycled = mix(tex.rgb, tex.rbg, sin(TIME * 2.0) * 0.5 + 0.5);
-		cycled = mix(cycled, cycled.gbr, sin(TIME * 2.0 + 2.094) * 0.5 + 0.5);
-		vec3 base = mix(tex.rgb, cycled, hue_shift_amount);
+		// Hue cycle on the tinted base (now non-grayscale so this actually shifts)
+		vec3 cycled = mix(tinted, tinted.rbg, sin(TIME * 2.5) * 0.5 + 0.5);
+		cycled = mix(cycled, cycled.gbr, sin(TIME * 2.5 + 2.094) * 0.5 + 0.5);
+		vec3 base = mix(tinted, cycled, hue_shift_amount);
 
-		COLOR = vec4(base + glitter_color.rgb * sparkle * pulse * glitter_intensity, tex.a);
+		COLOR = vec4(base + glitter_color.rgb * sparkle * pulse * glitter_intensity, tex.a * COLOR.a);
 	}
 }
