@@ -2313,7 +2313,10 @@ func _add_special_follower(slug: String) -> void:
 		return
 	var spr := Sprite3D.new()
 	spr.texture = load(tex_path)
-	spr.pixel_size = 2.4 / float(spr.texture.get_height())
+	# Iter 164: size to 125% of the cowboy's actual rendered height —
+	# rescued heroes had been rendering far larger than the posse.
+	var cowboy_h: float = cowboy_3d.pixel_size * float(cowboy_3d.texture.get_height())
+	spr.pixel_size = (cowboy_h * 1.25) / float(spr.texture.get_height())
 	spr.billboard = 1
 	spr.alpha_cut = 1
 	spr.texture_filter = BaseMaterial3D.TEXTURE_FILTER_LINEAR_WITH_MIPMAPS
@@ -3250,6 +3253,8 @@ func _pusher_take_damage(pusher: Node3D) -> void:
 # HP=0 triggers the release ceremony. Called from the bullet/outlaw
 # collision loop when outlaw.get_meta("is_captive") is true.
 func _captive_take_damage(captive: Node3D, bullet_pos: Vector3) -> void:
+	if captive.get_meta("released", false):
+		return  # iter 164: already freed — ignore trailing bullets
 	var hp: int = captive.get_meta("hp", 0) - 1
 	captive.set_meta("hp", hp)
 	var max_hp: int = captive.get_meta("max_hp", 60)
@@ -3273,6 +3278,12 @@ func _captive_take_damage(captive: Node3D, bullet_pos: Vector3) -> void:
 # → joins posse formation.
 # Iter 134: pushed wagon's release adds pusher-melee conversion.
 func _release_captive_hero_pushed_aware(captive: Node3D) -> void:
+	# Iter 164: release exactly once. The captive lingers ~1.5s for the
+	# rescue ceremony; without this guard every trailing bullet re-fired
+	# the release and stacked duplicate followers (the "6 sheriffs" bug).
+	if captive.get_meta("released", false):
+		return
+	captive.set_meta("released", true)
 	if captive.get_meta("is_pushed", false):
 		captive.set_meta("is_pushed", false)
 		_convert_pushers_to_melee(captive)
@@ -3371,7 +3382,8 @@ func _preview_captive_3d(hero_slug: String, container_slug: String) -> void:
 # ============================================================================
 
 const CLIFF_X: float = 7.0
-const PUSH_FORCE_PER_PUSHER: float = 0.18  # world units / sec
+const PUSH_FORCE_PER_PUSHER: float = 0.09  # world units/sec per pusher (iter 164: 0.18 → 0.09, cliff race was too fast)
+const MAX_PUSH_SPEED: float = 2.4  # iter 164: cap so high pusher counts stay winnable
 const PUSHER_TEX_LEFT := "res://assets/sprites/props/pusher_left.png"
 const PUSHER_TEX_RIGHT := "res://assets/sprites/props/pusher_right.png"
 const PUSHER_TEX_MELEE := "res://assets/sprites/props/pusher_melee.png"
@@ -3479,12 +3491,13 @@ func _update_pushed_wagons(delta: float) -> void:
 				alive += 1
 		if alive == 0:
 			continue
-		captive.position.x += float(alive) * PUSH_FORCE_PER_PUSHER * delta
+		var push_speed: float = minf(float(alive) * PUSH_FORCE_PER_PUSHER, MAX_PUSH_SPEED)
+		captive.position.x += push_speed * delta
 		# Move pushers with the wagon (they're chasing it)
 		for p in pushers:
 			if is_instance_valid(p) and not p.get_meta("is_dead", false) and \
 					p.get_meta("state", "pushing") == "pushing":
-				p.position.x += float(alive) * PUSH_FORCE_PER_PUSHER * delta
+				p.position.x += push_speed * delta
 		# Cliff check
 		if captive.position.x > CLIFF_X:
 			_wagon_fall_off_cliff(captive)
@@ -4085,6 +4098,11 @@ func _process(delta: float) -> void:
 		var z_speed: float = OUTLAW_SPEED
 		if outlaw.position.z > cowboy_3d.position.z - 2.0:
 			z_speed = OUTLAW_SPEED * 0.20
+		# Iter 164: the pushed-wagon set-piece (captive + pushers) holds
+		# station — no z-scroll — so the player engages it instead of
+		# rushing past. Only the pushers shove it (_update_pushed_wagons).
+		if outlaw.get_meta("is_pushed", false) or outlaw.get_meta("is_pusher", false):
+			z_speed = 0.0
 		# Iter 136: real delta (not motion_delta) so vagrants keep advancing during BOSS
 		outlaw.position.z += z_speed * delta
 		# Iter 120: x-tracking with PER-OUTLAW offset (set at spawn).
@@ -4093,6 +4111,10 @@ func _process(delta: float) -> void:
 		var ox: float = outlaw.get_meta("track_offset_x", 0.0)
 		var target_x: float = clampf(cowboy_3d.position.x + ox,
 			-COWBOY_X_BOUND, COWBOY_X_BOUND)
+		# Iter 164: the set-piece doesn't x-track the posse — the wagon
+		# "tracking the posse" was this lerp. Pushers move it instead.
+		if outlaw.get_meta("is_pushed", false) or outlaw.get_meta("is_pusher", false):
+			target_x = outlaw.position.x
 		# Iter 136: real delta so x-tracking continues during BOSS state too
 		outlaw.position.x = lerpf(outlaw.position.x, target_x,
 			clampf(1.5 * delta, 0.0, 1.0))
