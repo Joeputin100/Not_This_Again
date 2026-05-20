@@ -193,6 +193,22 @@ const PETE_MELEE_DPS: float = 2.0  # posse members lost per second of contact
 var _pete_stay_elapsed: float = 0.0
 var _pete_melee_tick_accum: float = 0.0
 
+# Iter 157: The Candy Rustler — the level-2 boss. A jointed paper-cutout
+# puppet (candy_rustler_rig.gd) shown through a top-level SubViewport →
+# 3D billboard, the same Android-safe indirection the video billboards
+# use. Unlike Pete (video-anim + melee) he holds at duel distance and
+# dismantles piece-by-piece as he is shot: the rig's take_damage() drives
+# the threshold detachment, defeat() drives the death scatter.
+const _CANDY_RUSTLER_RIG := preload("res://scripts/candy_rustler_rig.gd")
+const RUSTLER_HP: int = 400  # tunable — rig sheds a piece at 75/50/25%
+const RUSTLER_FIRE_INTERVAL: float = 1.4  # slower cadence than Pete (0.5)
+const _RUSTLER_VIEWPORT_PX := Vector2i(896, 768)  # rig figure is wide (arms spread)
+const _RUSTLER_RIG_SCALE := Vector2(0.9, 0.9)     # framing eyeballed — tune post-sideload
+const _RUSTLER_RIG_POS := Vector2(-187.0, 38.0)   # centers the v1 figure in the viewport
+var _rustler_fire_timer: float = 0.0
+var _rustler_fire_count: int = 0
+var _rustler_hit_voice_cd: float = 0.0
+
 # Iter 88: bonus pickup spawn parameters. Pickups appear periodically
 # at a random lane x, hover with sine y-bob, scroll toward cowboy.
 # Collision with cowboy → BulletFireMode change for the rest of level.
@@ -2529,6 +2545,8 @@ func _spawn_pete() -> void:
 	var pete_height: float = 7.0
 	pete.position = Vector3(0.0, pete_height * 0.5, OBSTACLE_SPAWN_Z + 4.0)
 	pete.set_meta("hp", PETE_HP)
+	pete.set_meta("hp_max", PETE_HP)
+	pete.set_meta("boss_kind", "pete")
 	boss_root.add_child(pete)
 	var billboard: Node3D = _make_video_billboard(PETE_IDLE_STREAM, pete_height)
 	pete.add_child(billboard)
@@ -2562,7 +2580,7 @@ func _spawn_pete() -> void:
 
 # Iter 144: build the 2D HUD overlay for Pete's HP bar — anchored to top
 # of UI CanvasLayer, always visible. Stores refs in pete meta for refresh.
-func _install_pete_hud(pete: Node3D) -> void:
+func _install_pete_hud(pete: Node3D, boss_name: String = "SLIPPERY PETE") -> void:
 	var ui_canvas: CanvasLayer = get_node_or_null("UI") as CanvasLayer
 	if ui_canvas == null:
 		return
@@ -2576,7 +2594,7 @@ func _install_pete_hud(pete: Node3D) -> void:
 	hud.offset_bottom = 220.0
 	hud.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	var name_label := Label.new()
-	name_label.text = "SLIPPERY PETE"
+	name_label.text = boss_name
 	name_label.anchor_left = 0.0
 	name_label.anchor_right = 1.0
 	name_label.offset_top = 0.0
@@ -2614,8 +2632,9 @@ func _refresh_pete_hp(pete: Node3D) -> void:
 	var fg: ColorRect = pete.get_meta("hp_hud_fg", null) as ColorRect
 	if fg == null or not is_instance_valid(fg):
 		return
-	var hp: int = pete.get_meta("hp", PETE_HP)
-	var pct: float = float(maxi(hp, 0)) / float(PETE_HP)
+	var hp_max: int = pete.get_meta("hp_max", PETE_HP)
+	var hp: int = pete.get_meta("hp", hp_max)
+	var pct: float = float(maxi(hp, 0)) / float(maxi(hp_max, 1))
 	# Bar fills from left edge (0.10) to right edge (0.90). New right anchor
 	# = 0.10 + 0.80 * pct so bar shrinks from the right side as HP drops.
 	fg.anchor_right = 0.10 + 0.80 * pct
@@ -2678,6 +2697,177 @@ func _pete_spawn_taunt(pete: Node3D) -> void:
 	var t := create_tween().set_parallel(true)
 	t.tween_property(bubble, "position:y",
 		bubble.position.y + 2.0, 1.8) \
+		.set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
+	t.tween_property(bubble, "modulate:a", 0.0, 1.8) \
+		.set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_IN)
+	t.chain().tween_callback(bubble.queue_free)
+
+# ===========================================================================
+# Iter 157: The Candy Rustler — level-2 boss.
+# ===========================================================================
+
+# Which boss spawns this run. Level 2 → The Candy Rustler; all else → Pete.
+func _boss_kind() -> String:
+	var lvl: int = 1
+	if get_node_or_null("/root/GameState") != null:
+		lvl = GameState.current_level
+	return "rustler" if lvl == 2 else "pete"
+
+# Spawn The Candy Rustler. Mirrors _spawn_pete's framing (a Node3D in
+# boss_root + the 2D HUD HP bar) but the billboard wraps the jointed rig
+# instead of a video, and the boss HP is mirrored onto the rig so its
+# piece-detachment thresholds track the on-screen bar.
+func _spawn_candy_rustler() -> void:
+	var boss := Node3D.new()
+	var boss_height: float = 7.5
+	# y tuned so the rig's feet sit ~on the ground — the v1 figure is
+	# centered in its viewport (see _RUSTLER_RIG_POS), so the billboard
+	# center sits at the figure's mid-height.
+	boss.position = Vector3(0.0, 3.4, OBSTACLE_SPAWN_Z + 4.0)
+	boss.set_meta("hp", RUSTLER_HP)
+	boss.set_meta("hp_max", RUSTLER_HP)
+	boss.set_meta("boss_kind", "rustler")
+	boss_root.add_child(boss)
+	var bb: Dictionary = _make_rig_billboard(boss_height)
+	boss.add_child(bb["wrap"])
+	var rig = bb["rig"]
+	if rig != null:
+		# The rig defaults to max_hp 12 (preview scale). Rescale to the
+		# boss HP so one bullet = take_damage(1) and the 75/50/25%
+		# detach thresholds line up with the on-screen HP bar.
+		rig.max_hp = RUSTLER_HP
+		rig.hp = RUSTLER_HP
+	boss.set_meta("rig", rig)
+	boss.set_meta("viewport", bb["viewport"])
+	var name_plate := Label3D.new()
+	name_plate.text = "THE CANDY RUSTLER"
+	name_plate.font_size = 44
+	name_plate.outline_size = 9
+	name_plate.modulate = Color(0.98, 0.55, 0.30, 1)
+	name_plate.billboard = BaseMaterial3D.BILLBOARD_ENABLED
+	name_plate.no_depth_test = true
+	name_plate.position = Vector3(0, 0.6, 0.6)
+	boss.add_child(name_plate)
+	_install_pete_hud(boss, "THE CANDY RUSTLER")
+	_refresh_pete_hp(boss)
+	info_label.text = "BOSS — THE CANDY RUSTLER"
+	_rustler_say(boss, "intro")
+	DebugLog.add("candy rustler spawned at z=%.1f, HP=%d" % [boss.position.z, RUSTLER_HP])
+
+# Build the rig billboard. The rig (a Node2D puppet) lives in a top-level
+# SubViewport — NOT nested in the game viewport (nested SubViewports fail
+# on Android Vulkan; the iter 116 constraint). A Sprite3D samples that
+# viewport's texture. Returns { wrap, rig, viewport }.
+func _make_rig_billboard(world_height: float) -> Dictionary:
+	var sv := SubViewport.new()
+	sv.size = _RUSTLER_VIEWPORT_PX
+	sv.transparent_bg = true
+	sv.disable_3d = true
+	sv.render_target_update_mode = 4  # SubViewport.UPDATE_ALWAYS
+	add_child(sv)
+	var rig = _CANDY_RUSTLER_RIG.new()
+	rig.scale = _RUSTLER_RIG_SCALE
+	rig.position = _RUSTLER_RIG_POS
+	sv.add_child(rig)
+	var wrap := Node3D.new()
+	var sprite := Sprite3D.new()
+	sprite.texture = sv.get_texture()
+	sprite.pixel_size = world_height / float(_RUSTLER_VIEWPORT_PX.y)
+	sprite.billboard = 1   # BILLBOARD_ENABLED
+	sprite.alpha_cut = 0   # rig pieces already carry alpha — blend, don't clip
+	sprite.texture_filter = BaseMaterial3D.TEXTURE_FILTER_LINEAR_WITH_MIPMAPS
+	wrap.add_child(sprite)
+	return {"wrap": wrap, "rig": rig, "viewport": sv}
+
+# Candy Rustler per-frame behavior: approach to duel distance, hold and
+# fire periodically, take bullet hits → the rig dismantles. On HP 0 the
+# rig scatters and the WIN flow runs.
+func _process_rustler(boss: Node3D, delta: float) -> void:
+	if _pete_defeated or boss.get_meta("dying", false):
+		return
+	_rustler_hit_voice_cd = maxf(0.0, _rustler_hit_voice_cd - delta)
+	var rig = boss.get_meta("rig", null)
+	if boss.position.z < PETE_STAY_Z:
+		boss.position.z += PETE_SPEED * delta
+	else:
+		_rustler_fire_timer -= delta
+		if _rustler_fire_timer <= 0.0:
+			_rustler_fire_timer = RUSTLER_FIRE_INTERVAL
+			var gap: float = cowboy_3d.position.z - boss.position.z
+			if gap >= 0.0 and gap <= OUTLAW_FIRE_RANGE_Z:
+				_outlaw_fire(boss)
+				_rustler_fire_count += 1
+				if _rustler_fire_count % 3 == 0:
+					_rustler_say(boss, "taunt")
+	# Bullet hits — every overlapping posse bullet counts (no per-frame
+	# break; matches the iter 147 Pete fix).
+	for bullet in bullets_root.get_children():
+		if not (bullet is Node3D):
+			continue
+		var dx: float = bullet.position.x - boss.position.x
+		var dz: float = bullet.position.z - boss.position.z
+		if dx * dx + dz * dz < PETE_HIT_RADIUS_SQ:
+			var hp: int = boss.get_meta("hp", RUSTLER_HP) - 1
+			boss.set_meta("hp", hp)
+			if rig != null and rig.has_method("take_damage"):
+				rig.take_damage(1)
+			_spawn_popup_3d(boss.position + Vector3(0, 1.5, 0),
+				"-1", Color(0.98, 0.55, 0.30, 1), 72)
+			bullet.queue_free()
+			_hits += 1
+			_refresh_hud()
+			_refresh_pete_hp(boss)
+			if _rustler_hit_voice_cd <= 0.0:
+				_rustler_hit_voice_cd = 3.5
+				_rustler_say(boss, "hit")
+			if hp <= 0:
+				boss.set_meta("dying", true)
+				if rig != null and rig.has_method("defeat"):
+					rig.defeat()
+				_rustler_say(boss, "dying")
+				_show_win("The Candy Rustler", boss,
+					boss.get_meta("viewport", null))
+				break
+
+# Candy Rustler voice line + speech bubble. kind ∈ intro/taunt/hit/dying.
+# Bookend lines (intro/dying) always play; mid-fight chatter (taunt/hit)
+# yields if another character line is still going — the anti-overlap rule
+# the menu Humbug banter uses (iter 153).
+func _rustler_say(boss: Node3D, kind: String) -> void:
+	var banks: Dictionary = {
+		"intro": ["candy_rustler_intro_", 2, "boss.candy_rustler_dialog_intro"],
+		"taunt": ["candy_rustler_taunt_", 4, "boss.candy_rustler_dialog_taunts"],
+		"hit": ["candy_rustler_hit_", 4, "boss.candy_rustler_dialog_when_hit"],
+		"dying": ["candy_rustler_dying_", 4, "boss.candy_rustler_dialog_dying"],
+	}
+	if not banks.has(kind):
+		return
+	var entry: Array = banks[kind]
+	var audio := get_node_or_null("/root/AudioBus")
+	if audio != null and audio.has_method("play_character_line"):
+		var force: bool = (kind == "intro" or kind == "dying")
+		var busy: bool = audio.has_method("any_character_line_playing") and audio.any_character_line_playing()
+		if force or not busy:
+			audio.play_character_line("%s%d" % [entry[0], randi() % int(entry[1])])
+	if get_node_or_null("/root/Text") != null:
+		var line: String = Text.random(entry[2])
+		if line != "" and line != entry[2]:
+			_boss_speech_bubble(boss.position + Vector3(0, 0.6, 0.8), line)
+
+# Floating speech bubble for a boss line — modeled on the iter 83 Pete
+# taunt bubble (Pete keeps its own copy; this is the shared boss path).
+func _boss_speech_bubble(world_pos: Vector3, line: String) -> void:
+	var bubble := Label3D.new()
+	bubble.text = line
+	bubble.font_size = 56
+	bubble.outline_size = 12
+	bubble.modulate = Color(1, 0.92, 0.55, 1)
+	bubble.billboard = BaseMaterial3D.BILLBOARD_ENABLED
+	bubble.no_depth_test = true
+	bubble.position = world_pos
+	popups_root.add_child(bubble)
+	var t := create_tween().set_parallel(true)
+	t.tween_property(bubble, "position:y", bubble.position.y + 2.0, 1.8) \
 		.set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
 	t.tween_property(bubble, "modulate:a", 0.0, 1.8) \
 		.set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_IN)
@@ -2799,14 +2989,14 @@ func _show_fail() -> void:
 # the iter 81 Gold Rush salute ceremony — each remaining posse member
 # fires a celebratory shot + spawns a +50 BOUNTY popup. Total bounty
 # accumulated in GameState.
-func _show_win() -> void:
+func _show_win(boss_label: String = "Pete", cleanup_node: Node = null, cleanup_viewport: Node = null) -> void:
 	_pete_defeated = true
 	# Iter 87: stop the lingering gunshot pool so the salute (which
 	# spawns its own gunfire) doesn't fight the trailing combat audio.
 	if get_node_or_null("/root/AudioBus") and AudioBus.has_method("stop_gunfire"):
 		AudioBus.stop_gunfire()
-	info_label.text = "WIN!  Pete defeated · posse %d · hits %d" % [
-		_posse_count_3d, _hits,
+	info_label.text = "WIN!  %s defeated · posse %d · hits %d" % [
+		boss_label, _posse_count_3d, _hits,
 	]
 	# Iter 123: Gold Rush A — PERFECT_VOLLEY banner pops before the
 	# salute fire ceremony, matching the 2D level.gd Gold Rush A flow.
@@ -2819,6 +3009,13 @@ func _show_win() -> void:
 	if win_overlay:
 		win_overlay.visible = true
 	AudioBus.play_gate_pass()
+	# Iter 157: free the boss node + its SubViewport when passed in. Pete
+	# frees himself before calling _show_win; the Rustler is kept alive
+	# through the salute so his death scatter plays, then cleaned up here.
+	if cleanup_node != null and is_instance_valid(cleanup_node):
+		cleanup_node.queue_free()
+	if cleanup_viewport != null and is_instance_valid(cleanup_viewport):
+		cleanup_viewport.queue_free()
 
 # Iter 81: Gold Rush A — Six-Shooter Salute, ported to 3D.
 # Each remaining posse member (leader + active followers) fires a
@@ -4020,14 +4217,19 @@ func _process(delta: float) -> void:
 	# Iter 124: skip Pete in test range mode.
 	if _level_state == LevelState.PLAYING and not _pete_spawned and not _test_range_mode and _level_elapsed >= PETE_SPAWN_DELAY:
 		_pete_spawned = true
-		_spawn_pete()
+		# Iter 157: boss dispatch by level — level 2 → The Candy Rustler,
+		# every other level → Slippery Pete.
+		if _boss_kind() == "rustler":
+			_spawn_candy_rustler()
+		else:
+			_spawn_pete()
 		_level_state = LevelState.BOSS
-		DebugLog.add("level state: PLAYING → BOSS (Pete spawned)")
+		DebugLog.add("level state: PLAYING → BOSS (kind=%s)" % _boss_kind())
 	# Iter 77: Pete behavior — approach to PETE_STAY_Z, fire periodically,
 	# check bullet hits.
 	if _pete_spawned and boss_root.get_child_count() > 0:
 		var pete: Node3D = boss_root.get_child(0)
-		if is_instance_valid(pete) and pete is Node3D:
+		if is_instance_valid(pete) and pete is Node3D and pete.get_meta("boss_kind", "pete") != "rustler":
 			# Iter 146: anim revert timer — if running, count down; on
 			# expiry switch Pete back to IDLE.
 			var revert_t: float = pete.get_meta("anim_revert_t", 0.0)
@@ -4108,6 +4310,14 @@ func _process(delta: float) -> void:
 						pete.queue_free()
 						_show_win()
 						break
+	# Iter 157: the Candy Rustler runs a separate process branch — he is a
+	# stationary jointed puppet, not Pete's video-anim/melee actor. The
+	# Pete block above is skipped for him via the boss_kind guard on its
+	# `if is_instance_valid(...)`.
+	if _pete_spawned and boss_root.get_child_count() > 0:
+		var rustler_boss: Node3D = boss_root.get_child(0)
+		if is_instance_valid(rustler_boss) and rustler_boss.get_meta("boss_kind", "pete") == "rustler":
+			_process_rustler(rustler_boss, delta)
 	# Iter 115: GunState-driven auto-fire. Replaces the iter-66 fixed
 	# fire_timer. tick(delta) advances the cooldown + reload countdown;
 	# the while-can_fire loop drains as many shots as the cowboy is

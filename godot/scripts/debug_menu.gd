@@ -131,6 +131,11 @@ func _build_sections() -> void:
 	var rustler_btn := _make_button("PREVIEW CANDY RUSTLER RIG")
 	rustler_btn.pressed.connect(_on_open_rustler_rig)
 	content.add_child(rustler_btn)
+	# Iter 157: play level 2 (Candy Rustler is the level-2 boss). iter 158
+	# will add this as a proper node on the level selector.
+	var rustler_lvl_btn := _make_button("PLAY LEVEL 2 — CANDY RUSTLER BOSS")
+	rustler_lvl_btn.pressed.connect(_on_play_level_2)
+	content.add_child(rustler_lvl_btn)
 
 	# Iter 133: captive hero rescue previews. Heroes trapped in containers
 	# the player must shoot to free. Basic static version (no pushers).
@@ -227,6 +232,12 @@ func _on_open_rustler_rig() -> void:
 	AudioBus.play_tap()
 	DebugLog.add("debug: open candy rustler rig preview")
 	get_tree().change_scene_to_file("res://scenes/candy_rustler_rig_preview.tscn")
+
+func _on_play_level_2() -> void:
+	AudioBus.play_tap()
+	GameState.current_level = 2
+	DebugLog.add("debug: play level 2 (Candy Rustler boss)")
+	get_tree().change_scene_to_file("res://scenes/level_3d.tscn")
 
 func _on_open_glitz_picker() -> void:
 	AudioBus.play_tap()

@@ -126,6 +126,9 @@ func _on_back_pressed() -> void:
 func _on_level_1_pressed() -> void:
 	DebugLog.add("LEVEL 1 selected from level_select")
 	AudioBus.play_tap()
+	# Iter 157: set the level explicitly so the boss dispatch picks Pete
+	# (a prior debug "play level 2" could have left current_level at 2).
+	GameState.current_level = 1
 	level_1_button.disabled = true
 	# Brief Candy-Crush press feedback (squish-and-restore) before scene change.
 	var tween := create_tween()
