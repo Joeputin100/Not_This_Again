@@ -60,6 +60,18 @@ const HUMBUG_THOUGHT_CHANCE: float = 0.32
 const BUBBLE_POS := Vector2(130.0, 1000.0)
 const BUBBLE_SIZE := Vector2(580.0, 260.0)
 
+# Iter 160: easter eggs.
+const HUMBUG_EGG_TAPS: int = 6         # accepted taps inside the window → jokes
+const HUMBUG_EGG_WINDOW: float = 60.0
+const CANARD_EGG_TAPS: int = 14        # taps → explosion + a fresh duck-head
+const POOF_SFX := preload("res://assets/sfx/poof.wav")
+const CANARD_HEAD_REGION := Rect2(228.0, 282.0, 100.0, 105.0)  # duck-head in the Humbug PNG
+var CANARD_QUACK_STREAMS: Array = [
+	preload("res://assets/audio/characters/canard_quack_0.mp3"),
+	preload("res://assets/audio/characters/canard_quack_1.mp3"),
+	preload("res://assets/audio/characters/canard_quack_2.mp3"),
+]
+
 var _humbug_base_pos: Vector2
 var _humbug_tapped_at: float = 0.0
 var _humbug_flourish: Tween
@@ -68,6 +80,10 @@ var _harp_player: AudioStreamPlayer
 # Tap bookkeeping the iter-160 easter eggs build on.
 var _humbug_tap_times: Array[float] = []
 var _canard_tap_count: int = 0
+# Iter 160 easter-egg state.
+var _humbug_joke_idx: int = 0
+var _canard_player: AudioStreamPlayer
+var _canard_new_head: Sprite2D = null
 
 func _ready() -> void:
 	get_tree().set_quit_on_go_back(false)
@@ -146,11 +162,19 @@ func _setup_humbug() -> void:
 	_harp_player.bus = "Master"
 	_harp_player.volume_db = -4.0
 	add_child(_harp_player)
+	_canard_player = AudioStreamPlayer.new()
+	_canard_player.bus = "Master"
+	add_child(_canard_player)
 
 # Tap Humbug → a flourish + mostly a tip (speech bubble), now and then a
 # thought (thought bubble + harp). Voice reuses his six menu lines.
 func _on_humbug_pressed() -> void:
 	if not _humbug_tap_accepted():
+		return
+	# Iter 160: pestered HUMBUG_EGG_TAPS times inside the window → he
+	# cracks and snips a (cycling) joke line instead of offering a tip.
+	if _humbug_tap_times.size() >= HUMBUG_EGG_TAPS:
+		_humbug_joke()
 		return
 	if randf() < HUMBUG_THOUGHT_CHANCE:
 		_humbug_thought_flourish()
@@ -174,6 +198,9 @@ func _humbug_tap_accepted() -> bool:
 			return false
 	_humbug_tapped_at = now
 	_humbug_tap_times.append(now)
+	var cutoff: float = now - HUMBUG_EGG_WINDOW
+	while not _humbug_tap_times.is_empty() and _humbug_tap_times[0] < cutoff:
+		_humbug_tap_times.remove_at(0)
 	return true
 
 # Tap Canard (the duck-head cane handle) → a quack + a quick wiggle.
@@ -188,12 +215,22 @@ func _on_canard_tap(event: InputEvent) -> void:
 	if not is_press:
 		return
 	canard_zone.accept_event()
-	_canard_tap_count += 1  # iter-160 easter egg counts these
-	_canard_wiggle()
-	if get_node_or_null("/root/AudioBus") and AudioBus.has_method("play_character_line"):
-		if AudioBus.has_method("any_character_line_playing") and AudioBus.any_character_line_playing():
-			return
-		AudioBus.play_character_line("canard_quack_%d" % (randi() % CANARD_QUACKS))
+	_canard_tap_count += 1
+	# Iter 160: the CANARD_EGG_TAPS-th tap is the last straw — Canard
+	# bursts, then a fresh duck-head springs from the cane.
+	if _canard_tap_count >= CANARD_EGG_TAPS:
+		_canard_tap_count = 0
+		_canard_explode()
+		return
+	# Increasingly annoyed: quacks climb in pitch + volume and the wiggle
+	# sharpens the more he is pestered.
+	var heat: float = float(_canard_tap_count) / float(CANARD_EGG_TAPS)
+	_canard_wiggle(1.0 + heat * 1.7)
+	if _canard_player != null:
+		_canard_player.stream = CANARD_QUACK_STREAMS[randi() % CANARD_QUACK_STREAMS.size()]
+		_canard_player.pitch_scale = 1.0 + heat * 0.6
+		_canard_player.volume_db = -3.0 + heat * 4.0
+		_canard_player.play()
 
 # Three procedural flourishes. Each resets Humbug to rest first so rapid
 # taps can't compound the transform.
@@ -228,11 +265,12 @@ func _humbug_thought_flourish() -> void:
 		.set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN_OUT)
 	_humbug_flourish = t
 
-func _canard_wiggle() -> void:
+func _canard_wiggle(intensity: float = 1.0) -> void:
 	_reset_humbug_transform()
+	var a: float = 0.05 * intensity
 	var t := create_tween()
-	t.tween_property(humbug, "rotation", 0.055, 0.09).set_trans(Tween.TRANS_SINE)
-	t.tween_property(humbug, "rotation", -0.045, 0.12).set_trans(Tween.TRANS_SINE)
+	t.tween_property(humbug, "rotation", a, 0.09).set_trans(Tween.TRANS_SINE)
+	t.tween_property(humbug, "rotation", -a * 0.82, 0.12).set_trans(Tween.TRANS_SINE)
 	t.tween_property(humbug, "rotation", 0.0, 0.13) \
 		.set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
 	_humbug_flourish = t
@@ -321,6 +359,103 @@ func _circle_points(r: float) -> PackedVector2Array:
 		var a: float = TAU * float(i) / 16.0
 		pts.append(Vector2(cos(a) * r, sin(a) * r))
 	return pts
+
+# --- Iter 160: easter eggs -------------------------------------------------
+
+# Humbug, pestered past HUMBUG_EGG_TAPS in the window, drops the tips and
+# snips a joke. The three lines cycle (annoyed → giggling → dismissive).
+func _humbug_joke() -> void:
+	_humbug_annoyed_flourish()
+	_show_humbug_bubble(Text.lookup("humbug.easter_jokes.%d" % _humbug_joke_idx), false)
+	_humbug_joke_idx = (_humbug_joke_idx + 1) % 3
+	if get_node_or_null("/root/AudioBus") and AudioBus.has_method("play_character_line"):
+		AudioBus.play_character_line("humbug_menu_%d" % (randi() % HUMBUG_MENU_LINES))
+
+# A brisk "no-no-no" head-shake — the pestered/annoyed flourish.
+func _humbug_annoyed_flourish() -> void:
+	_reset_humbug_transform()
+	var t := create_tween()
+	for _i in 3:
+		t.tween_property(humbug, "rotation", 0.085, 0.07).set_trans(Tween.TRANS_SINE)
+		t.tween_property(humbug, "rotation", -0.085, 0.07).set_trans(Tween.TRANS_SINE)
+	t.tween_property(humbug, "rotation", 0.0, 0.10) \
+		.set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
+	_humbug_flourish = t
+
+# The CANARD_EGG_TAPS-th tap: a poof, a candy-shrapnel burst, and a fresh
+# duck-head that springs out of the licorice cane a beat later.
+func _canard_explode() -> void:
+	var origin: Vector2 = _humbug_base_pos + canard_zone.position + canard_zone.size * 0.5
+	if _canard_player != null:
+		_canard_player.stream = POOF_SFX
+		_canard_player.pitch_scale = 1.0
+		_canard_player.volume_db = 0.0
+		_canard_player.play()
+	_humbug_annoyed_flourish()
+	_spawn_explosion_fx(origin)
+	get_tree().create_timer(0.45).timeout.connect(_spawn_new_canard_head.bind(origin))
+
+func _spawn_explosion_fx(origin: Vector2) -> void:
+	var flash := Polygon2D.new()
+	flash.color = Color(1.0, 0.95, 0.70, 0.92)
+	flash.polygon = _circle_points(40.0)
+	flash.position = origin
+	add_child(flash)
+	var ft := create_tween()
+	ft.set_parallel(true)
+	ft.tween_property(flash, "scale", Vector2(3.4, 3.4), 0.35) \
+		.set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
+	ft.tween_property(flash, "modulate:a", 0.0, 0.35)
+	ft.chain().tween_callback(flash.queue_free)
+	var burst := CPUParticles2D.new()
+	burst.position = origin
+	burst.emitting = false
+	burst.one_shot = true
+	burst.explosiveness = 1.0
+	burst.amount = 26
+	burst.lifetime = 0.7
+	burst.direction = Vector2(0, -1)
+	burst.spread = 180.0
+	burst.initial_velocity_min = 220.0
+	burst.initial_velocity_max = 520.0
+	burst.gravity = Vector2(0, 900)
+	burst.scale_amount_min = 5.0
+	burst.scale_amount_max = 11.0
+	burst.color = Color(1.0, 0.82, 0.25, 1)
+	add_child(burst)
+	burst.emitting = true
+	get_tree().create_timer(1.7).timeout.connect(burst.queue_free)
+
+# A fresh Monsieur Canard springs from the cane, bounces onto the
+# cane-top (covering the burst original), and quacks his debut.
+func _spawn_new_canard_head(origin: Vector2) -> void:
+	if _canard_new_head != null and is_instance_valid(_canard_new_head):
+		_canard_new_head.queue_free()
+	var head := Sprite2D.new()
+	var at := AtlasTexture.new()
+	at.atlas = humbug.texture_normal
+	at.region = CANARD_HEAD_REGION
+	head.texture = at
+	head.position = origin
+	head.scale = Vector2.ZERO
+	add_child(head)
+	_canard_new_head = head
+	var t := create_tween()
+	t.set_parallel(true)
+	t.tween_property(head, "scale", Vector2(0.95, 0.95), 0.30) \
+		.set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
+	t.tween_property(head, "position", origin + Vector2(0, -56), 0.30) \
+		.set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
+	t.chain()
+	t.tween_property(head, "position", origin, 0.24) \
+		.set_trans(Tween.TRANS_BOUNCE).set_ease(Tween.EASE_OUT)
+	t.parallel().tween_property(head, "scale", Vector2(0.85, 0.85), 0.24)
+	get_tree().create_timer(0.34).timeout.connect(func() -> void:
+		if _canard_player != null:
+			_canard_player.stream = CANARD_QUACK_STREAMS[0]
+			_canard_player.pitch_scale = 1.06
+			_canard_player.volume_db = -2.0
+			_canard_player.play())
 
 # ---------------------------------------------------------------------------
 
