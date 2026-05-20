@@ -30,7 +30,8 @@ const BREATHING_SHADER := preload("res://shaders/breathing_prop.gdshader")
 var _current_bonus: String = "rifle"
 var _preview_mesh: MeshInstance3D = null
 var _preview_halo: MeshInstance3D = null
-var _preview_aura: CPUParticles3D = null  # iter 146 particle aura
+var _preview_aura: MeshInstance3D = null  # iter 167: 12-petal electric-aura mesh
+var _aura_spin: float = 0.0
 # Iter 142: track buttons so we can restyle the selected ones.
 var _bonus_btns: Dictionary = {}    # bonus_slug -> Button
 var _preset_btns: Dictionary = {}   # preset_name -> Button
@@ -125,60 +126,54 @@ func _spawn_preview_mesh() -> void:
 	mesh.position = Vector3(0, 0.9, 0)
 	viewport.add_child(mesh)
 	_preview_mesh = mesh
-	# Iter 146: particle aura — radial sparkles around the silhouette.
-	# Emits when halo_strength > 0 (via _apply_current_selection). User
-	# feedback: "halo effect is too static. do a particle aura."
-	var aura := CPUParticles3D.new()
-	aura.amount = 60
-	aura.lifetime = 1.4
-	aura.one_shot = false
-	aura.preprocess = 0.5  # pre-warm so aura isn't empty when picker opens
-	aura.emission_shape = CPUParticles3D.EMISSION_SHAPE_SPHERE_SURFACE
-	aura.emission_sphere_radius = 0.95
-	aura.direction = Vector3(0, 0.4, 0)
-	aura.spread = 180.0  # omnidirectional outward
-	aura.initial_velocity_min = 0.05
-	aura.initial_velocity_max = 0.45
-	aura.gravity = Vector3(0, 0.3, 0)  # subtle upward drift
-	aura.scale_amount_min = 0.05
-	aura.scale_amount_max = 0.12
-	aura.color = Color(1.0, 0.85, 0.40, 1.0)
-	# Iter 154: fade-in/out over lifetime via color_ramp. The iter-146
-	# code set `aura.alpha_curve` — CPUParticles3D has NO such property
-	# (that's a GPUParticles ParticleProcessMaterial field). The bad
-	# assignment threw at runtime and aborted _spawn_preview_mesh before
-	# `viewport.add_child(aura)` ever ran — so the aura was never in the
-	# scene (user: "glitz picker not showing the new aura halo yet").
-	aura.color_ramp = _make_alpha_ramp()
-	# Small quad mesh for each particle
-	var quad := QuadMesh.new()
-	quad.size = Vector2(0.18, 0.18)
-	aura.mesh = quad
+	# Iter 167: 12-petal electric aura. Replaces the iter-146 particle
+	# aura, which rendered as a "storm of yellow squares" — 60 untextured
+	# QuadMesh particles. This is one procedural 12-petal star mesh with
+	# per-vertex alpha (opaque warm centre → transparent petal tips) on an
+	# additive unshaded material — it reads as a soft electric halo and
+	# spins + flickers in _process. No particles, no custom shader.
+	var aura := MeshInstance3D.new()
+	aura.mesh = _make_aura_mesh()
 	var aura_mat := StandardMaterial3D.new()
-	aura_mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
-	aura_mat.albedo_color = Color(1.0, 0.85, 0.40, 1.0)
-	aura_mat.emission_enabled = true
-	aura_mat.emission = Color(1.0, 0.92, 0.55, 1)
-	aura_mat.emission_energy_multiplier = 2.5
 	aura_mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
-	aura_mat.billboard_mode = BaseMaterial3D.BILLBOARD_ENABLED
-	aura_mat.use_particle_trails = false
-	quad.material = aura_mat
-	aura.position = Vector3(0, 0.9, 0)
-	aura.emitting = false  # gated on halo_strength
+	aura_mat.vertex_color_use_as_albedo = true
+	aura_mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	aura_mat.blend_mode = BaseMaterial3D.BLEND_MODE_ADD
+	aura_mat.cull_mode = BaseMaterial3D.CULL_DISABLED
+	aura.material_override = aura_mat
+	aura.position = Vector3(0, 0.9, -0.05)  # just behind the bonus billboard
+	aura.scale = Vector3(1.4, 1.4, 1.0)
+	aura.visible = false  # gated on halo_strength
 	viewport.add_child(aura)
 	_preview_aura = aura
 
-# Iter 154: lifetime alpha fade as a Gradient (CPUParticles3D.color_ramp).
-# A new Gradient starts with 2 points at offsets 0 and 1; recolour those
-# and insert two mids — alpha rises fast, holds, fades out.
-func _make_alpha_ramp() -> Gradient:
-	var g := Gradient.new()
-	g.set_color(0, Color(1.0, 0.92, 0.55, 0.0))   # offset 0.0
-	g.set_color(1, Color(1.0, 0.80, 0.40, 0.0))   # offset 1.0
-	g.add_point(0.20, Color(1.0, 0.92, 0.55, 1.0))
-	g.add_point(0.70, Color(1.0, 0.85, 0.45, 0.7))
-	return g
+# Iter 167: a flat 12-petal star mesh. Triangle fan from a bright opaque
+# centre vertex out to transparent petal-tip rim verts — the per-vertex
+# alpha gradient is the soft glow. r = base + amp*cos(12*theta) → 12 petals.
+func _make_aura_mesh() -> ArrayMesh:
+	var verts := PackedVector3Array()
+	var colors := PackedColorArray()
+	var indices := PackedInt32Array()
+	var seg: int = 96
+	verts.append(Vector3.ZERO)
+	colors.append(Color(1.0, 0.92, 0.58, 1.0))
+	for i in range(seg + 1):
+		var th: float = TAU * float(i) / float(seg)
+		var r: float = 0.70 + 0.32 * cos(12.0 * th)
+		verts.append(Vector3(cos(th) * r, sin(th) * r, 0.0))
+		colors.append(Color(1.0, 0.74, 0.30, 0.0))
+	for i in range(seg):
+		indices.append(0)
+		indices.append(1 + i)
+		indices.append(2 + i)
+	var arr: Array = []
+	arr.resize(Mesh.ARRAY_MAX)
+	arr[Mesh.ARRAY_VERTEX] = verts
+	arr[Mesh.ARRAY_COLOR] = colors
+	arr[Mesh.ARRAY_INDEX] = indices
+	var am := ArrayMesh.new()
+	am.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, arr)
+	return am
 
 func _on_bonus_tab_pressed(bonus: String) -> void:
 	_current_bonus = bonus
@@ -215,11 +210,18 @@ func _apply_current_selection() -> void:
 		_current_bonus.to_upper(), preset.replace("_", "+").to_upper(), speed_mult]
 	# Iter 142: highlight the active bonus tab + preset button
 	_restyle_buttons()
-	# Iter 146: gate the particle aura on halo_strength.
+	# Iter 167: show the electric aura when the preset carries a halo.
 	if _preview_aura != null:
 		var halo: float = float(GlitzPrefs.PRESETS.get(preset, {}).get("halo_strength", 0.0))
-		_preview_aura.emitting = halo > 0.001
-		_preview_aura.amount = clampi(int(40.0 + halo * 40.0), 20, 120)
+		_preview_aura.visible = halo > 0.001
+
+func _process(delta: float) -> void:
+	# Iter 167: spin + electric flicker on the aura while it is shown.
+	if _preview_aura != null and _preview_aura.visible:
+		_aura_spin += delta * 0.6
+		_preview_aura.rotation.z = _aura_spin
+		var pulse: float = 1.4 + sin(_aura_spin * 5.0) * 0.16
+		_preview_aura.scale = Vector3(pulse, pulse, 1.0)
 
 func _on_back_pressed() -> void:
 	get_tree().change_scene_to_file("res://scenes/debug_menu.tscn")
