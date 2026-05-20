@@ -41,13 +41,40 @@ horizontal_alignment = 1
 theme_override_font_sizes/font_size = 26
 theme_override_colors/font_color = Color(0.95, 0.78, 0.35, 0.7)
 
+[node name="Actions" type="HBoxContainer" parent="."]
+anchor_left = 0.0
+anchor_right = 1.0
+anchor_top = 1.0
+anchor_bottom = 1.0
+offset_left = 40.0
+offset_top = -320.0
+offset_right = -40.0
+offset_bottom = -200.0
+alignment = 1
+theme_override_constants/separation = 24
+
+[node name="DamageButton" type="Button" parent="Actions"]
+custom_minimum_size = Vector2(300, 110)
+text = "DAMAGE"
+theme_override_font_sizes/font_size = 36
+
+[node name="DefeatButton" type="Button" parent="Actions"]
+custom_minimum_size = Vector2(300, 110)
+text = "DEFEAT"
+theme_override_font_sizes/font_size = 36
+
+[node name="ResetButton" type="Button" parent="Actions"]
+custom_minimum_size = Vector2(300, 110)
+text = "RESET"
+theme_override_font_sizes/font_size = 36
+
 [node name="BackButton" type="Button" parent="."]
 anchor_left = 0.5
 anchor_right = 0.5
 anchor_top = 1.0
 anchor_bottom = 1.0
 offset_left = -280.0
-offset_top = -180.0
+offset_top = -170.0
 offset_right = 280.0
 offset_bottom = -60.0
 text = "← BACK"
