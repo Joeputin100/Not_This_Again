@@ -2242,6 +2242,183 @@ func _sync_followers_to_count(target: int) -> void:
 		subviewport.add_child(f)
 		_followers.append(f)
 
+# ---- Iter 149: special posse members (rescued heroes) ----------------------
+# Rescued heroes persist as distinct units: own PNG, a hero skill on a timer,
+# and HP — killable by outlaw ranged fire and Pete/pusher melee.
+var _special_followers: Array[Dictionary] = []
+const SPECIAL_FOLLOWER_HP: int = 6
+const SPECIAL_FOLLOWER_HIT_RADIUS_SQ: float = 0.85 * 0.85
+# Formation slots flanking the leader — heroes ride at the posse front.
+const SPECIAL_FORMATION: Array[Vector3] = [
+	Vector3(1.5, 0.0, 0.1), Vector3(-1.5, 0.0, 0.1),
+	Vector3(2.3, 0.0, 0.8), Vector3(-2.3, 0.0, 0.8),
+	Vector3(1.5, 0.0, 1.5), Vector3(-1.5, 0.0, 1.5),
+]
+const HERO_SKILL_INTERVAL: Dictionary = {
+	"marshmallow_sheriff": 3.5, "laughing_horse": 4.5, "scarecrow": 2.8,
+	"chocolate_outlaw": 1.0, "sugar_doc": 7.0, "taffy_kid": 1.8,
+}
+
+func _add_special_follower(slug: String) -> void:
+	if cowboy_3d == null or not is_instance_valid(cowboy_3d):
+		return
+	var tex_path := "res://assets/sprites/props/hero_%s.png" % slug
+	if not ResourceLoader.exists(tex_path):
+		DebugLog.add("special follower SKIPPED — no PNG for %s" % slug)
+		return
+	var spr := Sprite3D.new()
+	spr.texture = load(tex_path)
+	spr.pixel_size = 2.4 / float(spr.texture.get_height())
+	spr.billboard = 1
+	spr.alpha_cut = 1
+	spr.texture_filter = BaseMaterial3D.TEXTURE_FILTER_LINEAR_WITH_MIPMAPS
+	var slot: Vector3 = SPECIAL_FORMATION[_special_followers.size() % SPECIAL_FORMATION.size()]
+	spr.position = Vector3(cowboy_3d.position.x + slot.x, 1.2,
+		cowboy_3d.position.z + slot.z)
+	subviewport.add_child(spr)
+	var interval: float = HERO_SKILL_INTERVAL.get(slug, 3.0)
+	_special_followers.append({
+		"node": spr, "slug": slug,
+		"hp": SPECIAL_FOLLOWER_HP, "max_hp": SPECIAL_FOLLOWER_HP,
+		"skill_timer": interval, "skill_interval": interval, "slot": slot,
+	})
+	DebugLog.add("special follower joined: %s (%d total)" % [slug, _special_followers.size()])
+
+# Per-frame: formation-follow the leader + tick each hero's skill timer.
+func _update_special_followers(delta: float) -> void:
+	if cowboy_3d == null or not is_instance_valid(cowboy_3d):
+		return
+	var i: int = 0
+	while i < _special_followers.size():
+		var e: Dictionary = _special_followers[i]
+		var node: Sprite3D = e["node"]
+		if node == null or not is_instance_valid(node):
+			_special_followers.remove_at(i)
+			continue
+		var slot: Vector3 = e["slot"]
+		var target := Vector3(cowboy_3d.position.x + slot.x, node.position.y,
+			cowboy_3d.position.z + slot.z)
+		node.position = node.position.lerp(target, clampf(4.0 * delta, 0.0, 1.0))
+		e["skill_timer"] = float(e["skill_timer"]) - delta
+		if float(e["skill_timer"]) <= 0.0:
+			e["skill_timer"] = e["skill_interval"]
+			_special_follower_skill(e)
+		i += 1
+
+func _special_follower_skill(e: Dictionary) -> void:
+	var node: Sprite3D = e["node"]
+	if node == null or not is_instance_valid(node):
+		return
+	match String(e["slug"]):
+		"marshmallow_sheriff":
+			# Marshmallow Cannon — wide AOE, eliminates up to 6.
+			_hero_strike(node, 6, 5.0, Color(1.0, 0.92, 0.85, 1), 0.55)
+		"laughing_horse":
+			# Stun Whinny — cyan ring, neutralizes up to 3.
+			_hero_strike(node, 3, 4.2, Color(0.55, 0.92, 1.0, 1), 0.4)
+		"scarecrow":
+			# Straw Sweep — forward arc melee, up to 4.
+			_hero_strike(node, 4, 3.4, Color(0.85, 0.72, 0.30, 1), 0.45)
+		"chocolate_outlaw":
+			# Dual jelly-bean pistols — fast, 2 nearest.
+			_hero_strike(node, 2, 7.0, Color(0.55, 0.32, 0.18, 1), 0.3)
+		"taffy_kid":
+			# Slingshot spread — 3 nearest.
+			_hero_strike(node, 3, 6.0, Color(1.0, 0.65, 0.25, 1), 0.32)
+		"sugar_doc":
+			# Heal Pulse — restore a posse member instead of attacking.
+			_posse_count_3d += 1
+			_sync_followers_to_count(_posse_count_3d)
+			_refresh_hud()
+			_burst_at(node.position + Vector3(0, 1.0, 0), 16,
+				Color(1.0, 0.7, 0.85, 1), 1.3, 0.7)
+			_spawn_popup_3d(node.position + Vector3(0, 2.2, 0),
+				"+1 POSSE", Color(1.0, 0.7, 0.85, 1), 56)
+
+# Shared offensive skill — eliminate up to `count` outlaws within `max_dist`
+# of the hero, with a coloured burst at each + a projectile streak from the
+# hero to the target.
+func _hero_strike(from_node: Node3D, count: int, max_dist: float,
+		vfx_color: Color, proj_size: float) -> void:
+	var origin: Vector3 = from_node.position
+	var targets: Array = []
+	for ob in outlaws_root.get_children():
+		if not (ob is Node3D):
+			continue
+		if ob.get_meta("is_captive", false) or ob.get_meta("dying", false):
+			continue
+		var d: float = origin.distance_to((ob as Node3D).position)
+		if d <= max_dist:
+			targets.append({"node": ob, "dist": d})
+	targets.sort_custom(func(a, b): return a["dist"] < b["dist"])
+	var struck: int = 0
+	for entry in targets:
+		if struck >= count:
+			break
+		var ob: Node3D = entry["node"]
+		if not is_instance_valid(ob):
+			continue
+		_weapon_spawn_projectile(origin + Vector3(0, 1.0, 0),
+			(ob.position - origin) / 0.25, vfx_color, proj_size, 0.25)
+		_burst_at(ob.position + Vector3(0, 0.8, 0), 12, vfx_color, 1.1, 0.6)
+		_skill_kill_outlaw(ob)
+		struck += 1
+
+# Eliminate an outlaw the same way a posse bullet's killing blow does —
+# swap to the death stream + delayed free so the death anim plays.
+func _skill_kill_outlaw(outlaw: Node3D) -> void:
+	if outlaw.get_meta("is_pusher", false):
+		_pusher_take_damage(outlaw)
+		return
+	outlaw.set_meta("hp", 0)
+	outlaw.set_meta("dying", true)
+	outlaw.set_meta("death_timer", VAGRANT_DEATH_LIFETIME)
+	var death_sprite: Sprite3D = outlaw.get_meta("sprite_3d", null)
+	if death_sprite != null and is_instance_valid(death_sprite):
+		var death_sv: SubViewport = _get_or_create_shared_video_viewport(VAGRANT_DEATH_STREAM)
+		death_sprite.texture = death_sv.get_texture()
+	_hits += 1
+	_refresh_hud()
+
+# Outlaw fire / melee damages a special follower. Removes it on HP 0.
+func _damage_special_follower(e: Dictionary, dmg: int) -> void:
+	e["hp"] = int(e["hp"]) - dmg
+	var node: Sprite3D = e["node"]
+	if node != null and is_instance_valid(node):
+		node.modulate = Color(1.7, 1.2, 1.2, 1)
+		var tw: Tween = node.create_tween()
+		tw.tween_property(node, "modulate", Color(1, 1, 1, 1), 0.25)
+		_spawn_popup_3d(node.position + Vector3(0, 2.2, 0),
+			"-%d" % dmg, Color(1, 0.4, 0.3, 1), 48)
+	if int(e["hp"]) <= 0:
+		_kill_special_follower(e)
+
+func _kill_special_follower(e: Dictionary) -> void:
+	var node: Sprite3D = e["node"]
+	if node != null and is_instance_valid(node):
+		_burst_at(node.position + Vector3(0, 0.8, 0), 22,
+			Color(0.9, 0.3, 0.3, 1), 1.5, 0.8)
+		_spawn_popup_3d(node.position + Vector3(0, 2.4, 0),
+			"%s DOWN" % String(e["slug"]).to_upper().replace("_", " "),
+			Color(1, 0.4, 0.3, 1), 52)
+		node.queue_free()
+	_special_followers.erase(e)
+	DebugLog.add("special follower KILLED: %s (%d left)" % [e["slug"], _special_followers.size()])
+
+# Closest special follower to a world point within `radius` (or empty).
+func _nearest_special_follower(point: Vector3, radius: float) -> Dictionary:
+	var best: Dictionary = {}
+	var best_d: float = radius
+	for e in _special_followers:
+		var node: Sprite3D = e["node"]
+		if node == null or not is_instance_valid(node):
+			continue
+		var d: float = point.distance_to(node.position)
+		if d < best_d:
+			best_d = d
+			best = e
+	return best
+
 # Iter 88: spawn a bonus pickup. Tall thin floating Sprite3D-style box
 # with a math-symbol Label3D billboard above it. Cowboy collides to
 # collect; pickup_type meta drives the FireMode swap.
@@ -2900,6 +3077,11 @@ func _release_captive_hero(captive: Node3D) -> void:
 	_posse_count_3d += 1
 	_sync_followers_to_count(_posse_count_3d)
 	_refresh_hud()
+	# Iter 149: the rescued hero JOINS as a persistent special follower —
+	# its own PNG, a hero skill, and HP (killable by outlaws). The ceremony
+	# hero_sprite still does its slide-and-fade; _add_special_follower
+	# spawns the real persistent unit at a formation slot.
+	_add_special_follower(hero_slug)
 	# Hero slides to posse formation: tween hero_sprite to leader area, then queue_free
 	if hero_sprite != null and is_instance_valid(hero_sprite):
 		var target_pos: Vector3 = cowboy_3d.position + Vector3(_rng.randf_range(-0.6, 0.6), 0.5, 0.6)
@@ -2907,6 +3089,9 @@ func _release_captive_hero(captive: Node3D) -> void:
 		slide_tw.tween_property(hero_sprite, "global_position", target_pos, 0.6) \
 			.set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
 		slide_tw.tween_property(hero_sprite, "scale", Vector3(0.6, 0.6, 0.6), 0.6)
+		# hero_sprite is a child of `captive` — the cleanup_tw below frees
+		# the whole container, so no separate free needed here. The
+		# persistent unit is the one _add_special_follower spawned.
 	# Cleanup container after ceremony
 	var cleanup_tw: Tween = captive.create_tween()
 	cleanup_tw.tween_interval(1.5)
@@ -3664,11 +3849,30 @@ func _process(delta: float) -> void:
 				break
 	# Iter 76: outlaw bullets move along their stored velocity vector.
 	# Despawn off-screen or after reaching cowboy.
+	# Iter 149: special posse members — formation-follow + skill ticks.
+	_update_special_followers(delta)
 	for ob in outlaw_bullets_root.get_children():
 		if not (ob is Node3D):
 			continue
 		var vel: Vector3 = ob.get_meta("velocity", Vector3.ZERO)
 		ob.position += vel * delta
+		# Iter 149: outlaw bullets can strike a special follower anywhere
+		# along their flight path (heroes flank the posse front, off the
+		# leader's lane). Hit → damage that follower, consume the bullet.
+		var sf_struck: bool = false
+		for e in _special_followers:
+			var sfn: Sprite3D = e["node"]
+			if sfn == null or not is_instance_valid(sfn):
+				continue
+			var sdx: float = ob.position.x - sfn.position.x
+			var sdz: float = ob.position.z - sfn.position.z
+			if sdx * sdx + sdz * sdz < SPECIAL_FOLLOWER_HIT_RADIUS_SQ:
+				_damage_special_follower(e, 1)
+				ob.queue_free()
+				sf_struck = true
+				break
+		if sf_struck:
+			continue
 		# Posse-hit: if bullet reaches cowboy's near plane, decrement
 		# posse and kill the bullet.
 		if ob.position.z > cowboy_3d.position.z - 0.3:
@@ -3772,9 +3976,16 @@ func _process(delta: float) -> void:
 						_pete_melee_tick_accum += delta * PETE_MELEE_DPS
 						while _pete_melee_tick_accum >= 1.0:
 							_pete_melee_tick_accum -= 1.0
-							_posse_count_3d = maxi(0, _posse_count_3d - 1)
-							_sync_followers_to_count(_posse_count_3d)
-							_refresh_hud()
+							# Iter 149: a special follower near Pete soaks the
+							# melee hit before the generic posse does.
+							var sf_pete: Dictionary = _nearest_special_follower(
+								pete.position, PETE_MELEE_RANGE + 2.0)
+							if not sf_pete.is_empty():
+								_damage_special_follower(sf_pete, 1)
+							else:
+								_posse_count_3d = maxi(0, _posse_count_3d - 1)
+								_sync_followers_to_count(_posse_count_3d)
+								_refresh_hud()
 			# Fire periodically. Iter 122: Pete only fires when within
 			# OUTLAW_FIRE_RANGE_Z of cowboy z (= within camera frustum
 			# foreground). Same gate as regular outlaws — holds fire

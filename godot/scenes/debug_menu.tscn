@@ -44,3 +44,4 @@ horizontal_scroll_mode = 0
 
 [node name="Content" type="VBoxContainer" parent="UI/Scroll"]
 custom_minimum_size = Vector2(990, 0)
+theme_override_constants/separation = 36
