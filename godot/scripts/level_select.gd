@@ -31,6 +31,9 @@ const FLOURISH_CLIPS: Dictionary = {
 	"canard": "res://assets/videos/humbug/canard.ogv",
 }
 const CHROMAKEY_SHADER := preload("res://shaders/chromakey.gdshader")
+# Iter 169: tap-area + grid debug overlay — off now that placements are
+# dialed in. Flip to true to re-enable for pixel-precise nudge feedback.
+const SHOW_TAP_OVERLAY: bool = false
 
 @onready var level_1_button: Button = $LevelNode1
 @onready var level_2_button: Button = $LevelNode2
@@ -559,7 +562,7 @@ func _to_main_menu() -> void:
 # each tap area's resting on-screen quad and hands them to the overlay,
 # which draws a 100px grid + outlined polygons + (x,y) readouts.
 func _build_debug_overlay() -> void:
-	if not OS.has_feature("debug"):
+	if not SHOW_TAP_OVERLAY or not OS.has_feature("debug"):
 		return
 	var overlay = preload("res://scripts/debug_tap_overlay.gd").new()
 	var t: Array = []
