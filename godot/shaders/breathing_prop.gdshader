@@ -113,11 +113,19 @@ void vertex() {
 
 	float t = TIME + time_offset;
 
+	// Iter 150b: shared height weight — 0 at the mesh's true bottom, 1 at
+	// the top. Declared at function scope so the sway branches AND the
+	// crumple block below all reference it. (Iter 148's refactor renamed
+	// the old `height_weight` to block-scoped hw0/hw but left the crumple
+	// code referencing the now-undefined `height_weight` — an undefined
+	// identifier is a COMPILE error that killed the whole shader, so every
+	// breathing-shader material rendered as a flat gray rectangle.)
+	float height_weight = clamp((VERTEX.y + mesh_height * 0.5) / mesh_height, 0.0, 1.0);
+
 	if (sway_profile == 0) {
 		// Legacy iter-130 mobile sway: top-weighted bend + scale-pulse bob.
-		float hw0 = clamp(VERTEX.y + 0.5, 0.0, 1.0);
-		VERTEX.x += sin(t * sway_freq) * sway_amp * hw0;
-		VERTEX.z += cos(t * sway_freq * 1.3) * sway_amp * 0.4 * hw0;
+		VERTEX.x += sin(t * sway_freq) * sway_amp * height_weight;
+		VERTEX.z += cos(t * sway_freq * 1.3) * sway_amp * 0.4 * height_weight;
 		VERTEX.xyz *= 1.0 + sin(t * bob_freq) * bob_amp;
 	} else {
 		// Iter 148: popsicle-stick puppet profiles.
@@ -167,7 +175,6 @@ void vertex() {
 		whip *= sway_intensity;
 		stretch = 1.0 + (stretch - 1.0) * sway_intensity;
 		float half_h = mesh_height * 0.5;
-		float hw = clamp((VERTEX.y + half_h) / mesh_height, 0.0, 1.0);
 		// Bottom-anchored squash-stretch — feet stay planted.
 		float yb = (VERTEX.y + half_h) * stretch;
 		VERTEX.y = yb - half_h;
@@ -182,7 +189,7 @@ void vertex() {
 		// Hop — translate the whole body up.
 		VERTEX.y += hop;
 		// Whip — top-concentrated horizontal flex (paper isn't perfectly rigid).
-		VERTEX.x += whip * hw * hw;
+		VERTEX.x += whip * height_weight * height_weight;
 	}
 
 	// Crumple on damage: high-freq crinkle + downward compression

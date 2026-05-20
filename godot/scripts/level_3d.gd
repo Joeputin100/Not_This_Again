@@ -160,7 +160,7 @@ const STARTING_POSSE_3D: int = 1  # iter 118: 5 → 1 (gates grow it from there)
 # Iter 76: outlaw enemies. Spawn red boxes periodically at far z that
 # scroll toward camera + fire red bullets at the cowboy.
 const OUTLAW_SPAWN_INTERVAL: float = 0.5  # iter 118: 3.0 → 0.5 (~14 alive at once)
-const OUTLAW_SPEED: float = 4.0  # slower than obstacles — they're shooters
+const OUTLAW_SPEED: float = 0.4  # iter 151: 4.0 → 0.4 (matches the iter-150 10% terrain speed — outlaws were rushing in 8× faster than the world scrolled)
 const OUTLAW_FIRE_INTERVAL: float = 3.6  # iter 121: 1.8 → 3.6 (halved fire rate)
 # Iter 121: only fire when within this many world units of cowboy z.
 # Halves the effective bullet range since outlaws spawn at z=-24 but
@@ -168,7 +168,7 @@ const OUTLAW_FIRE_INTERVAL: float = 3.6  # iter 121: 1.8 → 3.6 (halved fire ra
 # player visible reaction time before bullets start coming.
 const OUTLAW_FIRE_RANGE_Z: float = 10.0
 const OUTLAW_BULLET_SPEED: float = 8.0  # iter 121: 14 → 8 (dodgeable — was too fast to react to)
-const OUTLAW_BULLET_RADIUS: float = 0.25  # iter 136: 0.15 → 0.25 + brighter unshaded emission
+const OUTLAW_BULLET_RADIUS: float = 0.12  # iter 136: 0.15→0.25 → iter 151: 0.25→0.12 (user: "bullets almost the size of a vagrant")
 const OUTLAW_BULLET_DESPAWN_Z: float = 4.0
 const OUTLAW_BULLET_HIT_X: float = 0.5  # iter 119: bullet only hits if within this x of any posse member
 const OUTLAW_HIT_RADIUS_SQ: float = 1.5 * 1.5
@@ -2877,6 +2877,8 @@ func _spawn_prospector() -> void:
 	outlaws_root.add_child(prosp)
 	var billboard: Node3D = _make_video_billboard(PROSPECTOR_IDLE_STREAM, 2.6)
 	prosp.add_child(billboard)
+	# Iter 151: HP bar above the prospector (hidden until first hit).
+	_attach_outlaw_hp_bar(prosp, PROSPECTOR_HP)
 	_prospector_spawn_count += 1
 	DebugLog.add("prospector spawn #%d at x=%.1f" % [_prospector_spawn_count, lane_x])
 
@@ -3332,6 +3334,64 @@ func _preview_pushed_wagon_3d(hero_slug: String, container_slug: String, n_pushe
 	_level_state = LevelState.PLAYING
 	_preview_mode = false
 
+# Iter 151: small HP bar above an outlaw/prospector. Two BoxMesh planes
+# (dark bg + coloured fg), hidden until the unit takes its first hit (the
+# iter-25 "hidden until <100%" rule). Refreshed by _refresh_outlaw_hp_bar
+# from the bullet-hit handler. fg is SCALED (not mesh-resized) so a hit
+# costs no mesh rebuild.
+func _attach_outlaw_hp_bar(unit: Node3D, max_hp: int) -> void:
+	var bar_w: float = 1.3
+	var bg := MeshInstance3D.new()
+	var bgmesh := BoxMesh.new()
+	bgmesh.size = Vector3(bar_w, 0.20, 0.06)
+	bg.mesh = bgmesh
+	var bgm := StandardMaterial3D.new()
+	bgm.albedo_color = Color(0.05, 0.05, 0.05, 0.92)
+	bgm.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	bg.material_override = bgm
+	bg.position = Vector3(0, 1.65, 0)
+	bg.visible = false
+	unit.add_child(bg)
+	var fg := MeshInstance3D.new()
+	var fgmesh := BoxMesh.new()
+	fgmesh.size = Vector3(bar_w, 0.16, 0.09)
+	fg.mesh = fgmesh
+	var fgm := StandardMaterial3D.new()
+	fgm.albedo_color = Color(0.35, 0.85, 0.32, 1)
+	fgm.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	fg.material_override = fgm
+	fg.position = Vector3(0, 1.65, 0.03)
+	fg.visible = false
+	unit.add_child(fg)
+	unit.set_meta("hp_bar_bg", bg)
+	unit.set_meta("hp_bar_fg", fg)
+	unit.set_meta("hp_bar_max", max_hp)
+	unit.set_meta("hp_bar_w", bar_w)
+
+func _refresh_outlaw_hp_bar(unit: Node3D) -> void:
+	var fg: MeshInstance3D = unit.get_meta("hp_bar_fg", null)
+	var bg: MeshInstance3D = unit.get_meta("hp_bar_bg", null)
+	if fg == null or not is_instance_valid(fg) or bg == null or not is_instance_valid(bg):
+		return
+	var hp: int = unit.get_meta("hp", 1)
+	var max_hp: int = unit.get_meta("hp_bar_max", 1)
+	var bar_w: float = unit.get_meta("hp_bar_w", 1.3)
+	var pct: float = clampf(float(hp) / float(maxi(max_hp, 1)), 0.0, 1.0)
+	var show_bar: bool = pct < 0.999 and hp > 0
+	bg.visible = show_bar
+	fg.visible = show_bar
+	# Scale x from the right edge so the bar drains right-to-left.
+	fg.scale.x = maxf(pct, 0.001)
+	fg.position.x = (pct - 1.0) * bar_w * 0.5
+	var c: Color
+	if pct > 0.6:
+		c = Color(0.35, 0.85, 0.32, 1)
+	elif pct > 0.3:
+		c = Color(0.95, 0.85, 0.25, 1)
+	else:
+		c = Color(0.95, 0.25, 0.25, 1)
+	(fg.material_override as StandardMaterial3D).albedo_color = c
+
 func _spawn_outlaw() -> void:
 	# Iter 116: re-enable video billboard, but this time via SHARED top-
 	# level SubViewports (see _make_video_billboard) — iter 114 confirmed
@@ -3356,6 +3416,8 @@ func _spawn_outlaw() -> void:
 	# without searching the tree.
 	if billboard.get_child_count() > 0:
 		outlaw.set_meta("sprite_3d", billboard.get_child(0))
+	# Iter 151: HP bar above the vagrant (hidden until first hit).
+	_attach_outlaw_hp_bar(outlaw, OUTLAW_HP)
 	_outlaw_spawn_count += 1
 	if _outlaw_spawn_count == 1 or _outlaw_spawn_count % 5 == 0:
 		DebugLog.add("outlaw spawn #%d at x=%.1f z=%.1f (outlaws_root.size=%d)" % [
@@ -3830,6 +3892,7 @@ func _process(delta: float) -> void:
 					break
 				var hp: int = outlaw.get_meta("hp", 1) - 1
 				outlaw.set_meta("hp", hp)
+				_refresh_outlaw_hp_bar(outlaw)  # iter 151
 				_spawn_popup_3d(outlaw.position + Vector3(0, 1.2, 0),
 					"-1", Color(1, 0.32, 0.22, 1), 56)
 				bullet.queue_free()
