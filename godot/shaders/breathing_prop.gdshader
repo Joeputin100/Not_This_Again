@@ -127,15 +127,19 @@ void vertex() {
 		float whip = 0.0;     // top-only horizontal shear (flexible paper)
 		if (sway_profile == 1) {
 			// TAP & SETTLE — periodic sharp tap, damped settle, near-still between.
+			// Iter 150: numeric 2*PI literal (6.2831853) — TAU/PI built-in
+			// constants broke shader compile on Android (both pickers + every
+			// breathing prop rendered gray). The rest of this shader already
+			// used numeric literals for exactly this reason.
 			float ph = fract(t / 1.8);
-			float env = exp(-5.0 * ph) * cos(ph * TAU * 2.5);
+			float env = exp(-5.0 * ph) * cos(ph * 6.2831853 * 2.5);
 			hop = env * 0.10;
 			stretch = 1.0 + env * 0.12;
 			lean = env * 0.10;
 		} else if (sway_profile == 2) {
 			// BOUNCY IDLE — continuous asymmetric ball-bounce rhythm.
 			float ph = fract(t / 1.15);
-			float bounce = pow(abs(sin(ph * PI)), 0.65);
+			float bounce = pow(abs(sin(ph * 3.14159265)), 0.65);
 			hop = bounce * 0.085;
 			stretch = 1.0 + (bounce - 0.45) * 0.13;
 			lean = sin(t * 1.3) * 0.05;
@@ -148,7 +152,7 @@ void vertex() {
 		} else if (sway_profile == 4) {
 			// SPRING POP — periodic spring with alternating side-lurch.
 			float ph = fract(t / 1.5);
-			float env = exp(-4.0 * ph) * sin(ph * TAU * 3.0);
+			float env = exp(-4.0 * ph) * sin(ph * 6.2831853 * 3.0);
 			float dir = (mod(floor(t / 1.5), 2.0) < 1.0) ? 1.0 : -1.0;
 			hop = env * 0.09;
 			lean = env * 0.09 * dir;

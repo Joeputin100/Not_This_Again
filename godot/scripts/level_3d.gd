@@ -79,7 +79,7 @@ const COWBOY_X_BOUND: float = 3.0  # iter 118: 6.0 → 3.0 to match the actual v
 const COWBOY_Z: float = 1.5  # iter 145: 0.0 → 1.5 (was middle of screen, user wants near bottom)
 const OBSTACLE_SPAWN_Z: float = -28.0  # far end of plane
 const OBSTACLE_DESPAWN_Z: float = 3.5   # past the cowboy
-const OBSTACLE_SPEED: float = 5.0    # iter 144: 8.0 → 5.0 (user: "terrain too fast to rescue trapped hero")
+const OBSTACLE_SPEED: float = 0.5    # iter 144: 8→5 → iter 150: 5→0.5 (user: "reduce forward speed to 10%")
 const OBSTACLE_SPAWN_INTERVAL: float = 1.2
 
 # Iter 66: 3D bullets — small bright spheres that travel from cowboy
