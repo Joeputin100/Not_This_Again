@@ -517,13 +517,14 @@ func _spawn_posse_followers() -> void:
 #   CACTUS    — tall green column further out
 #   SCRUB     — low brown sphere (sagebrush), far side
 #   BUILDING  — flat-front "building façade" silhouette at FAR_BAND
-enum SceneryType { FENCE, ROCK, CACTUS, SCRUB, BUILDING }
+enum SceneryType { FENCE, ROCK, CACTUS, SCRUB, BUILDING, GRASS }
 const SCENERY_WEIGHTS: Array[int] = [
 	4,  # FENCE
 	3,  # ROCK
 	2,  # CACTUS
 	2,  # SCRUB
 	1,  # BUILDING (rarest — large, distinctive)
+	4,  # GRASS (iter 155 — ground cover, clusters of tufts)
 ]
 
 var _scenery_spawn_count: int = 0
@@ -563,6 +564,8 @@ func _spawn_scenery_item_inner() -> void:
 			_spawn_scrub(side, spawn_z)
 		SceneryType.BUILDING:
 			_spawn_building(side, spawn_z)
+		SceneryType.GRASS:
+			_spawn_grass(side, spawn_z)
 
 func _spawn_fence_post(side: float, z: float) -> void:
 	# Iter 131: if a fence_post PNG exists, spawn as breathing billboard
@@ -748,6 +751,20 @@ func _spawn_scrub(side: float, z: float) -> void:
 		z,
 	)
 	scenery_root.add_child(scrub)
+
+# Iter 155: grass tufts as roadside ground cover (ported in spirit from
+# the roguelike webgl grass demo). Each scenery roll drops a small
+# cluster of 2-4 tufts at varied x/z so the shoulder reads as a grassy
+# patch, not a single sprite. The breathing shader (sway_amp 0.13) gives
+# each tuft a lively wind sway.
+func _spawn_grass(side: float, z: float) -> void:
+	if not ResourceLoader.exists(PROP_TEX_REGISTRY["grass_tuft"].path):
+		return
+	var n: int = _rng.randi_range(2, 4)
+	for i in range(n):
+		var gx: float = side * (SCENERY_ROAD_SHOULDER + _rng.randf_range(-1.2, 4.5))
+		var gz: float = z + _rng.randf_range(-1.4, 1.4)
+		_spawn_prop_from_slug("grass_tuft", gx, gz, scenery_root)
 
 const _BUILDING_SIGNS := ["SALOON", "BANK", "JAIL", "GEN. STORE", "STABLES", "HOTEL", "BARBER", "POST"]
 
@@ -3528,6 +3545,8 @@ const PROP_TEX_REGISTRY: Dictionary = {
 	"fence_post":      {"path": "res://assets/sprites/props/fence_post.png",      "w": 0.4, "h": 1.1, "sway_amp": 0.05, "bob_amp": 0.0},
 	# Scrub / sagebrush — most flexible, biggest sway
 	"scrub":           {"path": "res://assets/sprites/props/scrub.png",           "w": 1.0, "h": 0.6, "sway_amp": 0.10, "bob_amp": 0.022},
+	# Iter 155: grass tuft — ground cover, flexible, lively wind sway
+	"grass_tuft":      {"path": "res://assets/sprites/props/grass_tuft.png",      "w": 0.9, "h": 0.7, "sway_amp": 0.13, "bob_amp": 0.020},
 	# Buildings — near-zero sway (heavy timber doesn't breathe), tiny bob
 	"building_saloon":         {"path": "res://assets/sprites/props/building_saloon.png",         "w": 4.5, "h": 5.5, "sway_amp": 0.003, "bob_amp": 0.004},
 	"building_general_store":  {"path": "res://assets/sprites/props/building_general_store.png",  "w": 4.5, "h": 5.5, "sway_amp": 0.003, "bob_amp": 0.004},
