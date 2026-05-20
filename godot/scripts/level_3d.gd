@@ -178,10 +178,10 @@ var _outlaw_spawn_timer: float = 0.0
 # Iter 77: Slippery Pete boss. Appears at PETE_SPAWN_DELAY into the
 # level. Slow approach, much higher HP, drops the WIN modal on defeat.
 const PETE_SPAWN_DELAY: float = 18.0  # iter 145: 8 → 18 (terrain slowed iter 144 → fewer gates pass in 8s; user wants posse to grow more)
-const PETE_HP: int = 1000  # iter 119: 40 → 1000 (×-gates can build huge posse)
+const PETE_HP: int = 500  # iter 119: 40 → 1000 → iter 147: 1000 → 500 (user: "Pete's HP is too high. cut it in half")
 const PETE_SPEED: float = 10.0  # iter 124: 1.6 → 4.0 → iter 143: 4.0 → 10.0 (user reported "doesn't advance fast enough")
 const PETE_FIRE_INTERVAL: float = 0.5  # iter 119: 1.0 → 0.5 (alternates L/R guns)
-const PETE_HIT_RADIUS_SQ: float = 2.6 * 2.6
+const PETE_HIT_RADIUS_SQ: float = 3.6 * 3.6  # iter 147: 2.6 → 3.6 (user: "bullets pass through him too")
 const PETE_STAY_Z: float = -6.0  # holds at duel distance until melee phase
 # Iter 119: Pete melee — if the duel drags on (Pete not yet defeated)
 # he keeps walking past STAY_Z toward the cowboy. Once within MELEE_RANGE,
@@ -3375,7 +3375,11 @@ func _get_or_create_shared_video_viewport(stream: VideoStream) -> SubViewport:
 	var mat := ShaderMaterial.new()
 	mat.shader = _CHROMAKEY_SHADER
 	mat.set_shader_parameter("chroma_color", Color(0, 1, 0, 1))
-	mat.set_shader_parameter("similarity", 0.22)
+	# Iter 147: similarity 0.22 → 0.12 (stricter — only near-exact green is
+	# keyed out). User reported "Pete's chromakey is messy. parts of his body
+	# are transparent" — 0.22 was wide enough to eat costume colors that
+	# leaned green-ish.
+	mat.set_shader_parameter("similarity", 0.12)
 	mat.set_shader_parameter("blend_amount", 0.10)
 	vp.material = mat
 	sv.add_child(vp)
@@ -3774,7 +3778,10 @@ func _process(delta: float) -> void:
 				var pete_z_gap: float = cowboy_3d.position.z - pete.position.z
 				if pete_z_gap >= 0.0 and pete_z_gap <= OUTLAW_FIRE_RANGE_Z:
 					_pete_fire()
-			# Bullet hit check
+			# Bullet hit check. Iter 147: removed the per-frame `break` so
+			# EVERY bullet overlapping Pete this frame registers a hit. The
+			# break consumed only 1 bullet/frame — excess bullets visually
+			# flew through Pete (user: "bullets pass through him too").
 			for bullet in bullets_root.get_children():
 				if not (bullet is Node3D):
 					continue
@@ -3792,7 +3799,7 @@ func _process(delta: float) -> void:
 					if hp <= 0:
 						pete.queue_free()
 						_show_win()
-					break
+						break
 	# Iter 115: GunState-driven auto-fire. Replaces the iter-66 fixed
 	# fire_timer. tick(delta) advances the cooldown + reload countdown;
 	# the while-can_fire loop drains as many shots as the cowboy is

@@ -89,6 +89,15 @@ func play_flourish(slug: String) -> void:
 var _character_players: Dictionary = {}
 
 func play_character_line(slug: String) -> void:
+	# Iter 147: don't restart a character line that's still playing. These
+	# clips are multi-second; Pete's taunt fires every 3rd shot, which was
+	# cutting his voice off before any sentence finished (user: "Pete's
+	# audio keeps interrupting itself"). A flourish restart is fine — those
+	# are <1s — but dialogue should play through.
+	if _character_players.has(slug):
+		var existing: AudioStreamPlayer = _character_players[slug]
+		if existing != null and existing.playing:
+			return
 	_play_lazy_voice(_character_players, slug,
 		"res://assets/audio/characters/%s.mp3" % slug, 6.0)
 
