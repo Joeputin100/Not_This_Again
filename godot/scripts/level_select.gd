@@ -23,6 +23,14 @@ extends Node2D
 const BuildInfo = preload("res://scripts/build_info.gd")
 const GAME_THEME := preload("res://assets/theme.tres")
 const HARP_SFX := preload("res://assets/sfx/harp_thought.wav")
+# Iter 168: Veo flourish clips, played on tap via a chroma-keyed
+# VideoStreamPlayer overlaid on Humbug.
+const FLOURISH_CLIPS: Dictionary = {
+	"tip": "res://assets/videos/humbug/tip.ogv",
+	"thought": "res://assets/videos/humbug/thought.ogv",
+	"canard": "res://assets/videos/humbug/canard.ogv",
+}
+const CHROMAKEY_SHADER := preload("res://shaders/chromakey.gdshader")
 
 @onready var level_1_button: Button = $LevelNode1
 @onready var level_2_button: Button = $LevelNode2
@@ -84,6 +92,7 @@ var _canard_tap_count: int = 0
 var _humbug_joke_idx: int = 0
 var _canard_player: AudioStreamPlayer
 var _canard_new_head: Sprite2D = null
+var _flourish_video: VideoStreamPlayer = null  # iter 168: Veo flourish playback
 
 func _ready() -> void:
 	get_tree().set_quit_on_go_back(false)
@@ -166,6 +175,25 @@ func _setup_humbug() -> void:
 	_canard_player = AudioStreamPlayer.new()
 	_canard_player.bus = "Master"
 	add_child(_canard_player)
+	# Iter 168: chroma-keyed VideoStreamPlayer for the Veo flourish clips.
+	# Sized so the clip's Humbug overlays the static TextureButton; shown
+	# only while a flourish plays, hidden again on `finished`.
+	_flourish_video = VideoStreamPlayer.new()
+	_flourish_video.position = Vector2(-75.0, 1276.0)
+	_flourish_video.size = Vector2(370.0, 658.0)
+	_flourish_video.expand = true
+	_flourish_video.loop = false
+	_flourish_video.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	var ck := ShaderMaterial.new()
+	ck.shader = CHROMAKEY_SHADER
+	ck.set_shader_parameter("chroma_color", Color(0, 1, 0))
+	ck.set_shader_parameter("similarity", 0.35)
+	ck.set_shader_parameter("blend_amount", 0.12)
+	ck.set_shader_parameter("black_threshold", 0.0)  # clips are full-frame, no letterbox
+	_flourish_video.material = ck
+	_flourish_video.visible = false
+	_flourish_video.finished.connect(_on_flourish_finished)
+	add_child(_flourish_video)
 
 # Tap Humbug → a flourish + mostly a tip (speech bubble), now and then a
 # thought (thought bubble + harp). Voice reuses his six menu lines.
@@ -178,12 +206,14 @@ func _on_humbug_pressed() -> void:
 		_humbug_joke()
 		return
 	if randf() < HUMBUG_THOUGHT_CHANCE:
-		_humbug_thought_flourish()
+		if not _play_flourish("thought"):
+			_humbug_thought_flourish()
 		_show_humbug_bubble(Text.random("humbug.thoughts"), true)
 		if _harp_player != null:
 			_harp_player.play()
 	else:
-		_humbug_tip_flourish()
+		if not _play_flourish("tip"):
+			_humbug_tip_flourish()
 		_show_humbug_bubble(Text.random("humbug.tips"), false)
 	if get_node_or_null("/root/AudioBus") and AudioBus.has_method("play_character_line"):
 		AudioBus.play_character_line("humbug_menu_%d" % (randi() % HUMBUG_MENU_LINES))
@@ -226,7 +256,8 @@ func _on_canard_tap(event: InputEvent) -> void:
 	# Increasingly annoyed: quacks climb in pitch + volume and the wiggle
 	# sharpens the more he is pestered.
 	var heat: float = float(_canard_tap_count) / float(CANARD_EGG_TAPS)
-	_canard_wiggle(1.0 + heat * 1.7)
+	if not _play_flourish("canard"):
+		_canard_wiggle(1.0 + heat * 1.7)
 	if _canard_player != null:
 		_canard_player.stream = CANARD_QUACK_STREAMS[randi() % CANARD_QUACK_STREAMS.size()]
 		_canard_player.pitch_scale = 1.0 + heat * 0.6
@@ -275,6 +306,24 @@ func _canard_wiggle(intensity: float = 1.0) -> void:
 	t.tween_property(humbug, "rotation", 0.0, 0.13) \
 		.set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
 	_humbug_flourish = t
+
+# Iter 168: play a Veo flourish clip (chroma-keyed video) over Humbug.
+# Returns false if the clip is unavailable, so the caller can fall back
+# to the procedural tween flourish.
+func _play_flourish(kind: String) -> bool:
+	if _flourish_video == null:
+		return false
+	var path: String = FLOURISH_CLIPS.get(kind, "")
+	if path == "" or not ResourceLoader.exists(path):
+		return false
+	_flourish_video.stream = load(path)
+	_flourish_video.visible = true
+	_flourish_video.play()
+	return true
+
+func _on_flourish_finished() -> void:
+	if _flourish_video != null:
+		_flourish_video.visible = false
 
 # Pop a speech/thought bubble above Humbug; auto-dismiss after a beat.
 func _show_humbug_bubble(text: String, is_thought: bool) -> void:
