@@ -1,4 +1,4 @@
-[gd_scene load_steps=12 format=3 uid="uid://b0nttg_lvlsel_001"]
+[gd_scene load_steps=13 format=3 uid="uid://b0nttg_lvlsel_001"]
 
 [ext_resource type="Script" path="res://scripts/level_select.gd" id="1_select"]
 [ext_resource type="Theme" path="res://assets/theme.tres" id="2_theme"]
@@ -13,9 +13,9 @@
 ;   Level 4 LIQUORICE    (extreme) — black candy + wood-brown border, mountain pass
 ; Levels 5-8 stay generic locked (placeholder for future content).
 ;
-; Only LevelNode1 is enabled in v1 (the playable level). Levels 2-4 are
-; visually themed but disabled — the user sees their FUTURE difficulty
-; progression as foreshadowing.
+; Iter 158: Levels 1-2 are playable (level 2's boss is The Candy
+; Rustler). Levels 3-8 stay visually themed but disabled — the user
+; sees their FUTURE difficulty progression as foreshadowing.
 
 [sub_resource type="StyleBoxFlat" id="StyleBox_peppermint"]
 bg_color = Color(0.98, 0.96, 0.92, 1)
@@ -48,6 +48,19 @@ border_width_top = 10
 border_width_right = 10
 border_width_bottom = 10
 border_color = Color(1.0, 0.65, 0.10, 1)
+corner_radius_top_left = 75
+corner_radius_top_right = 75
+corner_radius_bottom_right = 75
+corner_radius_bottom_left = 75
+
+; Iter 158: hover/pressed style for the now-playable Level 2 node.
+[sub_resource type="StyleBoxFlat" id="StyleBox_fireball_hover"]
+bg_color = Color(0.96, 0.30, 0.16, 1)
+border_width_left = 10
+border_width_top = 10
+border_width_right = 10
+border_width_bottom = 10
+border_color = Color(1.0, 0.80, 0.25, 1)
 corner_radius_top_left = 75
 corner_radius_top_right = 75
 corner_radius_bottom_right = 75
@@ -175,21 +188,23 @@ horizontal_alignment = 1
 mouse_filter = 2
 
 ; ─── LEVEL 2 — FIREBALL (Medium) ─────────────────────────────────────
-[node name="LevelNode2Locked" type="Button" parent="."]
+[node name="LevelNode2" type="Button" parent="."]
 offset_left = 690.0
 offset_top = 1430.0
 offset_right = 830.0
 offset_bottom = 1570.0
-disabled = true
 theme = ExtResource("2_theme")
 theme_override_styles/normal = SubResource("StyleBox_fireball")
-theme_override_styles/disabled = SubResource("StyleBox_fireball")
-theme_override_colors/font_color_disabled = Color(1, 0.92, 0.65, 0.85)
-theme_override_font_sizes/font_size = 64
+theme_override_styles/hover = SubResource("StyleBox_fireball_hover")
+theme_override_styles/pressed = SubResource("StyleBox_fireball_hover")
+theme_override_colors/font_color = Color(1, 0.93, 0.72, 1)
+theme_override_colors/font_outline_color = Color(0.3, 0.08, 0.02, 1)
+theme_override_constants/outline_size = 5
+theme_override_font_sizes/font_size = 80
 text = "2"
 
 ; Yellow flame center on the fireball — small triangle radiating up.
-[node name="Flame" type="Polygon2D" parent="LevelNode2Locked"]
+[node name="Flame" type="Polygon2D" parent="LevelNode2"]
 position = Vector2(70, 70)
 color = Color(1, 0.85, 0.30, 0.85)
 polygon = PackedVector2Array(0, -32, 18, 0, 8, 28, -8, 28, -18, 0)
