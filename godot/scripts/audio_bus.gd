@@ -88,6 +88,18 @@ func play_flourish(slug: String) -> void:
 # (see [[project_flourish_voiceover]] for the assignment map).
 var _character_players: Dictionary = {}
 
+# Iter 153: true if ANY character-line clip is currently playing. The
+# per-slug guard in play_character_line only blocks restarting the SAME
+# clip; different slugs use different players and overlap. The menu-tap
+# Humbug banter needs to block ALL overlap (user: "tapping humbug more
+# than once in succession overlaps the audio").
+func any_character_line_playing() -> bool:
+	for slug in _character_players.keys():
+		var p: AudioStreamPlayer = _character_players[slug]
+		if p != null and p.playing:
+			return true
+	return false
+
 func play_character_line(slug: String) -> void:
 	# Iter 147: don't restart a character line that's still playing. These
 	# clips are multi-second; Pete's taunt fires every 3rd shot, which was

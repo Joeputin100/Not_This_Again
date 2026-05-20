@@ -14,7 +14,13 @@ extends Node2D
 # Sits BEHIND all 2D gameplay nodes in level.tscn — gates, obstacles,
 # bullets, cowboy and posse all overlay on top of the rendered terrain.
 
-const SCROLL_SPEED: float = 0.25
+# Iter 153: SCROLL_SPEED is now a var, synced by level_3d from
+# OBSTACLE_SPEED so the ground texture scrolls at the SAME apparent rate
+# as the world-space props sliding over it. 0.25 was matched to the
+# legacy OBSTACLE_SPEED of 8.0; the ratio 0.25/8 = 0.03125 is the sync
+# factor (see level_3d._sync_terrain_scroll). User reported "terrain and
+# static props advance at different rates" after OBSTACLE_SPEED dropped.
+var scroll_speed: float = 0.25
 
 # Iter 63: gate the auto-scroll so the level-select variant of the
 # terrain can stay static (panned by finger drag instead). Default true
@@ -66,6 +72,6 @@ func _process(delta: float) -> void:
 	# dirt now appears to move FROM the horizon TOWARD the camera —
 	# matches the perception of "running forward into the scene."
 	# Using fposmod for robust wrap-around in both directions.
-	_uv_offset = fposmod(_uv_offset - SCROLL_SPEED * WorldSpeed.mult * delta, 1.0)
+	_uv_offset = fposmod(_uv_offset - scroll_speed * WorldSpeed.mult * delta, 1.0)
 	if _material:
 		_material.uv1_offset = Vector3(0.0, _uv_offset, 0.0)

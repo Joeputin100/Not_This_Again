@@ -79,7 +79,7 @@ const COWBOY_X_BOUND: float = 3.0  # iter 118: 6.0 → 3.0 to match the actual v
 const COWBOY_Z: float = 1.5  # iter 145: 0.0 → 1.5 (was middle of screen, user wants near bottom)
 const OBSTACLE_SPAWN_Z: float = -28.0  # far end of plane
 const OBSTACLE_DESPAWN_Z: float = 3.5   # past the cowboy
-const OBSTACLE_SPEED: float = 0.5    # iter 144: 8→5 → iter 150: 5→0.5 (user: "reduce forward speed to 10%")
+const OBSTACLE_SPEED: float = 2.5    # iter 144: 8→5→0.5 → iter 153: 0.5→2.5 (0.5 was non-functional — gates took ~56s to arrive while Pete spawned at 18s; 2.5 is ~31% of the original, slow but playable)
 const OBSTACLE_SPAWN_INTERVAL: float = 1.2
 
 # Iter 66: 3D bullets — small bright spheres that travel from cowboy
@@ -160,7 +160,7 @@ const STARTING_POSSE_3D: int = 1  # iter 118: 5 → 1 (gates grow it from there)
 # Iter 76: outlaw enemies. Spawn red boxes periodically at far z that
 # scroll toward camera + fire red bullets at the cowboy.
 const OUTLAW_SPAWN_INTERVAL: float = 0.5  # iter 118: 3.0 → 0.5 (~14 alive at once)
-const OUTLAW_SPEED: float = 0.4  # iter 151: 4.0 → 0.4 (matches the iter-150 10% terrain speed — outlaws were rushing in 8× faster than the world scrolled)
+const OUTLAW_SPEED: float = 2.5  # iter 153: matched to OBSTACLE_SPEED so outlaws drift in with the world (not rushing) and actually reach the player before Pete
 const OUTLAW_FIRE_INTERVAL: float = 3.6  # iter 121: 1.8 → 3.6 (halved fire rate)
 # Iter 121: only fire when within this many world units of cowboy z.
 # Halves the effective bullet range since outlaws spawn at z=-24 but
@@ -177,7 +177,7 @@ var _outlaw_spawn_timer: float = 0.0
 
 # Iter 77: Slippery Pete boss. Appears at PETE_SPAWN_DELAY into the
 # level. Slow approach, much higher HP, drops the WIN modal on defeat.
-const PETE_SPAWN_DELAY: float = 18.0  # iter 145: 8 → 18 (terrain slowed iter 144 → fewer gates pass in 8s; user wants posse to grow more)
+const PETE_SPAWN_DELAY: float = 30.0  # iter 153: 18 → 30. At OBSTACLE_SPEED 2.5 a gate takes ~11s to reach the player; 30s lets the player clear ~6 gates + a sustained outlaw firefight BEFORE the boss (user: "Pete appearing before reaching any gates or outlaws")
 const PETE_HP: int = 500  # iter 119: 40 → 1000 → iter 147: 1000 → 500 (user: "Pete's HP is too high. cut it in half")
 const PETE_SPEED: float = 10.0  # iter 124: 1.6 → 4.0 → iter 143: 4.0 → 10.0 (user reported "doesn't advance fast enough")
 const PETE_FIRE_INTERVAL: float = 0.5  # iter 119: 1.0 → 0.5 (alternates L/R guns)
@@ -305,6 +305,13 @@ func _ready() -> void:
 		DebugLog.add("level_3d: terrain instance loaded; subviewport=%s" % subviewport.size)
 	else:
 		DebugLog.add("WARN level_3d: subviewport null after terrain instance")
+	# Iter 153: sync the ground-texture scroll to OBSTACLE_SPEED so the
+	# terrain and the world-space props advance at the SAME apparent rate
+	# (user: "terrain and static props advance at different rates"). The
+	# legacy terrain SCROLL_SPEED 0.25 was matched to OBSTACLE_SPEED 8.0.
+	if terrain_3d_node != null and "scroll_speed" in terrain_3d_node:
+		terrain_3d_node.scroll_speed = OBSTACLE_SPEED * (0.25 / 8.0)
+		DebugLog.add("level_3d: terrain scroll synced to %.4f" % terrain_3d_node.scroll_speed)
 	# Iter 107/118: override the terrain_3d.tscn instance's camera to a
 	# steeper Evony-style top-down angle, sized for the portrait viewport.
 	# Iter 118 added: fov=50 + KEEP_WIDTH so the horizontal extent reads

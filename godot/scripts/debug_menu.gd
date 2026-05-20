@@ -126,6 +126,12 @@ func _build_sections() -> void:
 	sway_btn.pressed.connect(_on_open_sway_picker)
 	content.add_child(sway_btn)
 
+	# Iter 153: Candy Rustler jointed-puppet rig preview.
+	_add_section_header("CANDY RUSTLER")
+	var rustler_btn := _make_button("PREVIEW CANDY RUSTLER RIG")
+	rustler_btn.pressed.connect(_on_open_rustler_rig)
+	content.add_child(rustler_btn)
+
 	# Iter 133: captive hero rescue previews. Heroes trapped in containers
 	# the player must shoot to free. Basic static version (no pushers).
 	_add_section_header("CAPTIVE HEROES (basic)")
@@ -216,6 +222,11 @@ func _on_open_sway_picker() -> void:
 	AudioBus.play_tap()
 	DebugLog.add("debug: open sway picker")
 	get_tree().change_scene_to_file("res://scenes/sway_picker.tscn")
+
+func _on_open_rustler_rig() -> void:
+	AudioBus.play_tap()
+	DebugLog.add("debug: open candy rustler rig preview")
+	get_tree().change_scene_to_file("res://scenes/candy_rustler_rig_preview.tscn")
 
 func _on_open_glitz_picker() -> void:
 	AudioBus.play_tap()

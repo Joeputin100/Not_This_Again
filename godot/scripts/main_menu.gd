@@ -178,6 +178,12 @@ func _on_humbug_tap(event: InputEvent) -> void:
 	var now: float = Time.get_unix_time_from_system()
 	if now - _humbug_banter_at < 1.0:
 		return
+	# Iter 153: don't start a new line while Humbug (or Canard) is still
+	# talking — the 1s debounce didn't cover the 3-5s clip length, so rapid
+	# taps stacked voices. Let him finish his thought first.
+	if get_node_or_null("/root/AudioBus") and AudioBus.has_method("any_character_line_playing"):
+		if AudioBus.any_character_line_playing():
+			return
 	_humbug_banter_at = now
 	DebugLog.add("menu: Humbug tapped → banter")
 	if get_node_or_null("/root/AudioBus") and AudioBus.has_method("play_character_line"):
