@@ -65,7 +65,7 @@ const HUMBUG_EGG_TAPS: int = 6         # accepted taps inside the window → jok
 const HUMBUG_EGG_WINDOW: float = 60.0
 const CANARD_EGG_TAPS: int = 14        # taps → explosion + a fresh duck-head
 const POOF_SFX := preload("res://assets/sfx/poof.wav")
-const CANARD_HEAD_REGION := Rect2(228.0, 282.0, 100.0, 105.0)  # duck-head in the Humbug PNG
+const CANARD_HEAD_REGION := Rect2(241.0, 410.0, 100.0, 105.0)  # duck-head in the Humbug PNG (iter 163: tracked the CanardZone nudge)
 var CANARD_QUACK_STREAMS: Array = [
 	preload("res://assets/audio/characters/canard_quack_0.mp3"),
 	preload("res://assets/audio/characters/canard_quack_1.mp3"),

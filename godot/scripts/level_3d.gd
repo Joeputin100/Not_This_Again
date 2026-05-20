@@ -201,12 +201,17 @@ var _pete_melee_tick_accum: float = 0.0
 # the threshold detachment, defeat() drives the death scatter.
 const _CANDY_RUSTLER_RIG := preload("res://scripts/candy_rustler_rig.gd")
 const RUSTLER_HP: int = 400  # tunable — rig sheds a piece at 75/50/25%
-const RUSTLER_FIRE_INTERVAL: float = 1.4  # slower cadence than Pete (0.5)
+# Iter 163: the Rustler is a melee boss — strides in fast, holds at
+# RUSTLER_STAY_Z and crinkles the posse by contact (no projectiles).
+const RUSTLER_SPEED: float = 15.0  # approach speed — faster than Pete (10)
+const RUSTLER_STAY_Z: float = -7.0  # holds + melees here; further back than Pete (-6) so his head clears the screen top
+const RUSTLER_MELEE_DPS: float = 3.0  # posse members drained per second of contact
+const RUSTLER_TAUNT_INTERVAL: float = 5.0
 const _RUSTLER_VIEWPORT_PX := Vector2i(896, 768)  # rig figure is wide (arms spread)
 const _RUSTLER_RIG_SCALE := Vector2(0.9, 0.9)     # framing eyeballed — tune post-sideload
 const _RUSTLER_RIG_POS := Vector2(-187.0, 38.0)   # centers the v1 figure in the viewport
-var _rustler_fire_timer: float = 0.0
-var _rustler_fire_count: int = 0
+var _rustler_melee_accum: float = 0.0
+var _rustler_taunt_timer: float = 5.0
 var _rustler_hit_voice_cd: float = 0.0
 
 # Iter 88: bonus pickup spawn parameters. Pickups appear periodically
@@ -2719,11 +2724,12 @@ func _boss_kind() -> String:
 # piece-detachment thresholds track the on-screen bar.
 func _spawn_candy_rustler() -> void:
 	var boss := Node3D.new()
-	var boss_height: float = 7.5
-	# y tuned so the rig's feet sit ~on the ground — the v1 figure is
-	# centered in its viewport (see _RUSTLER_RIG_POS), so the billboard
-	# center sits at the figure's mid-height.
-	boss.position = Vector3(0.0, 3.4, OBSTACLE_SPAWN_Z + 4.0)
+	# Iter 163: 7.5 → 5.0 — at 7.5 his head clipped off the top of the
+	# screen at the duel distance (camera sits at y=7). y tracks height:
+	# the v1 figure is centred in its viewport, so the billboard centre
+	# sits at the figure's mid-height (~0.45 × height puts feet on dirt).
+	var boss_height: float = 5.0
+	boss.position = Vector3(0.0, 2.25, OBSTACLE_SPAWN_Z + 4.0)
 	boss.set_meta("hp", RUSTLER_HP)
 	boss.set_meta("hp_max", RUSTLER_HP)
 	boss.set_meta("boss_kind", "rustler")
@@ -2779,26 +2785,34 @@ func _make_rig_billboard(world_height: float) -> Dictionary:
 	wrap.add_child(sprite)
 	return {"wrap": wrap, "rig": rig, "viewport": sv}
 
-# Candy Rustler per-frame behavior: approach to duel distance, hold and
-# fire periodically, take bullet hits → the rig dismantles. On HP 0 the
-# rig scatters and the WIN flow runs.
+# Candy Rustler per-frame behavior (iter 163): a melee boss — strides in
+# fast, holds at RUSTLER_STAY_Z and crinkles the posse by contact (no
+# projectiles). Takes bullet hits → the rig dismantles; on HP 0 the rig
+# scatters and the WIN flow runs.
 func _process_rustler(boss: Node3D, delta: float) -> void:
 	if _pete_defeated or boss.get_meta("dying", false):
 		return
 	_rustler_hit_voice_cd = maxf(0.0, _rustler_hit_voice_cd - delta)
 	var rig = boss.get_meta("rig", null)
-	if boss.position.z < PETE_STAY_Z:
-		boss.position.z += PETE_SPEED * delta
+	if boss.position.z < RUSTLER_STAY_Z:
+		boss.position.z += RUSTLER_SPEED * delta
 	else:
-		_rustler_fire_timer -= delta
-		if _rustler_fire_timer <= 0.0:
-			_rustler_fire_timer = RUSTLER_FIRE_INTERVAL
-			var gap: float = cowboy_3d.position.z - boss.position.z
-			if gap >= 0.0 and gap <= OUTLAW_FIRE_RANGE_Z:
-				_outlaw_fire(boss)
-				_rustler_fire_count += 1
-				if _rustler_fire_count % 3 == 0:
-					_rustler_say(boss, "taunt")
+		# Engaged — drain the posse by melee contact. Special followers
+		# soak the hit first (as with Pete's melee phase).
+		_rustler_melee_accum += delta * RUSTLER_MELEE_DPS
+		while _rustler_melee_accum >= 1.0:
+			_rustler_melee_accum -= 1.0
+			var sf: Dictionary = _nearest_special_follower(boss.position, 99.0)
+			if not sf.is_empty():
+				_damage_special_follower(sf, 1)
+			else:
+				_posse_count_3d = maxi(0, _posse_count_3d - 1)
+				_sync_followers_to_count(_posse_count_3d)
+				_refresh_hud()
+	_rustler_taunt_timer -= delta
+	if _rustler_taunt_timer <= 0.0:
+		_rustler_taunt_timer = RUSTLER_TAUNT_INTERVAL
+		_rustler_say(boss, "taunt")
 	# Bullet hits — every overlapping posse bullet counts (no per-frame
 	# break; matches the iter 147 Pete fix).
 	for bullet in bullets_root.get_children():

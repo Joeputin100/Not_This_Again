@@ -441,10 +441,10 @@ ignore_texture_size = true
 stretch_mode = 5
 
 [node name="CanardZone" type="Control" parent="Humbug"]
-offset_left = 178.0
-offset_top = 220.0
-offset_right = 256.0
-offset_bottom = 302.0
+offset_left = 188.0
+offset_top = 320.0
+offset_right = 266.0
+offset_bottom = 402.0
 mouse_filter = 0
 
 [node name="UI" type="CanvasLayer" parent="."]
