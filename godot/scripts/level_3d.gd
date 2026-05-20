@@ -3237,6 +3237,14 @@ func _make_breathing_prop(
 	mat.set_shader_parameter("bob_amp", bob_amp)
 	mat.set_shader_parameter("bob_freq", bob_freq)
 	mat.set_shader_parameter("time_offset", _rng.randf_range(0.0, 6.28))
+	# Iter 148: apply the user-picked puppet sway profile. mesh_height lets
+	# the shader anchor squash/lean at the prop's true bottom. sway_intensity
+	# reuses the per-prop sway_amp as a 0..N scale (fence baseline 0.06 = 1.0)
+	# so buildings barely move while scrub/heroes get the full puppet motion.
+	if get_node_or_null("/root/SwayPrefs"):
+		mat.set_shader_parameter("sway_profile", SwayPrefs.get_profile())
+	mat.set_shader_parameter("sway_intensity", sway_amp / 0.06)
+	mat.set_shader_parameter("mesh_height", height)
 	mesh.material_override = mat
 	return mesh
 

@@ -64,6 +64,16 @@ uniform float sparkle_orbit : hint_range(0.0, 1.0) = 0.0;
 uniform int rotation_mode : hint_range(0, 2) = 0;
 uniform float rotation_speed : hint_range(0.0, 5.0) = 1.0;
 
+// Iter 148: popsicle-stick puppet sway. 0 = legacy mobile sway (iter 130),
+// 1-5 = puppet profiles picked via the debug Sway Picker. The puppet model
+// drives: lean (rotation around the bottom pivot — the "stick"), hop
+// (vertical translate), squash-stretch (bottom-anchored), whip (top-only
+// flex lag). mesh_height anchors squash/lean at the TRUE bottom for meshes
+// taller than 1 unit (PlaneMesh local Y spans -height/2 .. +height/2).
+uniform int sway_profile : hint_range(0, 5) = 0;
+uniform float sway_intensity : hint_range(0.0, 3.0) = 1.0;
+uniform float mesh_height : hint_range(0.1, 30.0) = 1.0;
+
 void vertex() {
 	// Iter 132: rotation_mode 2 (Y-SPIN) disables billboard — the plane
 	// physically rotates around its vertical axis. Edge-on every half
@@ -103,16 +113,73 @@ void vertex() {
 
 	float t = TIME + time_offset;
 
-	// Sway: top of mesh leans, bottom is anchored.
-	// PlaneMesh defaults the origin at center, so we shift the weight
-	// function so bottom (VERTEX.y = -0.5 × height in local) = 0 weight
-	// and top (= +0.5) = 1.0 weight.
-	float height_weight = clamp(VERTEX.y + 0.5, 0.0, 1.0);
-	VERTEX.x += sin(t * sway_freq) * sway_amp * height_weight;
-	VERTEX.z += cos(t * sway_freq * 1.3) * sway_amp * 0.4 * height_weight;
-
-	// Breathing: subtle full-mesh pulse
-	VERTEX.xyz *= 1.0 + sin(t * bob_freq) * bob_amp;
+	if (sway_profile == 0) {
+		// Legacy iter-130 mobile sway: top-weighted bend + scale-pulse bob.
+		float hw0 = clamp(VERTEX.y + 0.5, 0.0, 1.0);
+		VERTEX.x += sin(t * sway_freq) * sway_amp * hw0;
+		VERTEX.z += cos(t * sway_freq * 1.3) * sway_amp * 0.4 * hw0;
+		VERTEX.xyz *= 1.0 + sin(t * bob_freq) * bob_amp;
+	} else {
+		// Iter 148: popsicle-stick puppet profiles.
+		float lean = 0.0;     // radians — rotation around the bottom pivot
+		float hop = 0.0;      // vertical translate (world units)
+		float stretch = 1.0;  // >1 taller+thinner, <1 shorter+wider
+		float whip = 0.0;     // top-only horizontal shear (flexible paper)
+		if (sway_profile == 1) {
+			// TAP & SETTLE — periodic sharp tap, damped settle, near-still between.
+			float ph = fract(t / 1.8);
+			float env = exp(-5.0 * ph) * cos(ph * TAU * 2.5);
+			hop = env * 0.10;
+			stretch = 1.0 + env * 0.12;
+			lean = env * 0.10;
+		} else if (sway_profile == 2) {
+			// BOUNCY IDLE — continuous asymmetric ball-bounce rhythm.
+			float ph = fract(t / 1.15);
+			float bounce = pow(abs(sin(ph * PI)), 0.65);
+			hop = bounce * 0.085;
+			stretch = 1.0 + (bounce - 0.45) * 0.13;
+			lean = sin(t * 1.3) * 0.05;
+		} else if (sway_profile == 3) {
+			// WHIP WOBBLE — continuous sway with a strong top whip/overshoot.
+			float drive = sin(t * 1.7);
+			lean = drive * 0.07;
+			whip = sin(t * 1.7 - 0.95) * 0.12;
+			hop = abs(drive) * 0.03;
+		} else if (sway_profile == 4) {
+			// SPRING POP — periodic spring with alternating side-lurch.
+			float ph = fract(t / 1.5);
+			float env = exp(-4.0 * ph) * sin(ph * TAU * 3.0);
+			float dir = (mod(floor(t / 1.5), 2.0) < 1.0) ? 1.0 : -1.0;
+			hop = env * 0.09;
+			lean = env * 0.09 * dir;
+			stretch = 1.0 + env * 0.13;
+		} else {
+			// 5 = GENTLE — restrained sway + small hop.
+			lean = sin(t * 1.4) * 0.045;
+			hop = (sin(t * 2.2) * 0.5 + 0.5) * 0.025;
+		}
+		lean *= sway_intensity;
+		hop *= sway_intensity * mesh_height;
+		whip *= sway_intensity;
+		stretch = 1.0 + (stretch - 1.0) * sway_intensity;
+		float half_h = mesh_height * 0.5;
+		float hw = clamp((VERTEX.y + half_h) / mesh_height, 0.0, 1.0);
+		// Bottom-anchored squash-stretch — feet stay planted.
+		float yb = (VERTEX.y + half_h) * stretch;
+		VERTEX.y = yb - half_h;
+		VERTEX.x *= 1.0 / sqrt(max(stretch, 0.01));
+		// Lean — true rotation around the bottom pivot (the "stick").
+		float cs = cos(lean);
+		float sn = sin(lean);
+		float px = VERTEX.x;
+		float py = VERTEX.y + half_h;
+		VERTEX.x = px * cs - py * sn;
+		VERTEX.y = px * sn + py * cs - half_h;
+		// Hop — translate the whole body up.
+		VERTEX.y += hop;
+		// Whip — top-concentrated horizontal flex (paper isn't perfectly rigid).
+		VERTEX.x += whip * hw * hw;
+	}
 
 	// Crumple on damage: high-freq crinkle + downward compression
 	if (damage_strength > 0.001) {

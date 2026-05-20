@@ -117,6 +117,10 @@ func _spawn_preview_mesh() -> void:
 	mat.set_shader_parameter("bob_amp", 0.02)
 	mat.set_shader_parameter("bob_freq", 2.5)
 	mat.set_shader_parameter("time_offset", 0.0)
+	# Iter 148: mesh_height so the breathing shader anchors correctly on
+	# this 1.8-tall preview plane (default 1.0 would mis-anchor the puppet
+	# squash/lean). Glitz preview keeps the legacy sway profile (0).
+	mat.set_shader_parameter("mesh_height", 1.8)
 	mesh.material_override = mat
 	mesh.position = Vector3(0, 0.9, 0)
 	viewport.add_child(mesh)

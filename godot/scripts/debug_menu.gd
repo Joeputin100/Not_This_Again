@@ -120,6 +120,12 @@ func _build_sections() -> void:
 	glitz_btn.pressed.connect(_on_open_glitz_picker)
 	content.add_child(glitz_btn)
 
+	# Iter 148: prop-sway profile picker — compare 5 puppet sway styles.
+	_add_section_header("SWAY PICKER")
+	var sway_btn := _make_button("PICK PROP SWAY MOTION")
+	sway_btn.pressed.connect(_on_open_sway_picker)
+	content.add_child(sway_btn)
+
 	# Iter 133: captive hero rescue previews. Heroes trapped in containers
 	# the player must shoot to free. Basic static version (no pushers).
 	_add_section_header("CAPTIVE HEROES (basic)")
@@ -205,6 +211,11 @@ func _on_preview_hero(slug: String) -> void:
 	DebugPreview.pending_posse_unlock = slug
 	DebugLog.add("debug: preview hero %s" % slug)
 	get_tree().change_scene_to_file("res://scenes/level_3d.tscn")
+
+func _on_open_sway_picker() -> void:
+	AudioBus.play_tap()
+	DebugLog.add("debug: open sway picker")
+	get_tree().change_scene_to_file("res://scenes/sway_picker.tscn")
 
 func _on_open_glitz_picker() -> void:
 	AudioBus.play_tap()

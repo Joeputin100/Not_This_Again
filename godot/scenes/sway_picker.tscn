@@ -1,0 +1,81 @@
+[gd_scene load_steps=3 format=3 uid="uid://b0nttg_sway_picker_001"]
+
+; Iter 148: prop-sway profile picker. Accessed from debug menu.
+; Shows 5 hero cutouts in a row, each running a different sway profile,
+; so the user can compare side-by-side. Buttons below pick the global
+; default (saved to SwayPrefs).
+
+[ext_resource type="Script" path="res://scripts/sway_picker.gd" id="1_sway"]
+[ext_resource type="Theme" path="res://assets/theme.tres" id="2_theme"]
+
+[node name="SwayPicker" type="Control"]
+anchor_right = 1.0
+anchor_bottom = 1.0
+script = ExtResource("1_sway")
+theme = ExtResource("2_theme")
+
+[node name="Background" type="ColorRect" parent="."]
+anchor_right = 1.0
+anchor_bottom = 1.0
+color = Color(0.094, 0.067, 0.027, 1)
+mouse_filter = 2
+
+[node name="VBox" type="VBoxContainer" parent="."]
+anchor_right = 1.0
+anchor_bottom = 1.0
+offset_left = 40.0
+offset_top = 40.0
+offset_right = -40.0
+offset_bottom = -40.0
+
+[node name="Title" type="Label" parent="VBox"]
+text = "PROP SWAY PICKER"
+horizontal_alignment = 1
+theme_override_font_sizes/font_size = 60
+theme_override_colors/font_color = Color(0.95, 0.78, 0.35, 1)
+theme_override_colors/font_outline_color = Color(0.18, 0.10, 0.05, 1)
+theme_override_constants/outline_size = 6
+
+[node name="Hint" type="Label" parent="VBox"]
+text = "5 cutouts, 5 sway styles — tap a button to set the game default"
+horizontal_alignment = 1
+theme_override_font_sizes/font_size = 26
+theme_override_colors/font_color = Color(0.95, 0.78, 0.35, 0.8)
+
+[node name="PreviewBox" type="SubViewportContainer" parent="VBox"]
+custom_minimum_size = Vector2(0, 900)
+stretch = true
+
+[node name="Viewport" type="SubViewport" parent="VBox/PreviewBox"]
+size = Vector2i(1000, 900)
+own_world_3d = true
+transparent_bg = false
+render_target_update_mode = 4
+
+[node name="Camera3D" type="Camera3D" parent="VBox/PreviewBox/Viewport"]
+transform = Transform3D(1, 0, 0, 0, 0.97, 0.24, 0, -0.24, 0.97, 0, 1.3, 7.6)
+fov = 56.0
+
+[node name="Light" type="DirectionalLight3D" parent="VBox/PreviewBox/Viewport"]
+transform = Transform3D(0.866, -0.354, 0.354, 0, 0.707, 0.707, -0.5, -0.612, 0.612, 0, 5, 0)
+light_energy = 1.1
+
+[node name="FillLight" type="DirectionalLight3D" parent="VBox/PreviewBox/Viewport"]
+transform = Transform3D(-0.866, 0.354, -0.354, 0, 0.707, 0.707, 0.5, 0.612, -0.612, 0, 5, 0)
+light_energy = 0.35
+light_color = Color(0.7, 0.78, 1.0, 1)
+
+[node name="ProfileButtons" type="HBoxContainer" parent="VBox"]
+custom_minimum_size = Vector2(0, 140)
+alignment = 1
+
+[node name="StatusLabel" type="Label" parent="VBox"]
+horizontal_alignment = 1
+text = "current default: BOUNCY"
+theme_override_font_sizes/font_size = 30
+theme_override_colors/font_color = Color(0.95, 0.78, 0.35, 0.9)
+
+[node name="BackButton" type="Button" parent="VBox"]
+custom_minimum_size = Vector2(0, 100)
+text = "← BACK TO DEBUG MENU"
+theme_override_font_sizes/font_size = 36
