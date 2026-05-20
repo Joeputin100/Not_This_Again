@@ -40,13 +40,19 @@ func _spawn_preview_props() -> void:
 	var tex: Texture2D = null
 	if ResourceLoader.exists(PREVIEW_TEX_PATH):
 		tex = load(PREVIEW_TEX_PATH)
+	# Iter 154: size the plane to the TEXTURE's aspect ratio. The fixed
+	# 0.62:1 plane squashed the 1.83:1 hero PNG → distorted/wrong-aspect
+	# cutouts (user feedback). Plane aspect = texture aspect = no stretch.
+	var tex_aspect: float = 0.62
+	if tex != null and tex.get_height() > 0:
+		tex_aspect = float(tex.get_width()) / float(tex.get_height())
 	var n: int = PICKER_PROFILES.size()
 	var x0: float = -PROP_SPACING * float(n - 1) * 0.5
 	for i in range(n):
 		var profile: int = PICKER_PROFILES[i]
 		var mesh := MeshInstance3D.new()
 		var plane := PlaneMesh.new()
-		plane.size = Vector2(PROP_HEIGHT * 0.62, PROP_HEIGHT)
+		plane.size = Vector2(PROP_HEIGHT * tex_aspect, PROP_HEIGHT)
 		plane.subdivide_width = 5
 		plane.subdivide_depth = 7
 		plane.orientation = 2  # FACE_Z

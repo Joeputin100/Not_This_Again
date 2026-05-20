@@ -143,8 +143,13 @@ func _spawn_preview_mesh() -> void:
 	aura.scale_amount_min = 0.05
 	aura.scale_amount_max = 0.12
 	aura.color = Color(1.0, 0.85, 0.40, 1.0)
-	# Brightness curve: fade in then out
-	aura.alpha_curve = _make_alpha_curve()
+	# Iter 154: fade-in/out over lifetime via color_ramp. The iter-146
+	# code set `aura.alpha_curve` — CPUParticles3D has NO such property
+	# (that's a GPUParticles ParticleProcessMaterial field). The bad
+	# assignment threw at runtime and aborted _spawn_preview_mesh before
+	# `viewport.add_child(aura)` ever ran — so the aura was never in the
+	# scene (user: "glitz picker not showing the new aura halo yet").
+	aura.color_ramp = _make_alpha_ramp()
 	# Small quad mesh for each particle
 	var quad := QuadMesh.new()
 	quad.size = Vector2(0.18, 0.18)
@@ -164,13 +169,16 @@ func _spawn_preview_mesh() -> void:
 	viewport.add_child(aura)
 	_preview_aura = aura
 
-func _make_alpha_curve() -> Curve:
-	var c := Curve.new()
-	c.add_point(Vector2(0.00, 0.0))
-	c.add_point(Vector2(0.20, 1.0))
-	c.add_point(Vector2(0.70, 0.7))
-	c.add_point(Vector2(1.00, 0.0))
-	return c
+# Iter 154: lifetime alpha fade as a Gradient (CPUParticles3D.color_ramp).
+# A new Gradient starts with 2 points at offsets 0 and 1; recolour those
+# and insert two mids — alpha rises fast, holds, fades out.
+func _make_alpha_ramp() -> Gradient:
+	var g := Gradient.new()
+	g.set_color(0, Color(1.0, 0.92, 0.55, 0.0))   # offset 0.0
+	g.set_color(1, Color(1.0, 0.80, 0.40, 0.0))   # offset 1.0
+	g.add_point(0.20, Color(1.0, 0.92, 0.55, 1.0))
+	g.add_point(0.70, Color(1.0, 0.85, 0.45, 0.7))
+	return g
 
 func _on_bonus_tab_pressed(bonus: String) -> void:
 	_current_bonus = bonus
