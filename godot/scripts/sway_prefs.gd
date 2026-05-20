@@ -11,16 +11,16 @@ extends Node
 # Profiles (see breathing_prop.gdshader vertex()):
 #   0 LEGACY      — iter-130 mobile sway (kept for reference)
 #   1 TAP&SETTLE  — periodic sharp tap + damped settle
-#   2 BOUNCY      — continuous asymmetric ball-bounce  ← default
+#   2 BOUNCY      — continuous asymmetric ball-bounce
 #   3 WHIP        — continuous sway + strong top whip
 #   4 SPRING POP  — periodic spring + alternating lurch
-#   5 GENTLE      — restrained sway + small hop
+#   5 GENTLE+POP  — shared gentle sway + per-prop spring-pop ~every 15s  ← default
 
 const PREFS_PATH := "user://sway_prefs.cfg"
-const DEFAULT_PROFILE: int = 2
+const DEFAULT_PROFILE: int = 5  # iter 166: GENTLE+POP is the chosen sway
 
 const PROFILE_NAMES: Array[String] = [
-	"LEGACY", "TAP & SETTLE", "BOUNCY", "WHIP WOBBLE", "SPRING POP", "GENTLE",
+	"LEGACY", "TAP & SETTLE", "BOUNCY", "WHIP WOBBLE", "SPRING POP", "GENTLE + POP",
 ]
 
 var _config: ConfigFile

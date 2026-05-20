@@ -166,9 +166,22 @@ void vertex() {
 			lean = env * 0.09 * dir;
 			stretch = 1.0 + env * 0.13;
 		} else {
-			// 5 = GENTLE — restrained sway + small hop.
-			lean = sin(t * 1.4) * 0.045;
-			hop = (sin(t * 2.2) * 0.5 + 0.5) * 0.025;
+			// 5 = GENTLE + POP (iter 166) — a SHARED gentle sway (uses
+			// global TIME, not the per-prop t, so every prop sways in
+			// unison) plus a per-prop spring-pop roughly every 15s.
+			// time_offset seeds each prop's own pop phase (×2.4 spreads
+			// the 0..2pi offset range across the full 15s window).
+			lean = sin(TIME * 1.4) * 0.045;
+			hop = (sin(TIME * 2.2) * 0.5 + 0.5) * 0.025;
+			float pop_phase = fract((TIME + time_offset * 2.4) / 15.0);
+			float pop_t = pop_phase * 15.0;
+			if (pop_t < 1.2) {
+				// Damped spring: a quick bounce that overshoots + settles.
+				float pop_env = exp(-4.5 * pop_t) * sin(pop_t * 6.2831853 * 2.2);
+				hop += pop_env * 0.10;
+				lean += pop_env * 0.06;
+				stretch = 1.0 + pop_env * 0.14;
+			}
 		}
 		lean *= sway_intensity;
 		hop *= sway_intensity * mesh_height;
