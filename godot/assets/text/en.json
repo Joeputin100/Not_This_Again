@@ -41,6 +41,29 @@
       "REMEMBER ME...",
       "RA-SSAA-FRACKIN'...",
       "WHY I OUGHTA-"
+    ],
+    "candy_rustler_name": "THE CANDY RUSTLER",
+    "candy_rustler_dialog_intro": [
+      "WELL, RUSTLE MY WRAPPERS! Fresh sugar struttin' into MY territory!",
+      "Ya unwrap this whole frontier an' pitch the rest aside?! I AM the rest!"
+    ],
+    "candy_rustler_dialog_taunts": [
+      "RASSA-FRACKIN' sugar-tramps — hold STILL so's I can crinkle ya!",
+      "Every wrapper ya ever balled up an' threw away? It's ME now!",
+      "C'mere, c'mere — I just wanna give ya a little... CRINKLE.",
+      "I'm FIT TO BE TIED — an' I'm MADE outta twist-ties!"
+    ],
+    "candy_rustler_dialog_when_hit": [
+      "OW! Me good foil!",
+      "YEEOWCH! Ya tore me wrapper!",
+      "CONSARN your sticky fingers!",
+      "Rrrgh — that's comin' straight outta yer DEPOSIT!"
+    ],
+    "candy_rustler_dialog_dying": [
+      "Noooo! I'm comin' apart at the SEEEAMS!",
+      "Ya can't... recycle... a LEGEND...",
+      "Crinkle... crinkle... *sigh*",
+      "RA-SSAA-FRACKIN' biodegradable—"
     ]
   }
 }

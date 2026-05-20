@@ -24,6 +24,12 @@ const BuildInfo = preload("res://scripts/build_info.gd")
 # Iter 45: DEBUG button — visible only in debug builds. _ready toggles
 # its visibility from OS.has_feature("debug").
 @onready var debug_button: Button = $UI/DebugButton
+# Iter 152: Professor Humbug greeting the player from the menu. Tap him
+# for a banter line; Monsieur Canard (the duck) chimes in with a quack.
+@onready var humbug_rect: TextureRect = $UI/Humbug
+const HUMBUG_MENU_LINES: int = 6
+const CANARD_QUACKS: int = 3
+var _humbug_banter_at: float = 0.0
 
 # Captured after initial layout so idle_ended can restore exact positions.
 var _subtitle_base_y: float = 0.0
@@ -95,6 +101,11 @@ func _ready() -> void:
 		build_id_label.mouse_filter = Control.MOUSE_FILTER_STOP
 		if not build_id_label.gui_input.is_connected(_on_build_id_tap):
 			build_id_label.gui_input.connect(_on_build_id_tap)
+	# Iter 152: tap-to-banter on Professor Humbug.
+	if humbug_rect:
+		humbug_rect.mouse_filter = Control.MOUSE_FILTER_STOP
+		if not humbug_rect.gui_input.is_connected(_on_humbug_tap):
+			humbug_rect.gui_input.connect(_on_humbug_tap)
 	DebugLog.add("_ready: complete")
 	# Defer pivot capture so Godot's layout pass has run and sizes are real.
 	call_deferred("_finalize_setup")
@@ -149,6 +160,40 @@ func _finalize_setup() -> void:
 	title_label.pivot_offset = title_label.size / 2.0
 	subtitle_label.pivot_offset = subtitle_label.size / 2.0
 	_subtitle_base_y = subtitle_label.position.y
+	if humbug_rect:
+		humbug_rect.pivot_offset = humbug_rect.size / 2.0
+
+# Iter 152: tap Professor Humbug → a banter line, and Monsieur Canard
+# (the duck-cane handle) chimes in with a quack ~60% of the time, a beat
+# after Humbug's line. 1s debounce so rapid taps don't stack voices.
+func _on_humbug_tap(event: InputEvent) -> void:
+	var is_press: bool = false
+	if event is InputEventScreenTouch:
+		is_press = (event as InputEventScreenTouch).pressed
+	elif event is InputEventMouseButton:
+		var mb := event as InputEventMouseButton
+		is_press = mb.button_index == MOUSE_BUTTON_LEFT and mb.pressed
+	if not is_press:
+		return
+	var now: float = Time.get_unix_time_from_system()
+	if now - _humbug_banter_at < 1.0:
+		return
+	_humbug_banter_at = now
+	DebugLog.add("menu: Humbug tapped → banter")
+	if get_node_or_null("/root/AudioBus") and AudioBus.has_method("play_character_line"):
+		AudioBus.play_character_line("humbug_menu_%d" % (randi() % HUMBUG_MENU_LINES))
+	# Little squish so the tap feels acknowledged.
+	if humbug_rect:
+		var squish := create_tween()
+		squish.tween_property(humbug_rect, "scale", Vector2(0.95, 1.05), 0.10)
+		squish.tween_property(humbug_rect, "scale", Vector2.ONE, 0.22) \
+			.set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
+	# Canard quacks a beat after Humbug's line.
+	if randf() < 0.6:
+		var quack_timer: SceneTreeTimer = get_tree().create_timer(2.4)
+		quack_timer.timeout.connect(func() -> void:
+			if get_node_or_null("/root/AudioBus"):
+				AudioBus.play_character_line("canard_quack_%d" % (randi() % CANARD_QUACKS)))
 
 func _exit_tree() -> void:
 	_kill_idle_tweens()
