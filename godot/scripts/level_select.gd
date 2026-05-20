@@ -94,6 +94,7 @@ func _ready() -> void:
 	back_button.pressed.connect(_on_back_pressed)
 	_ground_level_nodes()
 	_setup_humbug()
+	_build_debug_overlay()
 
 # Iter 158: bind the path tiles to the terrain — perspective scale + a
 # haze fade with distance, plus a contact shadow per level node.
@@ -500,3 +501,54 @@ func _start_level(btn: Button, level_num: int) -> void:
 
 func _to_main_menu() -> void:
 	get_tree().change_scene_to_file("res://scenes/main_menu.tscn")
+
+# ---------------------------------------------------------------------------
+# Iter 161: debug-build-only tap-area + coordinate-grid overlay.
+# ---------------------------------------------------------------------------
+
+# Build the overlay (debug builds only — release never shows it). Captures
+# each tap area's resting on-screen quad and hands them to the overlay,
+# which draws a 100px grid + outlined polygons + (x,y) readouts.
+func _build_debug_overlay() -> void:
+	if not OS.has_feature("debug"):
+		return
+	var overlay = preload("res://scripts/debug_tap_overlay.gd").new()
+	var t: Array = []
+	t.append({"name": "Humbug", "color": Color(1.0, 0.30, 0.55),
+		"quad": _control_screen_quad(humbug)})
+	t.append({"name": "CanardZone", "color": Color(0.25, 0.85, 1.0),
+		"quad": _control_screen_quad(canard_zone)})
+	t.append({"name": "BackButton", "color": Color(1.0, 0.70, 0.20),
+		"quad": _control_screen_quad(back_button)})
+	# The speech/thought bubble's resting rect (it only exists on tap).
+	t.append({"name": "HumbugBubble", "color": Color(0.80, 0.55, 1.0),
+		"quad": PackedVector2Array([
+			BUBBLE_POS,
+			BUBBLE_POS + Vector2(BUBBLE_SIZE.x, 0.0),
+			BUBBLE_POS + BUBBLE_SIZE,
+			BUBBLE_POS + Vector2(0.0, BUBBLE_SIZE.y),
+		])})
+	for nm in LEVEL_NODE_NAMES:
+		var node: Control = get_node_or_null(NodePath(nm)) as Control
+		if node != null:
+			t.append({"name": nm, "color": Color(0.45, 1.0, 0.45),
+				"quad": _control_screen_quad(node)})
+	overlay.targets = t
+	var layer := CanvasLayer.new()
+	layer.layer = 128  # above the UI layer — grid sits on top of everything
+	layer.add_child(overlay)
+	add_child(layer)
+	DebugLog.add("level_select: debug tap+grid overlay built (%d targets)" % t.size())
+
+# A control's true on-screen quad — the four corners of its local rect run
+# through the global transform, so scale / rotation / pivot are honored
+# (get_global_rect() would miss the perspective scaling on level nodes).
+func _control_screen_quad(c: Control) -> PackedVector2Array:
+	var xf: Transform2D = c.get_global_transform()
+	var s: Vector2 = c.size
+	return PackedVector2Array([
+		xf * Vector2(0.0, 0.0),
+		xf * Vector2(s.x, 0.0),
+		xf * Vector2(s.x, s.y),
+		xf * Vector2(0.0, s.y),
+	])
