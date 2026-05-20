@@ -331,7 +331,13 @@ func _ready() -> void:
 	# (user: "terrain and static props advance at different rates"). The
 	# legacy terrain SCROLL_SPEED 0.25 was matched to OBSTACLE_SPEED 8.0.
 	if terrain_3d_node != null and "scroll_speed" in terrain_3d_node:
-		terrain_3d_node.scroll_speed = OBSTACLE_SPEED * (0.25 / 8.0)
+		# Iter 165: scroll_speed is in UV-V units/sec; props move in world-Z
+		# units/sec. The terrain plane is 60 deep with uv1_scale.y = 4, so
+		# 1 UV-V = 60/4 = 15 world units. Dividing OBSTACLE_SPEED by 15 makes
+		# the dirt scroll at the SAME apparent rate as the props sliding
+		# over it. (The old 0.25/8 factor was a stale hand-tune from the
+		# legacy 8.0 obstacle speed — it ran the terrain ~2× too slow.)
+		terrain_3d_node.scroll_speed = OBSTACLE_SPEED / 15.0
 		DebugLog.add("level_3d: terrain scroll synced to %.4f" % terrain_3d_node.scroll_speed)
 	# Iter 107/118: override the terrain_3d.tscn instance's camera to a
 	# steeper Evony-style top-down angle, sized for the portrait viewport.

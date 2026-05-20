@@ -14,13 +14,13 @@ extends Node2D
 # Sits BEHIND all 2D gameplay nodes in level.tscn — gates, obstacles,
 # bullets, cowboy and posse all overlay on top of the rendered terrain.
 
-# Iter 153: SCROLL_SPEED is now a var, synced by level_3d from
+# Iter 153/165: scroll_speed (UV-V units/sec) is synced by level_3d from
 # OBSTACLE_SPEED so the ground texture scrolls at the SAME apparent rate
-# as the world-space props sliding over it. 0.25 was matched to the
-# legacy OBSTACLE_SPEED of 8.0; the ratio 0.25/8 = 0.03125 is the sync
-# factor (see level_3d._sync_terrain_scroll). User reported "terrain and
-# static props advance at different rates" after OBSTACLE_SPEED dropped.
-var scroll_speed: float = 0.25
+# as the world-space props sliding over it. The conversion is
+# OBSTACLE_SPEED / 15 — the plane is 60 deep with uv1_scale.y = 4, so
+# 1 UV-V = 60/4 = 15 world units. This default is a placeholder;
+# level_3d overwrites it on _ready.
+var scroll_speed: float = 0.1667
 
 # Iter 63: gate the auto-scroll so the level-select variant of the
 # terrain can stay static (panned by finger drag instead). Default true
