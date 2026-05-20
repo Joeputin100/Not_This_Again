@@ -30,8 +30,8 @@ const BREATHING_SHADER := preload("res://shaders/breathing_prop.gdshader")
 var _current_bonus: String = "rifle"
 var _preview_mesh: MeshInstance3D = null
 var _preview_halo: MeshInstance3D = null
-var _preview_aura: MeshInstance3D = null  # iter 167: 12-petal electric-aura mesh
-var _aura_spin: float = 0.0
+var _preview_aura: MeshInstance3D = null  # iter 171: electric-aura ImmediateMesh
+var _aura_t: float = 0.0
 # Iter 142: track buttons so we can restyle the selected ones.
 var _bonus_btns: Dictionary = {}    # bonus_slug -> Button
 var _preset_btns: Dictionary = {}   # preset_name -> Button
@@ -126,14 +126,14 @@ func _spawn_preview_mesh() -> void:
 	mesh.position = Vector3(0, 0.9, 0)
 	viewport.add_child(mesh)
 	_preview_mesh = mesh
-	# Iter 167: 12-petal electric aura. Replaces the iter-146 particle
-	# aura, which rendered as a "storm of yellow squares" — 60 untextured
-	# QuadMesh particles. This is one procedural 12-petal star mesh with
-	# per-vertex alpha (opaque warm centre → transparent petal tips) on an
-	# additive unshaded material — it reads as a soft electric halo and
-	# spins + flickers in _process. No particles, no custom shader.
+	# Iter 171: electric aura — 12 spinning, curving, glowing arcs + a
+	# pulsing centre orb, additively blended. A faithful port of the
+	# roguelike WebGL demo's 12-petal Canvas-2D "ELECTRIC AURA", rebuilt
+	# every frame into an ImmediateMesh by _rebuild_electric_aura.
+	# (iter 167's filled 12-petal star — the "sunburst" — is kept as
+	# _make_sunburst_mesh on request, as a separate aura style.)
 	var aura := MeshInstance3D.new()
-	aura.mesh = _make_aura_mesh()
+	aura.mesh = ImmediateMesh.new()
 	var aura_mat := StandardMaterial3D.new()
 	aura_mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
 	aura_mat.vertex_color_use_as_albedo = true
@@ -142,15 +142,15 @@ func _spawn_preview_mesh() -> void:
 	aura_mat.cull_mode = BaseMaterial3D.CULL_DISABLED
 	aura.material_override = aura_mat
 	aura.position = Vector3(0, 0.9, -0.05)  # just behind the bonus billboard
-	aura.scale = Vector3(1.4, 1.4, 1.0)
 	aura.visible = false  # gated on halo_strength
 	viewport.add_child(aura)
 	_preview_aura = aura
 
-# Iter 167: a flat 12-petal star mesh. Triangle fan from a bright opaque
-# centre vertex out to transparent petal-tip rim verts — the per-vertex
-# alpha gradient is the soft glow. r = base + amp*cos(12*theta) → 12 petals.
-func _make_aura_mesh() -> ArrayMesh:
+# Iter 167/171: the "sunburst" — a flat filled 12-petal star mesh (triangle
+# fan, bright opaque centre → transparent petal tips). Kept on request as
+# a separate aura style; not currently wired (the iter-171 electric aura
+# is the active one). r = base + amp*cos(12*theta) → 12 petals.
+func _make_sunburst_mesh() -> ArrayMesh:
 	var verts := PackedVector3Array()
 	var colors := PackedColorArray()
 	var indices := PackedInt32Array()
@@ -174,6 +174,75 @@ func _make_aura_mesh() -> ArrayMesh:
 	var am := ArrayMesh.new()
 	am.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, arr)
 	return am
+
+# Iter 171: electric aura — a faithful port of the roguelike WebGL demo's
+# 12-petal Canvas-2D "ELECTRIC AURA". Each arc sweeps out and back
+# (r = sin(s*PI)*pulse), curves with a per-arc whip, and the whole ring
+# spins; drawn as bright-core ribbons on the additive material. Rebuilt
+# every frame into the ImmediateMesh.
+const AURA_PETALS: int = 12
+const AURA_SEGS: int = 16
+const AURA_RADIUS: float = 2.5    # scales the ~0..0.36 petal reach to world units
+const AURA_HALF_WIDTH: float = 0.05
+
+func _rebuild_electric_aura(t: float) -> void:
+	var im: ImmediateMesh = _preview_aura.mesh as ImmediateMesh
+	if im == null:
+		return
+	im.clear_surfaces()
+	im.surface_begin(Mesh.PRIMITIVE_TRIANGLES)
+	for i in AURA_PETALS:
+		_emit_aura_petal(im, i, t)
+	_emit_aura_orb(im, t)
+	im.surface_end()
+
+func _emit_aura_petal(im: ImmediateMesh, i: int, t: float) -> void:
+	var angle_base: float = (float(i) / float(AURA_PETALS)) * TAU + t * 0.7
+	var pulse: float = 0.28 + 0.08 * sin(t * 2.1 + float(i) * 1.3)
+	var whip: float = sin(t * 0.6 + float(i) * 0.5)
+	var hue: float = fmod(0.55 + 0.05 * sin(t * 0.5 + float(i)), 1.0)
+	var core: Color = Color.from_hsv(hue, 0.45, 1.0, 0.9)
+	var edge: Color = Color(core.r, core.g, core.b, 0.0)
+	var pts: Array[Vector3] = []
+	for k in AURA_SEGS + 1:
+		var s: float = float(k) / float(AURA_SEGS)
+		var r: float = sin(s * PI) * pulse * AURA_RADIUS
+		var ang: float = angle_base + s * PI * 0.9 * whip
+		pts.append(Vector3(cos(ang) * r, sin(ang) * r, 0.0))
+	for k in AURA_SEGS:
+		var p0: Vector3 = pts[k]
+		var p1: Vector3 = pts[k + 1]
+		var d: Vector3 = p1 - p0
+		if d.length() < 0.0001:
+			continue
+		d = d.normalized()
+		var perp: Vector3 = Vector3(-d.y, d.x, 0.0) * AURA_HALF_WIDTH
+		# bright core line, transparent ribbon edges → additive glow
+		_aura_tri(im, p0 + perp, edge, p0, core, p1, core)
+		_aura_tri(im, p0 + perp, edge, p1, core, p1 + perp, edge)
+		_aura_tri(im, p0, core, p0 - perp, edge, p1 - perp, edge)
+		_aura_tri(im, p0, core, p1 - perp, edge, p1, core)
+
+func _emit_aura_orb(im: ImmediateMesh, t: float) -> void:
+	var pr: float = (0.16 + 0.05 * sin(t * 3.5)) * AURA_RADIUS
+	var core: Color = Color(0.82, 0.90, 1.0, 0.95)
+	var edge: Color = Color(0.30, 0.50, 1.0, 0.0)
+	var rim: int = 22
+	for k in rim:
+		var a0: float = TAU * float(k) / float(rim)
+		var a1: float = TAU * float(k + 1) / float(rim)
+		_aura_tri(im, Vector3.ZERO, core,
+			Vector3(cos(a0) * pr, sin(a0) * pr, 0.0), edge,
+			Vector3(cos(a1) * pr, sin(a1) * pr, 0.0), edge)
+
+func _aura_tri(im: ImmediateMesh, a: Vector3, ca: Color,
+		b: Vector3, cb: Color, c: Vector3, cc: Color) -> void:
+	im.surface_set_color(ca)
+	im.surface_add_vertex(a)
+	im.surface_set_color(cb)
+	im.surface_add_vertex(b)
+	im.surface_set_color(cc)
+	im.surface_add_vertex(c)
 
 func _on_bonus_tab_pressed(bonus: String) -> void:
 	_current_bonus = bonus
@@ -216,12 +285,11 @@ func _apply_current_selection() -> void:
 		_preview_aura.visible = halo > 0.001
 
 func _process(delta: float) -> void:
-	# Iter 167: spin + electric flicker on the aura while it is shown.
+	# Iter 171: rebuild the electric aura's geometry each frame so the
+	# 12 arcs spin, curve and pulse.
 	if _preview_aura != null and _preview_aura.visible:
-		_aura_spin += delta * 0.6
-		_preview_aura.rotation.z = _aura_spin
-		var pulse: float = 1.4 + sin(_aura_spin * 5.0) * 0.16
-		_preview_aura.scale = Vector3(pulse, pulse, 1.0)
+		_aura_t += delta
+		_rebuild_electric_aura(_aura_t)
 
 func _on_back_pressed() -> void:
 	get_tree().change_scene_to_file("res://scenes/debug_menu.tscn")
