@@ -1,9 +1,10 @@
-[gd_scene load_steps=13 format=3 uid="uid://b0nttg_lvlsel_001"]
+[gd_scene load_steps=14 format=3 uid="uid://b0nttg_lvlsel_001"]
 
 [ext_resource type="Script" path="res://scripts/level_select.gd" id="1_select"]
 [ext_resource type="Theme" path="res://assets/theme.tres" id="2_theme"]
 [ext_resource type="PackedScene" path="res://scenes/terrain_3d_level_select.tscn" id="3_terrain"]
 [ext_resource type="Texture2D" path="res://assets/sprites/posse_idle_00.png" id="4_cowboy"]
+[ext_resource type="Texture2D" path="res://assets/sprites/professor_humbug.png" id="5_humbug"]
 
 ; Iter 43a: themed level tiles. The first 4 nodes get unique candy+Western
 ; styling per difficulty:
@@ -425,6 +426,26 @@ text = "8"
 position = Vector2(420, 1720)
 scale = Vector2(0.22, 0.22)
 texture = ExtResource("4_cowboy")
+
+; Iter 159: Professor Humbug — the trailhead guide, off to the lower-left
+; of the map. Tap him for a tip (speech bubble + voice) or, now and then,
+; a thought (thought bubble + harp + voice). CanardZone covers the gold
+; duck-head on his licorice cane — its own tap target → a quack.
+[node name="Humbug" type="TextureButton" parent="."]
+offset_left = -25.0
+offset_top = 1309.0
+offset_right = 245.0
+offset_bottom = 1900.0
+texture_normal = ExtResource("5_humbug")
+ignore_texture_size = true
+stretch_mode = 5
+
+[node name="CanardZone" type="Control" parent="Humbug"]
+offset_left = 178.0
+offset_top = 220.0
+offset_right = 256.0
+offset_bottom = 302.0
+mouse_filter = 0
 
 [node name="UI" type="CanvasLayer" parent="."]
 
