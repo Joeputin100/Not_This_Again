@@ -56,13 +56,24 @@ func _draw_target(t: Dictionary) -> void:
 	draw_colored_polygon(quad, Color(col.r, col.g, col.b, 0.13))
 	for i in 4:
 		draw_line(quad[i], quad[(i + 1) % 4], col, 3.0)
+	var font: Font = ThemeDB.fallback_font
+	# centre crosshair + readout
 	var c: Vector2 = (quad[0] + quad[1] + quad[2] + quad[3]) / 4.0
 	draw_line(c - Vector2(13, 0), c + Vector2(13, 0), col, 2.0)
 	draw_line(c - Vector2(0, 13), c + Vector2(0, 13), col, 2.0)
-	var font: Font = ThemeDB.fallback_font
-	_label(font, quad[0] + Vector2(6, 26), t["name"], 22, Color(1.0, 0.95, 0.5, 1.0))
-	_label(font, c + Vector2(9, 5),
-		"(%d, %d)" % [int(round(c.x)), int(round(c.y))], 19, Color(1, 1, 1, 1))
+	_label(font, c + Vector2(9, 5), "c " + _xy(c), 19, Color(1, 1, 1, 1))
+	# name (inside, top-left) + an (x,y) at every vertex — corners 0/1
+	# (top) label above, 2/3 (bottom) label below, each with a dot.
+	_label(font, quad[0] + Vector2(6, 30), t["name"], 22, Color(1.0, 0.95, 0.5, 1.0))
+	for i in 4:
+		var v: Vector2 = quad[i]
+		draw_circle(v, 5.0, col)
+		var off := Vector2(7, -9) if i < 2 else Vector2(7, 23)
+		_label(font, v + off, _xy(v), 17, Color(0.85, 1.0, 1.0, 1.0))
+
+# "(x, y)" with rounded integer coordinates.
+func _xy(p: Vector2) -> String:
+	return "(%d, %d)" % [int(round(p.x)), int(round(p.y))]
 
 # Draw text with a 1.5px black shadow so labels stay legible over any art.
 func _label(font: Font, pos: Vector2, text: String, size: int, color: Color) -> void:
