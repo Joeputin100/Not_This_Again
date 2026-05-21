@@ -68,8 +68,8 @@ const LEVEL_NODE_NAMES: Array[String] = [
 const HUMBUG_MENU_LINES: int = 6     # humbug_menu_0..5.mp3
 const CANARD_QUACKS: int = 3         # canard_quack_0..2.mp3
 const HUMBUG_THOUGHT_CHANCE: float = 0.32
-const BUBBLE_POS := Vector2(130.0, 1000.0)
-const BUBBLE_SIZE := Vector2(580.0, 260.0)
+const BUBBLE_POS := Vector2(120.0, 920.0)
+const BUBBLE_SIZE := Vector2(720.0, 340.0)  # iter 172: enlarged so tip text fits
 
 # Iter 160: easter eggs.
 const HUMBUG_EGG_TAPS: int = 6         # accepted taps inside the window → jokes
@@ -199,7 +199,7 @@ func _setup_humbug() -> void:
 	add_child(_flourish_video)
 
 # Tap Humbug → a flourish + mostly a tip (speech bubble), now and then a
-# thought (thought bubble + harp). Voice reuses his six menu lines.
+# thought (thought bubble + harp). Canard chimes in with a quack.
 func _on_humbug_pressed() -> void:
 	if not _humbug_tap_accepted():
 		return
@@ -218,8 +218,10 @@ func _on_humbug_pressed() -> void:
 		if not _play_flourish("tip"):
 			_humbug_tip_flourish()
 		_show_humbug_bubble(Text.random("humbug.tips"), false)
-	if get_node_or_null("/root/AudioBus") and AudioBus.has_method("play_character_line"):
-		AudioBus.play_character_line("humbug_menu_%d" % (randi() % HUMBUG_MENU_LINES))
+	# Iter 172: no Humbug voice line here — the six menu clips don't match
+	# the bubble's tip/thought text (no matched VO available), which read
+	# as "the bubble doesn't match the spoken line". Canard chimes instead.
+	_canard_chime()
 
 # Debounce (1s) + don't let him talk over himself. Records the accepted
 # tap time — the iter-160 "still touching me?" easter egg reads this.
@@ -266,6 +268,19 @@ func _on_canard_tap(event: InputEvent) -> void:
 		_canard_player.pitch_scale = 1.0 + heat * 0.6
 		_canard_player.volume_db = -3.0 + heat * 4.0
 		_canard_player.play()
+
+# Iter 172: a beat after Humbug acts, Monsieur Canard sometimes quacks —
+# keeps the tap lively without a Humbug voice line that wouldn't match
+# the bubble's tip/thought text.
+func _canard_chime() -> void:
+	if randf() > 0.55:
+		return
+	get_tree().create_timer(0.6).timeout.connect(func() -> void:
+		if _canard_player != null:
+			_canard_player.stream = CANARD_QUACK_STREAMS[randi() % CANARD_QUACK_STREAMS.size()]
+			_canard_player.pitch_scale = 1.0
+			_canard_player.volume_db = -3.0
+			_canard_player.play())
 
 # Three procedural flourishes. Each resets Humbug to rest first so rapid
 # taps can't compound the transform.
@@ -322,11 +337,13 @@ func _play_flourish(kind: String) -> bool:
 	_flourish_video.stream = load(path)
 	_flourish_video.visible = true
 	_flourish_video.play()
+	humbug.visible = false  # iter 172: hide the static PNG so it doesn't double the video
 	return true
 
 func _on_flourish_finished() -> void:
 	if _flourish_video != null:
 		_flourish_video.visible = false
+	humbug.visible = true  # iter 172: restore the static PNG after the flourish
 
 # Pop a speech/thought bubble above Humbug; auto-dismiss after a beat.
 func _show_humbug_bubble(text: String, is_thought: bool) -> void:
@@ -375,8 +392,11 @@ func _build_bubble(text: String, is_thought: bool) -> Control:
 	label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
 	label.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	label.add_theme_font_size_override("font_size", 33)
-	label.add_theme_color_override("font_color", Color(0.22, 0.13, 0.05, 1))
+	label.add_theme_font_size_override("font_size", 29)
+	label.add_theme_color_override("font_color", Color(0.16, 0.10, 0.04, 1))
+	# Iter 172: kill the theme's text outline — it doubled every stroke,
+	# so the bubble copy read as bold-applied-twice and muddy.
+	label.add_theme_constant_override("outline_size", 0)
 	root.add_child(label)
 	return root
 
@@ -421,8 +441,7 @@ func _humbug_joke() -> void:
 	_humbug_annoyed_flourish()
 	_show_humbug_bubble(Text.lookup("humbug.easter_jokes.%d" % _humbug_joke_idx), false)
 	_humbug_joke_idx = (_humbug_joke_idx + 1) % 3
-	if get_node_or_null("/root/AudioBus") and AudioBus.has_method("play_character_line"):
-		AudioBus.play_character_line("humbug_menu_%d" % (randi() % HUMBUG_MENU_LINES))
+	_canard_chime()
 
 # A brisk "no-no-no" head-shake — the pestered/annoyed flourish.
 func _humbug_annoyed_flourish() -> void:
