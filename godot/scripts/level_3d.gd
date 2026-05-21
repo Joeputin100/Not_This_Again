@@ -279,7 +279,6 @@ const BOB_FREQUENCY: float = 4.5
 var _bob_time: float = 0.0
 
 func _ready() -> void:
-	WorldSpeed.reset()  # iter 170: level starts at full scroll speed
 	# Iter 97: VISIBLE breadcrumb. Iter 96 log showed no DebugLog entries
 	# from this _ready despite the terrain rendering — meaning either
 	# _ready never ran OR an early line threw before reaching the first
@@ -3391,7 +3390,7 @@ func _preview_captive_3d(hero_slug: String, container_slug: String) -> void:
 const CLIFF_X: float = 7.0
 const PUSH_FORCE_PER_PUSHER: float = 0.09  # world units/sec per pusher (iter 164: 0.18 → 0.09, cliff race was too fast)
 const MAX_PUSH_SPEED: float = 2.4  # iter 164: cap so high pusher counts stay winnable
-const WAGON_SLOWDOWN: float = 0.4  # iter 170: world scroll multiplier while a pushed-wagon encounter is on screen
+var _cart_encounter: bool = false  # iter 173: a pushed-cart encounter pauses the world's forward scroll
 const PUSHER_TEX_LEFT := "res://assets/sprites/props/pusher_left.png"
 const PUSHER_TEX_RIGHT := "res://assets/sprites/props/pusher_right.png"
 const PUSHER_TEX_MELEE := "res://assets/sprites/props/pusher_melee.png"
@@ -3481,19 +3480,33 @@ func _spawn_cliff_marker(wagon_z: float) -> void:
 	pulse_tw.tween_property(marker, "scale", Vector3(1.0, 1.0, 1.0), 0.5)
 	popups_root.add_child(marker)
 
+# Iter 173: enter/leave a cart encounter. Edge-triggered so the terrain
+# scroll is toggled only at the boundaries — never per-frame, which would
+# stomp the boss-engagement scroll stop. Freezing via scroll_speed (not
+# set_scroll_active) keeps it independent of that boss mechanic.
+# motion_delta is gated separately, per-frame, on _cart_encounter.
+func _set_cart_encounter(active: bool) -> void:
+	if active == _cart_encounter:
+		return
+	_cart_encounter = active
+	if terrain_3d_node != null and "scroll_speed" in terrain_3d_node:
+		terrain_3d_node.scroll_speed = 0.0 if active else (OBSTACLE_SPEED / 15.0)
+	DebugLog.add("cart encounter %s" % (
+		"BEGIN — world scroll paused" if active else "END — scroll resumed"))
+
 # Iter 134: every frame, advance each pushed-wagon by alive-pusher count.
 # Called from _process during PLAYING/BOSS.
 func _update_pushed_wagons(delta: float) -> void:
-	# Iter 170: while a pushed-wagon encounter is on screen, ease the whole
-	# world down to a slow crawl (WorldSpeed.mult — read by the terrain,
-	# every scrolling prop, the outlaws and the wagon) so the player has
-	# time to choose a target before the rescue chance scrolls past.
+	# Iter 173: a cart encounter PAUSES the world's forward scroll — the
+	# terrain + props freeze in lockstep, the cart freezes with them, and
+	# only the outlaws keep advancing on the posse. The pushers shove the
+	# cart toward the cliff; on cliff / rescue the scroll resumes.
 	var wagon_present: bool = false
 	for child in outlaws_root.get_children():
 		if child.get_meta("is_pushed", false) and is_instance_valid(child):
 			wagon_present = true
 			break
-	WorldSpeed.set_target(WAGON_SLOWDOWN if wagon_present else 1.0)
+	_set_cart_encounter(wagon_present)
 	for child in outlaws_root.get_children():
 		if not child.get_meta("is_pushed", false):
 			continue
@@ -4052,7 +4065,7 @@ func _process(delta: float) -> void:
 	# Iter 118: world motion delta — 0 during BOSS so obstacles/gates/
 	# outlaws/scenery freeze in place during the duel. Cowboy steering +
 	# bullets + Pete continue to update on the real delta.
-	var motion_delta: float = (delta * WorldSpeed.mult) if _level_state == LevelState.PLAYING else 0.0
+	var motion_delta: float = delta if (_level_state == LevelState.PLAYING and not _cart_encounter) else 0.0
 	# Spawn obstacles periodically (PLAYING only).
 	if _level_state != LevelState.PLAYING:
 		_spawn_timer = OBSTACLE_SPAWN_INTERVAL  # reset so they don't pile up
@@ -4116,11 +4129,14 @@ func _process(delta: float) -> void:
 		var z_speed: float = OUTLAW_SPEED
 		if outlaw.position.z > cowboy_3d.position.z - 2.0:
 			z_speed = OUTLAW_SPEED * 0.20
-		# Iter 136: real delta (not motion_delta) so vagrants keep advancing
-		# during BOSS. Iter 170: × WorldSpeed.mult — the pushed wagon now
-		# z-scrolls WITH the world (iter 164's hold reverted), and the whole
-		# world eases to a crawl during a wagon encounter for engage time.
-		outlaw.position.z += z_speed * delta * WorldSpeed.mult
+		# Iter 173: the pushed cart + its pushers freeze in z — during a
+		# cart encounter the whole world's forward scroll is paused anyway
+		# (terrain + props), so the cart stays in lockstep with the ground.
+		if outlaw.get_meta("is_pushed", false) or outlaw.get_meta("is_pusher", false):
+			z_speed = 0.0
+		# Iter 136: real delta (not motion_delta) so outlaws keep advancing
+		# on the posse even while the world scroll is paused / during BOSS.
+		outlaw.position.z += z_speed * delta
 		# Iter 120: x-tracking with PER-OUTLAW offset (set at spawn).
 		# Each outlaw heads for cowboy.x + their personal offset so the
 		# group reads as a crowd, not a column. Clamped to road bounds.
