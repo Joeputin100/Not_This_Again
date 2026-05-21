@@ -19,7 +19,7 @@ extends Control
 
 const BREATHING_SHADER := preload("res://shaders/breathing_prop.gdshader")
 
-@onready var bonus_tabs: HBoxContainer = $VBox/BonusTabs
+@onready var bonus_tabs: HFlowContainer = $VBox/BonusTabs
 @onready var preset_grid: GridContainer = $VBox/PresetGrid
 @onready var status_label: Label = $VBox/StatusLabel
 @onready var back_button: Button = $VBox/BackButton
@@ -32,6 +32,10 @@ var _preview_mesh: MeshInstance3D = null
 var _preview_halo: MeshInstance3D = null
 var _preview_aura: MeshInstance3D = null  # iter 171: electric-aura ImmediateMesh
 var _aura_t: float = 0.0
+# Iter 175: alternate "sunburst" aura + the toggle between the two styles.
+var _preview_sunburst: MeshInstance3D = null
+var _aura_is_electric: bool = true
+var _aura_btn: Button = null
 # Iter 142: track buttons so we can restyle the selected ones.
 var _bonus_btns: Dictionary = {}    # bonus_slug -> Button
 var _preset_btns: Dictionary = {}   # preset_name -> Button
@@ -53,14 +57,15 @@ func _ready() -> void:
 	_build_bonus_tabs()
 	_build_preset_grid()
 	_spawn_preview_mesh()
+	_build_aura_toggle()
 	_apply_current_selection()
 
 func _build_bonus_tabs() -> void:
 	for bonus in GlitzPrefs.BONUS_TYPES:
 		var btn := Button.new()
 		btn.text = bonus.to_upper()
-		btn.custom_minimum_size = Vector2(220, 80)
-		btn.add_theme_font_size_override("font_size", 36)
+		btn.custom_minimum_size = Vector2(150, 60)  # iter 175: smaller — 14 bonus tabs now
+		btn.add_theme_font_size_override("font_size", 22)
 		btn.pressed.connect(_on_bonus_tab_pressed.bind(bonus))
 		bonus_tabs.add_child(btn)
 		_bonus_btns[bonus] = btn
@@ -145,6 +150,22 @@ func _spawn_preview_mesh() -> void:
 	aura.visible = false  # gated on halo_strength
 	viewport.add_child(aura)
 	_preview_aura = aura
+	# Iter 175: the alternate sunburst aura (iter-167 filled 12-petal
+	# star), shown when the AURA toggle is set to SUNBURST.
+	var burst := MeshInstance3D.new()
+	burst.mesh = _make_sunburst_mesh()
+	var burst_mat := StandardMaterial3D.new()
+	burst_mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	burst_mat.vertex_color_use_as_albedo = true
+	burst_mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	burst_mat.blend_mode = BaseMaterial3D.BLEND_MODE_ADD
+	burst_mat.cull_mode = BaseMaterial3D.CULL_DISABLED
+	burst.material_override = burst_mat
+	burst.position = Vector3(0, 0.9, -0.05)
+	burst.scale = Vector3(1.4, 1.4, 1.0)
+	burst.visible = false
+	viewport.add_child(burst)
+	_preview_sunburst = burst
 
 # Iter 167/171: the "sunburst" — a flat filled 12-petal star mesh (triangle
 # fan, bright opaque centre → transparent petal tips). Kept on request as
@@ -279,10 +300,13 @@ func _apply_current_selection() -> void:
 		_current_bonus.to_upper(), preset.replace("_", "+").to_upper(), speed_mult]
 	# Iter 142: highlight the active bonus tab + preset button
 	_restyle_buttons()
-	# Iter 167: show the electric aura when the preset carries a halo.
+	# Iter 167/175: show the active aura style when the preset has a halo.
 	if _preview_aura != null:
 		var halo: float = float(GlitzPrefs.PRESETS.get(preset, {}).get("halo_strength", 0.0))
-		_preview_aura.visible = halo > 0.001
+		var show_aura: bool = halo > 0.001
+		_preview_aura.visible = show_aura and _aura_is_electric
+		if _preview_sunburst != null:
+			_preview_sunburst.visible = show_aura and not _aura_is_electric
 
 func _process(delta: float) -> void:
 	# Iter 171: rebuild the electric aura's geometry each frame so the
@@ -290,6 +314,30 @@ func _process(delta: float) -> void:
 	if _preview_aura != null and _preview_aura.visible:
 		_aura_t += delta
 		_rebuild_electric_aura(_aura_t)
+	# Iter 175: the sunburst aura just slowly rotates.
+	if _preview_sunburst != null and _preview_sunburst.visible:
+		_preview_sunburst.rotation.z += delta * 0.5
+
+# Iter 175: AURA toggle in the speed row — switches the preview aura
+# between the electric arcs and the iter-167 sunburst star.
+func _build_aura_toggle() -> void:
+	_aura_btn = Button.new()
+	_aura_btn.custom_minimum_size = Vector2(250, 0)
+	_aura_btn.add_theme_font_size_override("font_size", 24)
+	_aura_btn.pressed.connect(_on_aura_toggle)
+	$VBox/SpeedRow.add_child(_aura_btn)
+	_refresh_aura_btn()
+
+func _on_aura_toggle() -> void:
+	_aura_is_electric = not _aura_is_electric
+	if get_node_or_null("/root/AudioBus"):
+		AudioBus.play_tap()
+	_refresh_aura_btn()
+	_apply_current_selection()
+
+func _refresh_aura_btn() -> void:
+	if _aura_btn != null:
+		_aura_btn.text = "AURA: ELECTRIC" if _aura_is_electric else "AURA: SUNBURST"
 
 func _on_back_pressed() -> void:
 	get_tree().change_scene_to_file("res://scenes/debug_menu.tscn")

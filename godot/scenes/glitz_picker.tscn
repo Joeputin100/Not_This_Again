@@ -35,8 +35,8 @@ theme_override_colors/font_color = Color(0.95, 0.78, 0.35, 1)
 theme_override_colors/font_outline_color = Color(0.18, 0.10, 0.05, 1)
 theme_override_constants/outline_size = 6
 
-[node name="BonusTabs" type="HBoxContainer" parent="VBox"]
-custom_minimum_size = Vector2(0, 100)
+[node name="BonusTabs" type="HFlowContainer" parent="VBox"]
+custom_minimum_size = Vector2(0, 220)
 alignment = 1
 
 [node name="PreviewBox" type="SubViewportContainer" parent="VBox"]

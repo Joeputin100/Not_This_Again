@@ -62,7 +62,12 @@ const PRESET_ORDER: Array[String] = [
 	"halo_uvspin", "sparkle_yspin", "pulse_halo_yspin", "all_static", "all_yspin", "all_uvspin",
 ]
 
-const BONUS_TYPES: Array[String] = ["rifle", "frostbite", "frenzy"]
+# Iter 175: all 14 bonus-crate types (one per bonus_crate_*.png asset).
+const BONUS_TYPES: Array[String] = [
+	"rifle", "frostbite", "frenzy", "bazooka", "boomerang", "catapult",
+	"crossbow", "gatling", "grenades", "pixiestick", "pulserifle",
+	"scattergun", "tnt", "whip",
+]
 
 var _config: ConfigFile
 
