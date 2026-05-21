@@ -37,11 +37,11 @@ const PRESETS: Dictionary = {
 	# Pair combos (7)
 	"pulse_halo":        {"pulse_glow": 1.0, "hue_cycle": 0.0, "halo_strength": 1.5, "sparkle_orbit": 0.0, "rotation_mode": 0, "rotation_speed": 0.0},
 	"pulse_sparkle":     {"pulse_glow": 1.0, "hue_cycle": 0.0, "halo_strength": 0.0, "sparkle_orbit": 1.0, "rotation_mode": 0, "rotation_speed": 0.0},
-	"pulse_yspin":       {"pulse_glow": 1.0, "hue_cycle": 0.0, "halo_strength": 0.0, "sparkle_orbit": 0.0, "rotation_mode": 2, "rotation_speed": 0.45},
+	"pulse_yspin":       {"pulse_glow": 1.0, "hue_cycle": 0.0, "halo_strength": 0.0, "sparkle_orbit": 0.0, "rotation_mode": 2, "rotation_speed": 0.15},
 	"halo_sparkle":      {"pulse_glow": 0.0, "hue_cycle": 0.0, "halo_strength": 1.5, "sparkle_orbit": 1.0, "rotation_mode": 0, "rotation_speed": 0.0},
-	"halo_yspin":        {"pulse_glow": 0.0, "hue_cycle": 0.0, "halo_strength": 1.5, "sparkle_orbit": 0.0, "rotation_mode": 2, "rotation_speed": 0.45},
+	"halo_yspin":        {"pulse_glow": 0.0, "hue_cycle": 0.0, "halo_strength": 1.5, "sparkle_orbit": 0.0, "rotation_mode": 2, "rotation_speed": 0.15},
 	"halo_uvspin":       {"pulse_glow": 0.0, "hue_cycle": 0.0, "halo_strength": 1.5, "sparkle_orbit": 0.0, "rotation_mode": 1, "rotation_speed": 0.55},
-	"sparkle_yspin":     {"pulse_glow": 0.0, "hue_cycle": 0.0, "halo_strength": 0.0, "sparkle_orbit": 1.0, "rotation_mode": 2, "rotation_speed": 0.45},
+	"sparkle_yspin":     {"pulse_glow": 0.0, "hue_cycle": 0.0, "halo_strength": 0.0, "sparkle_orbit": 1.0, "rotation_mode": 2, "rotation_speed": 0.15},
 	# Triples / alls (4)
 	"pulse_halo_yspin":  {"pulse_glow": 1.0, "hue_cycle": 0.0, "halo_strength": 1.2, "sparkle_orbit": 0.7, "rotation_mode": 2, "rotation_speed": 0.35},
 	"all_static":        {"pulse_glow": 1.4, "hue_cycle": 0.6, "halo_strength": 1.5, "sparkle_orbit": 1.0, "rotation_mode": 0, "rotation_speed": 0.0},
@@ -71,9 +71,19 @@ func _ready() -> void:
 	if FileAccess.file_exists(PREFS_PATH):
 		_config.load(PREFS_PATH)
 
+# Iter 174: per-bonus default presets — rifle = pulse + slow y-spin,
+# frostbite = sparkle + slow y-spin, frenzy = halo + slow y-spin. (The
+# pulse/sparkle/halo_yspin presets above were retuned to y-spin 0.15.)
+const DEFAULT_PRESET_BY_BONUS: Dictionary = {
+	"rifle": "pulse_yspin",
+	"frostbite": "sparkle_yspin",
+	"frenzy": "halo_yspin",
+}
+
 func get_preset_for_bonus(bonus_type: String) -> String:
 	var section := "bonus_%s" % bonus_type
-	return _config.get_value(section, "preset", DEFAULT_PRESET)
+	var fallback: String = DEFAULT_PRESET_BY_BONUS.get(bonus_type, DEFAULT_PRESET)
+	return _config.get_value(section, "preset", fallback)
 
 func set_preset_for_bonus(bonus_type: String, preset: String) -> void:
 	if not PRESETS.has(preset):
