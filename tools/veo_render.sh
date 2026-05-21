@@ -19,14 +19,14 @@
 #     --out-name forward \
 #     --out-dir godot/assets/videos/prospector
 #
-# Cost (Veo 3.1 fast, ~$0.15/sec × 4s):
-#   ~$0.60 per render. Total for 6 animations: ~$3.60.
+# Cost (Veo 3.1 Lite default, ~$0.05/sec × 4s): ~$0.20 per render.
+# Pass --model veo-3.1-fast-generate-001 to fall back to Veo 3.1 Fast.
 set -euo pipefail
 
 # ---- defaults ----
 PROJECT="static-webbing-461904-c4"
 LOCATION="us-central1"
-MODEL="veo-3.1-fast-generate-001"
+MODEL="veo-3.1-lite-generate-001"
 ASPECT="9:16"
 DURATION=4
 RESOLUTION="720p"

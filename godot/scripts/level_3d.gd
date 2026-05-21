@@ -63,6 +63,30 @@ const GunStateScript = preload("res://scripts/gun_state.gd")
 # consts should all live at the top of the file, before any function.
 const COWBOY_TEXTURE_LVL3D: Texture2D = preload("res://assets/sprites/posse_idle_00.png")
 
+# Cowboy animation clips. The leader cowboy + posse followers are video
+# billboards driven by these; _set_cowboy_anim() swaps the stream by
+# level state. run/strafe/stand clips are back-view (face the outlaws);
+# idle/celebrate are front-view.
+const COWBOY_RUN_FWD_STREAM := preload("res://assets/videos/cowboy/run_shoot_fwd.ogv")
+const COWBOY_RUN_LEFT_STREAM := preload("res://assets/videos/cowboy/run_shoot_left.ogv")
+const COWBOY_RUN_RIGHT_STREAM := preload("res://assets/videos/cowboy/run_shoot_right.ogv")
+const COWBOY_STRAFE_LEFT_STREAM := preload("res://assets/videos/cowboy/strafe_left.ogv")
+const COWBOY_STRAFE_RIGHT_STREAM := preload("res://assets/videos/cowboy/strafe_right.ogv")
+const COWBOY_STAND_SHOOT_STREAM := preload("res://assets/videos/cowboy/stand_shoot.ogv")
+const COWBOY_IDLE_STREAMS: Array[VideoStream] = [
+	preload("res://assets/videos/cowboy/idle_a.ogv"),
+	preload("res://assets/videos/cowboy/idle_b.ogv"),
+	preload("res://assets/videos/cowboy/idle_c.ogv"),
+]
+const COWBOY_CELEBRATE_STREAMS: Array[VideoStream] = [
+	preload("res://assets/videos/cowboy/celebrate_a.ogv"),
+	preload("res://assets/videos/cowboy/celebrate_b.ogv"),
+	preload("res://assets/videos/cowboy/celebrate_c.ogv"),
+]
+# Video billboard render scale for the cowboy + followers (world units
+# per texture pixel). Tunable after the first device check.
+const COWBOY_PIXEL_SIZE: float = 0.0042
+
 # 3D world bounds. The dirt PlaneMesh in terrain_3d_3d_prototype is
 # 40 wide × 60 deep, centered at origin. Cowboy lane = x in [-18, 18].
 const COWBOY_X_BOUND: float = 3.0  # iter 118: 6.0 → 3.0 to match the actual visible road width
@@ -459,23 +483,24 @@ func _build_3d_content() -> void:
 	bonuses_root = _make_lvl3d_container("Bonuses")
 	scenery_root = _make_lvl3d_container("Scenery")
 	DebugLog.add("level_3d: 8 containers added to subviewport")
-	# 2) Cowboy3D Sprite3D billboard.
+	# 2) Cowboy3D — video billboard. Sprite3D textured by a shared video
+	# viewport; _set_cowboy_anim() swaps the stream by level state. Starts
+	# on run_shoot_fwd, a back-view clip, so the cowboy faces the outlaws.
 	cowboy_3d = Sprite3D.new()
 	cowboy_3d.name = "Cowboy3D"
-	cowboy_3d.texture = COWBOY_TEXTURE_LVL3D
-	cowboy_3d.pixel_size = 0.002
-	cowboy_3d.billboard = BaseMaterial3D.BILLBOARD_ENABLED
-	# Iter 100 (fix 8): SpriteBase3D.ALPHA_CUT_DISCARD parse-fails on
-	# Godot 4.6.1 Android runtime even though it's valid on Linux export.
-	# Use the int literal (1) directly with a comment for the human reader.
-	# (Same enum value as SpriteBase3D.AlphaCutMode.ALPHA_CUT_DISCARD.)
-	cowboy_3d.alpha_cut = 1  # ALPHA_CUT_DISCARD
-	# Iter 106: use COWBOY_Z constant (= -3.0) so this stays in sync if
-	# the camera angle ever changes again. Previous hardcoded 1.5 was
-	# below the camera frustum.
+	var cowboy_sv: SubViewport = _get_or_create_shared_video_viewport(COWBOY_RUN_FWD_STREAM)
+	cowboy_3d.texture = cowboy_sv.get_texture()
+	cowboy_3d.pixel_size = COWBOY_PIXEL_SIZE
+	cowboy_3d.billboard = 1  # BILLBOARD_ENABLED (int literal — iter 100 lesson)
+	# alpha_cut 0 = ALPHA_CUT_DISABLED — the chromakey shader's soft edge
+	# needs alpha blending, not the hard discard the static sprite used.
+	cowboy_3d.alpha_cut = 0
+	cowboy_3d.texture_filter = BaseMaterial3D.TEXTURE_FILTER_LINEAR_WITH_MIPMAPS
+	# Iter 106: COWBOY_Z keeps this in sync if the camera angle changes.
 	cowboy_3d.position = Vector3(0, 0.45, COWBOY_Z)
 	subviewport.add_child(cowboy_3d)
-	DebugLog.add("level_3d: cowboy_3d added")
+	_cowboy_anim_stream = COWBOY_RUN_FWD_STREAM
+	DebugLog.add("level_3d: cowboy_3d video billboard added")
 	# 3) 4 mountain MeshInstance3D silhouettes.
 	_spawn_mountains_lvl3d()
 	DebugLog.add("level_3d: mountains added")
@@ -509,29 +534,35 @@ func _spawn_mountains_lvl3d() -> void:
 		m.scale = c["scl"]
 		subviewport.add_child(m)
 
-# Iter 72: create 5 Sprite3D followers (matches default posse_count=5
-# minus the leader at index 0). Each is a clone of the leader cowboy
-# sprite, positioned at COWBOY_Z + offset_z and ±x offset.
+# A posse follower — video billboard textured from the staggered pool,
+# placed at a trapezoid formation slot computed from its index.
+func _make_follower(idx: int) -> Sprite3D:
+	var f := Sprite3D.new()
+	var slot: int = _rng.randi()
+	f.set_meta("pool_slot", slot)
+	var tex: Texture2D = _posse_pool_texture(slot)
+	f.texture = tex if tex != null else COWBOY_TEXTURE_LVL3D
+	f.pixel_size = COWBOY_PIXEL_SIZE
+	f.billboard = 1   # BILLBOARD_ENABLED (int literal — iter 100 lesson)
+	f.alpha_cut = 0   # ALPHA_CUT_DISABLED — chromakey soft edge needs blending
+	f.texture_filter = BaseMaterial3D.TEXTURE_FILTER_LINEAR_WITH_MIPMAPS
+	var n: int = POSSE_FORMATION_OFFSETS.size()
+	var offset: Vector3 = (POSSE_FORMATION_OFFSETS[idx % n] if n > 0
+		else Vector3(0, 0, 0.6 + 0.2 * float(idx)))
+	# Rows past the first push deeper: scale offset.z by the row index.
+	var row_mul: float = 1.0 + floorf(float(idx) / float(maxi(n, 1)))
+	f.position = Vector3(offset.x, 0.45, COWBOY_Z + offset.z * row_mul)
+	f.set_meta("formation_offset", Vector3(offset.x, 0.0, offset.z * row_mul))
+	subviewport.add_child(f)
+	return f
+
+# Iter 72: posse followers behind the leader in a trapezoid formation.
 func _spawn_posse_followers() -> void:
 	if cowboy_3d == null:
 		return
-	var leader_tex: Texture2D = cowboy_3d.texture
-	var leader_pixel: float = cowboy_3d.pixel_size
-	for offset in POSSE_FORMATION_OFFSETS:
-		var f := Sprite3D.new()
-		f.texture = leader_tex
-		f.pixel_size = leader_pixel
-		# Iter 100 (fix 8): SpriteBase3D.BILLBOARD_ENABLED + ALPHA_CUT_DISCARD
-		# parse-fail at Godot 4.6.1 Android runtime — the script silently
-		# fails to attach (caught by smoke-test run 25903646479). Use int
-		# literals with comments — they're stable across Godot versions
-		# and the parser doesn't need to resolve the enum name.
-		f.billboard = 1  # BillboardMode.BILLBOARD_ENABLED
-		f.alpha_cut = 1  # AlphaCutMode.ALPHA_CUT_DISCARD
-		f.position = Vector3(offset.x, 0.45, COWBOY_Z + offset.z)
-		f.set_meta("formation_offset", offset)
-		subviewport.add_child(f)
-		_followers.append(f)
+	_build_posse_pool()
+	for i in range(POSSE_FORMATION_OFFSETS.size()):
+		_followers.append(_make_follower(i))
 
 # Iter 111: spawn a single roadside scenery item. Weighted pick from
 # 5 categories so the world feels lived-in but not chaotic. Each item
@@ -2277,21 +2308,7 @@ func _sync_followers_to_count(target: int) -> void:
 	if cowboy_3d == null or not is_instance_valid(cowboy_3d):
 		return
 	while _followers.size() < want:
-		var idx: int = _followers.size()
-		var f := Sprite3D.new()
-		f.texture = cowboy_3d.texture
-		f.pixel_size = cowboy_3d.pixel_size
-		f.billboard = 1
-		f.alpha_cut = 1
-		var offset: Vector3 = (POSSE_FORMATION_OFFSETS[idx % POSSE_FORMATION_OFFSETS.size()]
-			if POSSE_FORMATION_OFFSETS.size() > 0
-			else Vector3(0, 0, 0.6 + 0.2 * float(idx)))
-		# Extra rows: scale offset.z by (1 + idx / OFFSETS.size())
-		var row_mul: float = 1.0 + floorf(float(idx) / float(POSSE_FORMATION_OFFSETS.size()))
-		f.position = Vector3(offset.x, 0.45, COWBOY_Z + offset.z * row_mul)
-		f.set_meta("formation_offset", Vector3(offset.x, 0.0, offset.z * row_mul))
-		subviewport.add_child(f)
-		_followers.append(f)
+		_followers.append(_make_follower(_followers.size()))
 
 # ---- Iter 149: special posse members (rescued heroes) ----------------------
 # Rescued heroes persist as distinct units: own PNG, a hero skill on a timer,
@@ -2319,9 +2336,10 @@ func _add_special_follower(slug: String) -> void:
 		return
 	var spr := Sprite3D.new()
 	spr.texture = load(tex_path)
-	# Iter 164: size to 125% of the cowboy's actual rendered height —
-	# rescued heroes had been rendering far larger than the posse.
-	var cowboy_h: float = cowboy_3d.pixel_size * float(cowboy_3d.texture.get_height())
+	# Size to 125% of the cowboy's on-screen height. The cowboy is now a
+	# video billboard (its texture is a viewport, not the figure), so use
+	# a fixed nominal height rather than texture-height × pixel_size.
+	var cowboy_h: float = 0.95
 	spr.pixel_size = (cowboy_h * 1.25) / float(spr.texture.get_height())
 	spr.billboard = 1
 	spr.alpha_cut = 1
@@ -3946,6 +3964,111 @@ func _make_video_billboard(
 	wrap.add_child(sprite)
 	return wrap
 
+# ── Cowboy / posse video animation ───────────────────────────────────────
+# The leader cowboy is one video billboard whose stream swaps by level
+# state. The follower crowd can't each own a video decoder — Android
+# won't run two dozen — so the crowd draws from a small POOL: run_shoot
+# at a few phase offsets plus the 3 idle variants. Each follower keeps a
+# fixed random pool slot, which de-syncs the crowd.
+var _cowboy_anim_stream: VideoStream = null
+var _posse_run_pool: Array[SubViewport] = []
+var _posse_idle_pool: Array[SubViewport] = []
+var _posse_anim_group: String = "run"
+const POSSE_RUN_PHASES: int = 3
+
+func _make_posse_viewport(stream: VideoStream) -> SubViewport:
+	var sv := SubViewport.new()
+	sv.size = _BILLBOARD_VIEWPORT_PX
+	sv.transparent_bg = true
+	sv.disable_3d = true
+	sv.render_target_update_mode = 4  # UPDATE_ALWAYS
+	add_child(sv)
+	var vp := VideoStreamPlayer.new()
+	vp.stream = stream
+	vp.autoplay = true
+	vp.loop = true
+	vp.expand = true
+	vp.size = Vector2(_BILLBOARD_VIEWPORT_PX)
+	var mat := ShaderMaterial.new()
+	mat.shader = _CHROMAKEY_SHADER
+	mat.set_shader_parameter("chroma_color", Color(0, 1, 0, 1))
+	mat.set_shader_parameter("similarity", 0.12)
+	mat.set_shader_parameter("blend_amount", 0.10)
+	vp.material = mat
+	sv.add_child(vp)
+	# Deferred scrub so the player has started — a random start position
+	# de-syncs two pool viewports that play the same clip.
+	vp.call_deferred("set", "stream_position", _rng.randf() * 3.6)
+	return sv
+
+func _build_posse_pool() -> void:
+	if not _posse_run_pool.is_empty():
+		return
+	for i in range(POSSE_RUN_PHASES):
+		_posse_run_pool.append(_make_posse_viewport(COWBOY_RUN_FWD_STREAM))
+	for stream in COWBOY_IDLE_STREAMS:
+		_posse_idle_pool.append(_make_posse_viewport(stream))
+	DebugLog.add("posse pool: %d run + %d idle viewports" % [
+		_posse_run_pool.size(), _posse_idle_pool.size()])
+
+# Texture for a follower at pool slot `slot`, in the current anim group.
+func _posse_pool_texture(slot: int) -> Texture2D:
+	var pool: Array[SubViewport] = (_posse_idle_pool
+		if _posse_anim_group == "idle" else _posse_run_pool)
+	if pool.is_empty():
+		return null
+	return pool[slot % pool.size()].get_texture()
+
+# Swap the leader cowboy's video stream (no-op if already on it).
+func _set_cowboy_anim(stream: VideoStream) -> void:
+	if stream == null or stream == _cowboy_anim_stream:
+		return
+	if cowboy_3d == null or not is_instance_valid(cowboy_3d):
+		return
+	cowboy_3d.texture = _get_or_create_shared_video_viewport(stream).get_texture()
+	_cowboy_anim_stream = stream
+
+# Per-frame: choose the cowboy + crowd animation from the level state.
+func _update_cowboy_anim() -> void:
+	if cowboy_3d == null or not is_instance_valid(cowboy_3d):
+		return
+	var group := "run"
+	var leader: VideoStream = COWBOY_RUN_FWD_STREAM
+	var dx: float = _target_x - cowboy_3d.position.x
+	if _level_state == LevelState.COUNTDOWN:
+		group = "idle"
+		leader = COWBOY_IDLE_STREAMS[0]
+	elif _level_state == LevelState.FINISHED:
+		group = "idle"
+		leader = (COWBOY_CELEBRATE_STREAMS[0] if _pete_defeated
+			else COWBOY_IDLE_STREAMS[0])
+	elif _cart_encounter:
+		# World frozen but the player can still steer → strafe in place.
+		group = "idle"
+		if dx < -0.25:
+			leader = COWBOY_STRAFE_LEFT_STREAM
+		elif dx > 0.25:
+			leader = COWBOY_STRAFE_RIGHT_STREAM
+		else:
+			leader = COWBOY_STAND_SHOOT_STREAM
+	elif _level_state == LevelState.BOSS:
+		group = "idle"
+		leader = COWBOY_STAND_SHOOT_STREAM
+	else:
+		# PLAYING and moving — steering picks the directional run clip.
+		if dx < -0.25:
+			leader = COWBOY_RUN_LEFT_STREAM
+		elif dx > 0.25:
+			leader = COWBOY_RUN_RIGHT_STREAM
+	_set_cowboy_anim(leader)
+	if group != _posse_anim_group:
+		_posse_anim_group = group
+		for f in _followers:
+			if is_instance_valid(f):
+				var tex: Texture2D = _posse_pool_texture(f.get_meta("pool_slot", 0))
+				if tex != null:
+					f.texture = tex
+
 # Iter 76: outlaw fires a red bullet aimed at the cowboy.
 func _outlaw_fire(outlaw: Node3D) -> void:
 	var b := CSGSphere3D.new()
@@ -4010,6 +4133,8 @@ func _process(delta: float) -> void:
 	if not _process_first_tick_logged:
 		_process_first_tick_logged = true
 		DebugLog.add("_process first tick — game loop is running, state=%d" % _level_state)
+	# Swap the cowboy + crowd video clips to match the level state.
+	_update_cowboy_anim()
 	if _pete_defeated or _failed:
 		_level_state = LevelState.FINISHED
 		return
