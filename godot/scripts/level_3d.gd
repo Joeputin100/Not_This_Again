@@ -3521,7 +3521,9 @@ func _update_pushed_wagons(delta: float) -> void:
 	# cart toward the cliff; on cliff / rescue the scroll resumes.
 	var wagon_present: bool = false
 	for child in outlaws_root.get_children():
-		if child.get_meta("is_pushed", false) and is_instance_valid(child):
+		# iter 178: a plain captive cart freezes the world too, not only
+		# pushed wagons — matches the player-facing "carts stop momentum".
+		if is_instance_valid(child) and (child.get_meta("is_pushed", false) or child.get_meta("is_captive", false)):
 			wagon_present = true
 			break
 	_set_cart_encounter(wagon_present)
@@ -3968,13 +3970,13 @@ func _make_video_billboard(
 # The leader cowboy is one video billboard whose stream swaps by level
 # state. The follower crowd can't each own a video decoder — Android
 # won't run two dozen — so the crowd draws from a small POOL: run_shoot
-# at a few phase offsets plus the 3 idle variants. Each follower keeps a
+# at a few phase offsets plus one idle clip. Each follower keeps a
 # fixed random pool slot, which de-syncs the crowd.
 var _cowboy_anim_stream: VideoStream = null
 var _posse_run_pool: Array[SubViewport] = []
 var _posse_idle_pool: Array[SubViewport] = []
 var _posse_anim_group: String = "run"
-const POSSE_RUN_PHASES: int = 3
+const POSSE_RUN_PHASES: int = 2
 
 func _make_posse_viewport(stream: VideoStream) -> SubViewport:
 	var sv := SubViewport.new()
@@ -4006,8 +4008,9 @@ func _build_posse_pool() -> void:
 		return
 	for i in range(POSSE_RUN_PHASES):
 		_posse_run_pool.append(_make_posse_viewport(COWBOY_RUN_FWD_STREAM))
-	for stream in COWBOY_IDLE_STREAMS:
-		_posse_idle_pool.append(_make_posse_viewport(stream))
+	# One idle viewport — idle is a frozen-state look, not worth a decoder
+	# per variant. iter 178 cut the pool 6 → 3 for frame rate.
+	_posse_idle_pool.append(_make_posse_viewport(COWBOY_IDLE_STREAMS[0]))
 	DebugLog.add("posse pool: %d run + %d idle viewports" % [
 		_posse_run_pool.size(), _posse_idle_pool.size()])
 
@@ -4025,7 +4028,16 @@ func _set_cowboy_anim(stream: VideoStream) -> void:
 		return
 	if cowboy_3d == null or not is_instance_valid(cowboy_3d):
 		return
-	cowboy_3d.texture = _get_or_create_shared_video_viewport(stream).get_texture()
+	# Reuse a pool viewport for the two most common streams so the leader
+	# doesn't spin up its own decoder for them (perf — iter 178).
+	var sv: SubViewport
+	if stream == COWBOY_RUN_FWD_STREAM and not _posse_run_pool.is_empty():
+		sv = _posse_run_pool[0]
+	elif stream in COWBOY_IDLE_STREAMS and not _posse_idle_pool.is_empty():
+		sv = _posse_idle_pool[0]
+	else:
+		sv = _get_or_create_shared_video_viewport(stream)
+	cowboy_3d.texture = sv.get_texture()
 	_cowboy_anim_stream = stream
 
 # Per-frame: choose the cowboy + crowd animation from the level state.
@@ -4187,6 +4199,11 @@ func _process(delta: float) -> void:
 			clampf(FOLLOWER_LERP_SPEED * delta, 0.0, 1.0))
 		# Phase offset per follower so the crowd looks alive.
 		f.position.y = 0.45 + sin(_bob_time * BOB_FREQUENCY + float(i) * 0.7) * BOB_AMPLITUDE
+	# Iter 178: drive the pushed-wagon / captive cart encounter. This
+	# updater was defined but never called, so the cart-freeze and the
+	# pusher mechanic never ran — fixes carts not stopping the scroll.
+	if _level_state == LevelState.PLAYING or _level_state == LevelState.BOSS:
+		_update_pushed_wagons(delta)
 	# Iter 118: world motion delta — 0 during BOSS so obstacles/gates/
 	# outlaws/scenery freeze in place during the duel. Cowboy steering +
 	# bullets + Pete continue to update on the real delta.
