@@ -2508,19 +2508,30 @@ const BONUS_LABELS: Dictionary = {
 
 func _spawn_bonus() -> void:
 	var t: String = BONUS_TYPES[_rng.randi() % BONUS_TYPES.size()]
-	var bonus := CSGBox3D.new()
-	bonus.size = Vector3(1.0, 1.0, 1.0)
-	var mat := StandardMaterial3D.new()
-	mat.albedo_color = BONUS_COLORS[t]
-	mat.emission_enabled = true
-	mat.emission = mat.albedo_color * 0.6
-	bonus.material = mat
-	var lane_x: float = _rng.randf_range(-COWBOY_X_BOUND * 0.65,
-		COWBOY_X_BOUND * 0.65)
-	bonus.position = Vector3(lane_x, 1.5, OBSTACLE_SPAWN_Z + 2.0)
+	var glitz: Dictionary = GlitzPrefs.get_bonus_glitz(t)
+	# Iter 179: the bonus crate is a glitz sprite — breathing-shader plane
+	# textured with the crate PNG, with the per-bonus glitz uniforms applied.
+	var tex_path := "res://assets/sprites/props/bonus_crate_%s.png" % t
+	var crate_tex: Texture2D = load(tex_path) if ResourceLoader.exists(tex_path) else null
+	var bonus: MeshInstance3D = _make_breathing_prop(crate_tex, 1.4, 1.4, 0.04, 1.5, 0.02, 2.2)
+	var mat: ShaderMaterial = bonus.material_override
+	if mat != null:
+		mat.set_shader_parameter("pulse_glow", glitz["pulse_glow"])
+		mat.set_shader_parameter("hue_cycle", glitz["hue_cycle"])
+		mat.set_shader_parameter("halo_strength", glitz["halo_strength"])
+		mat.set_shader_parameter("sparkle_orbit", glitz["sparkle_orbit"])
+		mat.set_shader_parameter("rotation_mode", glitz["rotation_mode"])
+		mat.set_shader_parameter("rotation_speed", glitz["rotation_speed"])
+	var lane_x: float = _rng.randf_range(-COWBOY_X_BOUND * 0.65, COWBOY_X_BOUND * 0.65)
+	bonus.position = Vector3(lane_x, 1.2, OBSTACLE_SPAWN_Z + 2.0)
 	bonus.set_meta("bonus_type", t)
 	bonus.set_meta("spawn_time", _level_elapsed)
-	# Floating type label above the box
+	# Iter 179: aura behind the crate if the glitz config calls for one.
+	var aura: MeshInstance3D = _make_bonus_aura(glitz["aura"])
+	if aura != null:
+		bonus.add_child(aura)
+		bonus.set_meta("aura", aura)
+	# Floating type label above the crate.
 	var lbl := Label3D.new()
 	lbl.text = BONUS_LABELS[t]
 	lbl.font_size = 64
@@ -2540,6 +2551,128 @@ func _collect_bonus(bonus: Node3D) -> void:
 	_spawn_popup_3d(bonus.position + Vector3(0, 2.0, 0),
 		t.to_upper(), BONUS_COLORS[t], 56)
 	bonus.queue_free()
+
+# ── Iter 179: bonus-crate auras (ported from glitz_picker.gd) ─────────────
+# A bonus's glitz config (GlitzPrefs.BONUS_GLITZ) can carry an aura behind
+# the crate sprite: "sunburst" (a static filled 12-petal star that slowly
+# rotates) or "electric" (12 spinning, pulsing arcs rebuilt each frame).
+const AURA_PETALS: int = 12
+const AURA_SEGS: int = 16
+const AURA_RADIUS: float = 2.5
+const AURA_HALF_WIDTH: float = 0.05
+
+func _make_sunburst_mesh() -> ArrayMesh:
+	var verts := PackedVector3Array()
+	var colors := PackedColorArray()
+	var indices := PackedInt32Array()
+	var seg: int = 96
+	verts.append(Vector3.ZERO)
+	colors.append(Color(1.0, 0.92, 0.58, 1.0))
+	for i in range(seg + 1):
+		var th: float = TAU * float(i) / float(seg)
+		var r: float = 0.70 + 0.32 * cos(12.0 * th)
+		verts.append(Vector3(cos(th) * r, sin(th) * r, 0.0))
+		colors.append(Color(1.0, 0.74, 0.30, 0.0))
+	for i in range(seg):
+		indices.append(0)
+		indices.append(1 + i)
+		indices.append(2 + i)
+	var arr: Array = []
+	arr.resize(Mesh.ARRAY_MAX)
+	arr[Mesh.ARRAY_VERTEX] = verts
+	arr[Mesh.ARRAY_COLOR] = colors
+	arr[Mesh.ARRAY_INDEX] = indices
+	var am := ArrayMesh.new()
+	am.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, arr)
+	return am
+
+func _aura_tri(im: ImmediateMesh, a: Vector3, ca: Color,
+		b: Vector3, cb: Color, c: Vector3, cc: Color) -> void:
+	im.surface_set_color(ca)
+	im.surface_add_vertex(a)
+	im.surface_set_color(cb)
+	im.surface_add_vertex(b)
+	im.surface_set_color(cc)
+	im.surface_add_vertex(c)
+
+func _emit_aura_petal(im: ImmediateMesh, i: int, t: float) -> void:
+	var angle_base: float = (float(i) / float(AURA_PETALS)) * TAU + t * 0.7
+	var pulse: float = 0.28 + 0.08 * sin(t * 2.1 + float(i) * 1.3)
+	var whip: float = sin(t * 0.6 + float(i) * 0.5)
+	var hue: float = fmod(0.55 + 0.05 * sin(t * 0.5 + float(i)), 1.0)
+	var core: Color = Color.from_hsv(hue, 0.45, 1.0, 0.9)
+	var edge: Color = Color(core.r, core.g, core.b, 0.0)
+	var pts: Array[Vector3] = []
+	for k in AURA_SEGS + 1:
+		var s: float = float(k) / float(AURA_SEGS)
+		var r: float = sin(s * PI) * pulse * AURA_RADIUS
+		var ang: float = angle_base + s * PI * 0.9 * whip
+		pts.append(Vector3(cos(ang) * r, sin(ang) * r, 0.0))
+	for k in AURA_SEGS:
+		var p0: Vector3 = pts[k]
+		var p1: Vector3 = pts[k + 1]
+		var d: Vector3 = p1 - p0
+		if d.length() < 0.0001:
+			continue
+		d = d.normalized()
+		var perp: Vector3 = Vector3(-d.y, d.x, 0.0) * AURA_HALF_WIDTH
+		_aura_tri(im, p0 + perp, edge, p0, core, p1, core)
+		_aura_tri(im, p0 + perp, edge, p1, core, p1 + perp, edge)
+		_aura_tri(im, p0, core, p0 - perp, edge, p1 - perp, edge)
+		_aura_tri(im, p0, core, p1 - perp, edge, p1, core)
+
+func _emit_aura_orb(im: ImmediateMesh, t: float) -> void:
+	var pr: float = (0.16 + 0.05 * sin(t * 3.5)) * AURA_RADIUS
+	var core: Color = Color(0.82, 0.90, 1.0, 0.95)
+	var edge: Color = Color(0.30, 0.50, 1.0, 0.0)
+	var rim: int = 22
+	for k in rim:
+		var a0: float = TAU * float(k) / float(rim)
+		var a1: float = TAU * float(k + 1) / float(rim)
+		_aura_tri(im, Vector3.ZERO, core,
+			Vector3(cos(a0) * pr, sin(a0) * pr, 0.0), edge,
+			Vector3(cos(a1) * pr, sin(a1) * pr, 0.0), edge)
+
+func _rebuild_electric_aura(im: ImmediateMesh, t: float) -> void:
+	im.clear_surfaces()
+	im.surface_begin(Mesh.PRIMITIVE_TRIANGLES)
+	for i in AURA_PETALS:
+		_emit_aura_petal(im, i, t)
+	_emit_aura_orb(im, t)
+	im.surface_end()
+
+# Build an aura MeshInstance3D for a bonus crate; null for aura "none".
+func _make_bonus_aura(aura_type: String) -> MeshInstance3D:
+	if aura_type != "sunburst" and aura_type != "electric":
+		return null
+	var aura := MeshInstance3D.new()
+	var amat := StandardMaterial3D.new()
+	amat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	amat.vertex_color_use_as_albedo = true
+	amat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	amat.blend_mode = BaseMaterial3D.BLEND_MODE_ADD
+	amat.cull_mode = BaseMaterial3D.CULL_DISABLED
+	amat.billboard_mode = 1  # BILLBOARD_ENABLED — keep the aura facing the camera
+	aura.material_override = amat
+	aura.set_meta("aura_type", aura_type)
+	aura.position = Vector3(0, 0, -0.06)  # just behind the crate sprite
+	if aura_type == "sunburst":
+		aura.mesh = _make_sunburst_mesh()
+	else:
+		aura.mesh = ImmediateMesh.new()
+	return aura
+
+# Per-frame: rebuild each electric aura's geometry (the sunburst is static).
+var _bonus_aura_t: float = 0.0
+
+func _update_bonus_auras(delta: float) -> void:
+	if bonuses_root == null:
+		return
+	_bonus_aura_t += delta
+	for b in bonuses_root.get_children():
+		var aura: Variant = b.get_meta("aura", null)
+		if aura is MeshInstance3D and aura.get_meta("aura_type", "") == "electric":
+			_rebuild_electric_aura(aura.mesh as ImmediateMesh, _bonus_aura_t)
 
 # Iter 77: spawn the Slippery Pete boss. Big yellow CSGBox3D with an
 # HP meta field + state machine. Stops at PETE_STAY_Z for the duel.
@@ -4147,6 +4280,8 @@ func _process(delta: float) -> void:
 		DebugLog.add("_process first tick — game loop is running, state=%d" % _level_state)
 	# Swap the cowboy + crowd video clips to match the level state.
 	_update_cowboy_anim()
+	# Iter 179: animate the bonus-crate electric auras.
+	_update_bonus_auras(delta)
 	if _pete_defeated or _failed:
 		_level_state = LevelState.FINISHED
 		return
@@ -4636,39 +4771,16 @@ func _spawn_obstacle() -> void:
 			c.position = Vector3(lane_x, 1.2, OBSTACLE_SPAWN_Z)
 			obstacle = c
 		ObstacleType.TUMBLEWEED:
-			# Iter 113: was a single smooth sphere with no detail. User
-			# called them "featureless spheres". Stack 3 spheres at slight
-			# offsets + each with random color jitter so the shape reads as
-			# tangled grass-ball instead of a billiard ball. Still CSG —
-			# a real tumbleweed mesh is a future asset upgrade.
-			var t := Node3D.new()
-			for i in range(3):
-				var s := CSGSphere3D.new()
-				s.radius = 0.7 + _rng.randf_range(-0.1, 0.2)
-				s.radial_segments = 12
-				s.rings = 8
-				var m := StandardMaterial3D.new()
-				m.albedo_color = Color(
-					_rng.randf_range(0.42, 0.58),
-					_rng.randf_range(0.28, 0.38),
-					_rng.randf_range(0.10, 0.20),
-					1,
-				)
-				m.roughness = 1.0
-				s.material = m
-				s.position = Vector3(
-					_rng.randf_range(-0.25, 0.25),
-					_rng.randf_range(-0.15, 0.15),
-					_rng.randf_range(-0.25, 0.25),
-				)
-				s.scale = Vector3(
-					_rng.randf_range(0.85, 1.10),
-					_rng.randf_range(0.85, 1.10),
-					_rng.randf_range(0.85, 1.10),
-				)
-				t.add_child(s)
-			t.position = Vector3(lane_x, 0.9, OBSTACLE_SPAWN_Z)
-			obstacle = t
+			# Iter 179: real tumbleweed.png sprite (was 3 stacked CSG
+			# spheres). The breathing shader's UV-spin gives the roll.
+			var tw_tex: Texture2D = _load_prop_tex("tumbleweed")
+			var tw: MeshInstance3D = _make_breathing_prop(tw_tex, 1.4, 1.4, 0.0, 1.5, 0.02, 2.2)
+			var tw_mat: ShaderMaterial = tw.material_override
+			if tw_mat != null:
+				tw_mat.set_shader_parameter("rotation_mode", 1)   # UV-spin = rolling
+				tw_mat.set_shader_parameter("rotation_speed", 0.6)
+			tw.position = Vector3(lane_x, 0.9, OBSTACLE_SPAWN_Z)
+			obstacle = tw
 		_:  # BULL
 			var bull := CSGBox3D.new()
 			bull.size = Vector3(2.5, 1.6, 1.8)

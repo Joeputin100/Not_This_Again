@@ -69,6 +69,41 @@ const BONUS_TYPES: Array[String] = [
 	"scattergun", "tnt", "whip",
 ]
 
+# Iter 179: user-dictated per-bonus glitz, applied to the bonus crate in
+# gameplay (level_3d._spawn_bonus). Keys omitted default to 0 / static.
+# rotation_mode 0=static 1=uvspin 2=yspin; rotation_speed is signed.
+# aura: "none" | "sunburst" | "electric".
+const BONUS_GLITZ: Dictionary = {
+	"bazooka":    {"pulse_glow": 1.0, "rotation_mode": 2, "rotation_speed": 0.19},
+	"boomerang":  {"pulse_glow": 1.0, "rotation_mode": 2, "rotation_speed": 0.19},
+	"catapult":   {"aura": "sunburst"},
+	"crossbow":   {"aura": "sunburst"},
+	"gatling":    {"aura": "electric", "rotation_mode": 2, "rotation_speed": 0.19},
+	"grenades":   {"pulse_glow": 1.0},
+	"pixiestick": {"sparkle_orbit": 1.0, "aura": "sunburst"},
+	"pulserifle": {"hue_cycle": 0.8, "rotation_mode": 2, "rotation_speed": 0.19},
+	"scattergun": {"sparkle_orbit": 1.0, "rotation_mode": 2, "rotation_speed": 0.19},
+	"tnt":        {"aura": "sunburst", "rotation_mode": 1, "rotation_speed": 0.10},
+	"whip":       {"pulse_glow": 1.0, "rotation_mode": 2, "rotation_speed": -0.19},
+	# rifle / frostbite / frenzy keep their iter-174 look (not respec'd).
+	"rifle":      {"pulse_glow": 1.0, "rotation_mode": 2, "rotation_speed": 0.15},
+	"frostbite":  {"sparkle_orbit": 1.0, "rotation_mode": 2, "rotation_speed": 0.15},
+	"frenzy":     {"halo_strength": 1.5, "rotation_mode": 2, "rotation_speed": 0.15},
+}
+
+# Resolve a bonus type's full glitz config with defaults filled in.
+func get_bonus_glitz(bonus_type: String) -> Dictionary:
+	var g: Dictionary = BONUS_GLITZ.get(bonus_type, {})
+	return {
+		"pulse_glow":     g.get("pulse_glow", 0.0),
+		"hue_cycle":      g.get("hue_cycle", 0.0),
+		"halo_strength":  g.get("halo_strength", 0.0),
+		"sparkle_orbit":  g.get("sparkle_orbit", 0.0),
+		"rotation_mode":  g.get("rotation_mode", 0),
+		"rotation_speed": g.get("rotation_speed", 0.0),
+		"aura":           g.get("aura", "none"),
+	}
+
 var _config: ConfigFile
 
 func _ready() -> void:
