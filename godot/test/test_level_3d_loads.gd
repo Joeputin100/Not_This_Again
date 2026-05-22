@@ -27,29 +27,14 @@ func test_scene_instantiates():
 	assert_not_null(inst, "instantiate() should produce a Node")
 	# Verify the root has the expected name + script.
 	assert_eq(inst.name, "Level3D")
-	# Critical subtree paths used by level_3d.gd's @onready vars.
+	# Static scene-file structure — present right after instantiate().
+	# Cowboy3D and the gameplay containers are NOT here: they are built
+	# at runtime by _build_3d_content() (run from _ready), so they are
+	# verified in test_scene_enters_tree instead.
 	assert_not_null(inst.get_node_or_null("Terrain3D/SubViewport"),
 		"SubViewport must exist for cowboy + obstacles + bullets")
 	assert_not_null(inst.get_node_or_null("Terrain3D/Sprite"),
 		"Sprite2D must exist for SubViewport→screen rendering")
-	assert_not_null(inst.get_node_or_null("Terrain3D/SubViewport/Cowboy3D"),
-		"Cowboy3D Sprite3D must exist")
-	assert_not_null(inst.get_node_or_null("Terrain3D/SubViewport/Obstacles"),
-		"Obstacles container must exist")
-	assert_not_null(inst.get_node_or_null("Terrain3D/SubViewport/Bullets"),
-		"Bullets container must exist")
-	assert_not_null(inst.get_node_or_null("Terrain3D/SubViewport/Gates"),
-		"Gates container must exist (iter 75)")
-	assert_not_null(inst.get_node_or_null("Terrain3D/SubViewport/Outlaws"),
-		"Outlaws container must exist (iter 76)")
-	assert_not_null(inst.get_node_or_null("Terrain3D/SubViewport/OutlawBullets"),
-		"OutlawBullets container must exist (iter 76)")
-	assert_not_null(inst.get_node_or_null("Terrain3D/SubViewport/Boss"),
-		"Boss container must exist (iter 77)")
-	assert_not_null(inst.get_node_or_null("Terrain3D/SubViewport/Popups"),
-		"Popups container must exist (iter 80)")
-	assert_not_null(inst.get_node_or_null("Terrain3D/SubViewport/Bonuses"),
-		"Bonuses container must exist (iter 88)")
 	# UI subtree
 	assert_not_null(inst.get_node_or_null("UI/BackButton"))
 	assert_not_null(inst.get_node_or_null("UI/InfoLabel"))
@@ -67,4 +52,24 @@ func test_scene_enters_tree():
 	add_child_autofree(inst)
 	await get_tree().process_frame
 	# If we reach here without hanging, _ready completed.
-	assert_not_null(inst.get_node_or_null("Terrain3D/SubViewport/Cowboy3D"))
+	# Cowboy3D + the gameplay containers are built at runtime by
+	# _build_3d_content() (run from _ready), so they exist only now —
+	# not after a bare instantiate().
+	assert_not_null(inst.get_node_or_null("Terrain3D/SubViewport/Cowboy3D"),
+		"Cowboy3D must exist after _ready")
+	assert_not_null(inst.get_node_or_null("Terrain3D/SubViewport/Obstacles"),
+		"Obstacles container must exist")
+	assert_not_null(inst.get_node_or_null("Terrain3D/SubViewport/Bullets"),
+		"Bullets container must exist")
+	assert_not_null(inst.get_node_or_null("Terrain3D/SubViewport/Gates"),
+		"Gates container must exist (iter 75)")
+	assert_not_null(inst.get_node_or_null("Terrain3D/SubViewport/Outlaws"),
+		"Outlaws container must exist (iter 76)")
+	assert_not_null(inst.get_node_or_null("Terrain3D/SubViewport/OutlawBullets"),
+		"OutlawBullets container must exist (iter 76)")
+	assert_not_null(inst.get_node_or_null("Terrain3D/SubViewport/Boss"),
+		"Boss container must exist (iter 77)")
+	assert_not_null(inst.get_node_or_null("Terrain3D/SubViewport/Popups"),
+		"Popups container must exist (iter 80)")
+	assert_not_null(inst.get_node_or_null("Terrain3D/SubViewport/Bonuses"),
+		"Bonuses container must exist (iter 88)")
