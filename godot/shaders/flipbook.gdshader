@@ -13,7 +13,7 @@ uniform float fps = 24.0;
 uniform float start_time = 0.0;   // used when use_instance == 0
 uniform float phase = 0.0;
 uniform int use_instance = 0;     // 1 = read start/phase/flip from INSTANCE_CUSTOM
-uniform float alpha_clip = 0.5;
+uniform float alpha_clip = 0.2;
 
 varying float v_start;
 varying float v_phase;

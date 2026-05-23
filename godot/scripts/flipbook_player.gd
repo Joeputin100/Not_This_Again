@@ -12,7 +12,9 @@ var _clip := ""
 func _ready() -> void:
 	if mesh == null:
 		var q := QuadMesh.new()
-		q.size = Vector2(2.0, 2.0)
+		# 9:16 to match the SP1 source-clip aspect (Veo 720x1280).
+		# 2 m tall character; width follows the 9:16 ratio.
+		q.size = Vector2(1.125, 2.0)
 		mesh = q
 	if get_active_material(0) == null:
 		var m := ShaderMaterial.new()
@@ -27,7 +29,9 @@ func set_clip(clip_name: String) -> void:
 	# make sure the mesh + material exist before we touch them.
 	if mesh == null:
 		var q := QuadMesh.new()
-		q.size = Vector2(2.0, 2.0)
+		# 9:16 to match the SP1 source-clip aspect (Veo 720x1280).
+		# 2 m tall character; width follows the 9:16 ratio.
+		q.size = Vector2(1.125, 2.0)
 		mesh = q
 	if get_active_material(0) == null:
 		var m := ShaderMaterial.new()

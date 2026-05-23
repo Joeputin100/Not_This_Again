@@ -1,14 +1,15 @@
 extends Node2D
 
-# SP1 debug crowd viewer. The scene roots in Node2D + SubViewport because
-# the project's main window uses canvas_items stretch mode, so pure-Node3D
-# scenes don't activate their cameras under it (same reason terrain_3d
-# uses the SubViewport pattern). The 3D content (grass + crowd) lives
-# inside ViewportContainer/Viewport3D; the UI (slider, d-pad, perf) sits
-# in a CanvasLayer above.
+# SP1 debug crowd viewer. Node2D + SubViewport because the project's main
+# window uses canvas_items stretch mode — pure-Node3D scenes don't activate
+# their cameras under it (same reason terrain_3d uses the SubViewport
+# pattern). 3D content lives inside ViewportContainer/Viewport3D; the UI
+# (slider, d-pad, perf readout) sits in a CanvasLayer above.
 
 const FlipbookCrowd = preload("res://scripts/flipbook_crowd.gd")
 
+# Every clip belonging to each character — drives the OptionButton and
+# the FlipbookCrowd.configure() call.
 const CHARACTERS := {
 	"cowboy": [
 		"cowboy_idle_a", "cowboy_idle_b", "cowboy_idle_c",
@@ -47,13 +48,66 @@ const CHARACTERS := {
 	"humbug": ["humbug_tip", "humbug_thought", "humbug_canard"],
 }
 
+# Per-character directional walk clips. When the d-pad is pressed, ALL
+# members switch to the matching direction's clip so the crowd visibly
+# walks in that direction — without this, the translation alone is hard
+# to read against a uniform grass plane. "idle" means d-pad released
+# (members get their original spawn clip back for variety).
+const DIRECTIONS := {
+	"cowboy": {
+		"fwd":   "cowboy_run_shoot_fwd",
+		"left":  "cowboy_strafe_left",
+		"right": "cowboy_strafe_right",
+		"back":  "cowboy_run_shoot_fwd",
+	},
+	"pete": {
+		"fwd":   "pete_steps_forward",
+		"left":  "pete_strafe_right_to_left",
+		"right": "pete_strafe_right_to_left",
+		"back":  "pete_steps_forward",
+	},
+	"vagrant": {
+		"fwd":   "vagrant_drunk_walk",
+		"left":  "vagrant_strafe_left",
+		"right": "vagrant_strafe_right",
+		"back":  "vagrant_drunk_walk",
+	},
+	"prospector": {
+		"fwd":   "prospector_steps_forward",
+		"left":  "prospector_strafe_left",
+		"right": "prospector_strafe_right",
+		"back":  "prospector_steps_forward",
+	},
+	"pusher": {
+		"fwd":   "pusher_run_forward",
+		"left":  "pusher_push_left_a",
+		"right": "pusher_push_right_a",
+		"back":  "pusher_run_forward",
+	},
+	"chicken": {
+		"fwd":   "chicken_rir_scramble",
+		"left":  "chicken_leghorn_scramble",
+		"right": "chicken_silkie_scramble",
+		"back":  "chicken_rir_scramble",
+	},
+	"humbug": {
+		"fwd":   "humbug_tip",
+		"left":  "humbug_thought",
+		"right": "humbug_canard",
+		"back":  "humbug_tip",
+	},
+}
+
 const MOVE_SPEED := 4.0
 const SPAWN_RADIUS := 5.0
+const GRASS_HALF := 25.0    # crowd clamp bound — keeps members on the visible grass
 
 var _crowd: Node3D = null
 var _character := "cowboy"
 var _target_count := 20
 var _ids: Array[int] = []
+var _member_initial_clip := {}   # id -> the variety clip the member spawned with
+var _direction := "idle"
 var _move := Vector3.ZERO
 
 @onready var viewport_3d: SubViewport = $ViewportContainer/Viewport3D
@@ -77,18 +131,13 @@ func _ready() -> void:
 		DebugLog.add("sp1_crowd_viewer: FATAL viewport_3d missing — abort")
 		return
 	DebugLog.add("sp1_crowd_viewer: viewport %s" % str(viewport_3d.size))
-	# Point the camera at the origin where the grass + crowd live.
-	# Hand-written Transform3D for pitch-down rotation in the .tscn was
-	# producing an up-looking basis — let Godot compute the orientation.
 	if camera_3d:
 		camera_3d.look_at(Vector3.ZERO, Vector3.UP)
 		DebugLog.add("sp1_crowd_viewer: camera look_at(origin) from %s" %
 			str(camera_3d.global_position))
 	else:
 		DebugLog.add("sp1_crowd_viewer: WARN camera_3d null")
-	if back_button == null:
-		DebugLog.add("sp1_crowd_viewer: WARN back_button null")
-	else:
+	if back_button:
 		back_button.pressed.connect(_on_back_pressed)
 	if char_select == null or slider == null:
 		DebugLog.add("sp1_crowd_viewer: WARN UI missing — char_select=%s slider=%s" % [
@@ -97,7 +146,9 @@ func _ready() -> void:
 		_populate_character_options()
 		slider.value_changed.connect(_on_slider_changed)
 		char_select.item_selected.connect(_on_character_selected)
-	_wire_dpad()
+	# d-pad inputs are polled in _process (see _update_direction) so we
+	# can handle the case where the user releases one button while another
+	# is still held — signal-only connects don't track multi-button state.
 	DebugLog.add("sp1_crowd_viewer: building crowd for %s" % _character)
 	_build_crowd(_character)
 	DebugLog.add("sp1_crowd_viewer: crowd built, adding %d members" % _target_count)
@@ -112,25 +163,14 @@ func _populate_character_options() -> void:
 		char_select.add_item(c)
 	char_select.selected = 0
 
-func _wire_dpad() -> void:
-	if dpad_up == null or dpad_down == null or dpad_left == null or dpad_right == null:
-		DebugLog.add("sp1_crowd_viewer: WARN dpad buttons missing")
-		return
-	dpad_up.button_down.connect(func(): _move.z = -MOVE_SPEED)
-	dpad_up.button_up.connect(func(): _move.z = 0.0)
-	dpad_down.button_down.connect(func(): _move.z = MOVE_SPEED)
-	dpad_down.button_up.connect(func(): _move.z = 0.0)
-	dpad_left.button_down.connect(func(): _move.x = -MOVE_SPEED)
-	dpad_left.button_up.connect(func(): _move.x = 0.0)
-	dpad_right.button_down.connect(func(): _move.x = MOVE_SPEED)
-	dpad_right.button_up.connect(func(): _move.x = 0.0)
-
 func _on_character_selected(idx: int) -> void:
 	var keys: Array = CHARACTERS.keys()
 	var name: String = keys[idx]
 	if name == _character:
 		return
 	_character = name
+	_direction = "idle"
+	_move = Vector3.ZERO
 	_build_crowd(_character)
 	_set_count(_target_count)
 
@@ -147,11 +187,12 @@ func _build_crowd(character: String) -> void:
 		_crowd.queue_free()
 		_crowd = null
 	_ids.clear()
+	_member_initial_clip.clear()
 	_crowd = FlipbookCrowd.new()
 	_crowd.name = "Crowd"
-	# Crowd must live inside the 3D SubViewport so its MeshInstances see
-	# the Camera3D + lights set up there. Adding to self (Node2D) would
-	# put it in 2D space where the 3D shader never runs.
+	# Crowd must live inside the SubViewport so its MeshInstances see the
+	# Camera3D + lights set up there. Adding to self (Node2D) would put
+	# it in 2D space where the 3D shader never runs.
 	viewport_3d.add_child(_crowd)
 	_crowd.configure(character, CHARACTERS[character])
 
@@ -162,21 +203,68 @@ func _set_count(n: int) -> void:
 		var x := Transform3D(Basis(), Vector3(
 			randf_range(-SPAWN_RADIUS, SPAWN_RADIUS), 0.0,
 			randf_range(-SPAWN_RADIUS, SPAWN_RADIUS)))
-		_ids.append(_crowd.add_member(clip, x))
+		var id := _crowd.add_member(clip, x)
+		_ids.append(id)
+		_member_initial_clip[id] = clip
 	while _ids.size() > n:
 		var id: int = _ids.pop_back()
+		_member_initial_clip.erase(id)
 		_crowd.remove_member(id)
 
+func _update_direction() -> void:
+	# Poll d-pad buttons. First button checked in priority order wins —
+	# pressing two buttons at once picks the first listed.
+	var new_dir := "idle"
+	var move := Vector3.ZERO
+	if dpad_up and dpad_up.button_pressed:
+		new_dir = "fwd"
+		move.z = -MOVE_SPEED
+	elif dpad_down and dpad_down.button_pressed:
+		new_dir = "back"
+		move.z = MOVE_SPEED
+	elif dpad_left and dpad_left.button_pressed:
+		new_dir = "left"
+		move.x = -MOVE_SPEED
+	elif dpad_right and dpad_right.button_pressed:
+		new_dir = "right"
+		move.x = MOVE_SPEED
+	_move = move
+	if new_dir != _direction:
+		_direction = new_dir
+		_apply_direction_to_crowd()
+
+func _apply_direction_to_crowd() -> void:
+	# When a direction is held, ALL members switch to that direction's
+	# walk clip. When released ("idle"), members go back to the variety
+	# clip they spawned with — so you see the full animation set again.
+	if _crowd == null:
+		return
+	var dir_map: Dictionary = DIRECTIONS.get(_character, {})
+	for id in _ids:
+		var clip: String
+		if _direction == "idle":
+			clip = _member_initial_clip.get(id, "")
+		else:
+			clip = dir_map.get(_direction, "")
+		if clip != "":
+			_crowd.set_member_clip(id, clip)
+
 func _process(dt: float) -> void:
+	_update_direction()
 	if _crowd and _move.length_squared() > 0.0:
-		_crowd.position += _move * dt
+		var new_pos: Vector3 = _crowd.position + _move * dt
+		# Clamp to grass bounds so the crowd doesn't walk into the void.
+		new_pos.x = clampf(new_pos.x, -GRASS_HALF, GRASS_HALF)
+		new_pos.z = clampf(new_pos.z, -GRASS_HALF, GRASS_HALF)
+		_crowd.position = new_pos
 	if perf:
-		perf.text = "FPS %d  draws %d  VRAM %.0f MB" % [
+		perf.text = "FPS %d  draws %d  VRAM %.0f MB  dir %s" % [
 			Engine.get_frames_per_second(),
 			RenderingServer.get_rendering_info(
 				RenderingServer.RENDERING_INFO_TOTAL_DRAW_CALLS_IN_FRAME),
 			RenderingServer.get_rendering_info(
-				RenderingServer.RENDERING_INFO_TEXTURE_MEM_USED) / 1048576.0]
+				RenderingServer.RENDERING_INFO_TEXTURE_MEM_USED) / 1048576.0,
+			_direction]
 
 func _on_back_pressed() -> void:
 	if get_node_or_null("/root/AudioBus"):

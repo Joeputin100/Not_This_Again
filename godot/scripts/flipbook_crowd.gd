@@ -19,7 +19,10 @@ func configure(_character: String, clips: Array) -> void:
 		mm.transform_format = MultiMesh.TRANSFORM_3D
 		mm.use_custom_data = true
 		var q := QuadMesh.new()
-		q.size = Vector2(2.0, 2.0)
+		# 9:16 to match the SP1 source-clip aspect (Veo 720x1280) so
+		# crowd members render upright with correct proportions rather
+		# than squashed onto a square quad.
+		q.size = Vector2(1.125, 2.0)
 		mm.mesh = q
 		mmi.multimesh = mm
 		var meta: Dictionary = JSON.parse_string(
