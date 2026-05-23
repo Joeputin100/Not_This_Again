@@ -256,7 +256,7 @@ func _set_count(n: int) -> void:
 		var x := Transform3D(Basis(), Vector3(
 			randf_range(-SPAWN_RADIUS, SPAWN_RADIUS), 0.0,
 			randf_range(-SPAWN_RADIUS, SPAWN_RADIUS)))
-		var id := _crowd.add_member(clip, x)
+		var id: int = _crowd.add_member(clip, x)
 		_ids.append(id)
 		_member_initial_clip[id] = clip
 	while _ids.size() > n:
