@@ -102,6 +102,16 @@ const MOVE_SPEED := 4.0
 const SPAWN_RADIUS := 5.0
 const GRASS_HALF := 25.0    # crowd clamp bound — keeps members on the visible grass
 
+# Grass field: MultiMesh of billboarded grass-tuft sprites, expanded to a
+# full field per the roguelike webgl demo. Tufts share one draw call via
+# MultiMesh; per-instance time offset (custom-data .r) breaks up the
+# unison sway.
+const GRASS_FIELD_SHADER := preload("res://shaders/grass_field.gdshader")
+const GRASS_TUFT_TEX_PATH := "res://assets/sprites/props/grass_tuft.png"
+const GRASS_TUFT_COUNT := 800
+const GRASS_TUFT_HEIGHT := 0.7
+const GRASS_TUFT_WIDTH := 1.28   # 1408x768 sprite, anchored at ~9:5 aspect
+
 var _crowd: Node3D = null
 var _character := "cowboy"
 var _target_count := 20
@@ -149,6 +159,7 @@ func _ready() -> void:
 	# d-pad inputs are polled in _process (see _update_direction) so we
 	# can handle the case where the user releases one button while another
 	# is still held — signal-only connects don't track multi-button state.
+	_spawn_grass_field()
 	DebugLog.add("sp1_crowd_viewer: building crowd for %s" % _character)
 	_build_crowd(_character)
 	DebugLog.add("sp1_crowd_viewer: crowd built, adding %d members" % _target_count)
@@ -181,6 +192,48 @@ func _on_slider_changed(val: float) -> void:
 
 func _update_count_label() -> void:
 	count_label.text = "Crowd size: %d" % _target_count
+
+func _spawn_grass_field() -> void:
+	# Build a MultiMesh of GRASS_TUFT_COUNT billboarded tufts spread across
+	# the visible grass plane. Each instance picks a random XZ position,
+	# Y-translates so the quad's bottom sits at ground level, gets a small
+	# scale variation, and carries a random sway phase in custom_data.r.
+	var tex: Texture2D = load(GRASS_TUFT_TEX_PATH)
+	if tex == null:
+		DebugLog.add("sp1_crowd_viewer: WARN grass_tuft.png missing — skipping field")
+		return
+	var mmi := MultiMeshInstance3D.new()
+	mmi.name = "GrassField"
+	var mm := MultiMesh.new()
+	mm.transform_format = MultiMesh.TRANSFORM_3D
+	mm.use_custom_data = true
+	var quad := QuadMesh.new()
+	quad.size = Vector2(GRASS_TUFT_WIDTH, GRASS_TUFT_HEIGHT)
+	mm.mesh = quad
+	var mat := ShaderMaterial.new()
+	mat.shader = GRASS_FIELD_SHADER
+	mat.set_shader_parameter("albedo_tex", tex)
+	mat.set_shader_parameter("mesh_height", GRASS_TUFT_HEIGHT)
+	mat.set_shader_parameter("alpha_cutoff", 0.30)
+	mat.set_shader_parameter("sway_amp", 0.13)
+	mat.set_shader_parameter("sway_freq", 1.5)
+	mat.set_shader_parameter("bob_amp", 0.020)
+	mat.set_shader_parameter("bob_freq", 2.2)
+	mmi.material_override = mat
+	mmi.multimesh = mm
+	viewport_3d.add_child(mmi)
+	mm.instance_count = GRASS_TUFT_COUNT
+	for i in GRASS_TUFT_COUNT:
+		var pos := Vector3(
+			randf_range(-GRASS_HALF, GRASS_HALF), GRASS_TUFT_HEIGHT * 0.5,
+			randf_range(-GRASS_HALF, GRASS_HALF))
+		var s: float = randf_range(0.75, 1.35)
+		var xform := Transform3D(Basis().scaled(Vector3(s, s, s)), pos)
+		mm.set_instance_transform(i, xform)
+		# r = sway phase 0..1 (shader maps to 0..2π).
+		mm.set_instance_custom_data(i, Color(randf(), 0.0, 0.0, 0.0))
+	DebugLog.add("sp1_crowd_viewer: spawned %d grass tufts" % GRASS_TUFT_COUNT)
+
 
 func _build_crowd(character: String) -> void:
 	if _crowd:
