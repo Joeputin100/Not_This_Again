@@ -26,3 +26,30 @@ tools/veo_render.sh --loop --duration 4 --image "$PROPS/pusher_left.png"    --pr
 tools/veo_render.sh --loop --duration 4 --image "$PROPS/pusher_left.png"    --prompt "A cartoon pusher shoving leftward with a staggering effort, feet slipping. One smooth seamless looping cycle." --out-name push_left_c --out-dir "$PUSHER"
 tools/veo_render.sh --loop --duration 4 --image "$PROPS/pusher_forward.png" --prompt "A cartoon pusher running forward toward the viewer. One smooth seamless looping cycle." --out-name run_forward --out-dir "$PUSHER"
 tools/veo_render.sh --loop --duration 4 --image "$PROPS/pusher_melee.png"   --prompt "A cartoon pusher swinging a forward melee blow. One smooth seamless looping cycle." --out-name melee       --out-dir "$PUSHER"
+
+# ----- Chicken clips (Task 4) -----
+# 3 breeds x 3 chaotic animations = 9 source clips.
+# NOT source-flipped: the runtime flipbook shader's per-instance flip
+# flag doubles visible variety to 18 at draw time.
+CHICK=godot/assets/videos/chicken
+mkdir -p "$CHICK"
+
+for breed in rir leghorn silkie; do
+  tools/veo_render.sh --loop --duration 4 --image "$PROPS/chicken_${breed}.png" \
+    --prompt "A cartoon $breed chicken, panicked, flapping its wings frantically in place, bug-eyed terror. One smooth seamless looping cycle." \
+    --out-name ${breed}_flap --out-dir "$CHICK"
+  # Silkies are so fluffy that "flap in place" and "scramble" read the same on
+  # screen, so the silkie scramble gets a beak-open crow to differentiate it
+  # from silkie flap. The other breeds' silhouettes already differ enough.
+  if [ "$breed" = "silkie" ]; then
+    scramble_prompt="A cartoon silkie chicken scrambling in panic, beak wide open mid-crow, running blindly in a tight loop, terrified. One smooth seamless looping cycle."
+  else
+    scramble_prompt="A cartoon $breed chicken scrambling in panic, running blindly in a tight loop, terrified. One smooth seamless looping cycle."
+  fi
+  tools/veo_render.sh --loop --duration 4 --image "$PROPS/chicken_${breed}.png" \
+    --prompt "$scramble_prompt" \
+    --out-name ${breed}_scramble --out-dir "$CHICK"
+  tools/veo_render.sh --loop --duration 4 --image "$PROPS/chicken_${breed}.png" \
+    --prompt "A cartoon $breed chicken tumbling head-over-heels, legs flailing, beak open mid-crow. One smooth seamless looping cycle." \
+    --out-name ${breed}_tumble --out-dir "$CHICK"
+done
