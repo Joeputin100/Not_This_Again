@@ -84,6 +84,21 @@ func _ready() -> void:
 	_build_sections()
 
 func _build_sections() -> void:
+	# Iter 182 / SP1: rendering-rebuild tier. SP1 is the sprite-sheet
+	# animation system (this preview is live); SP2 and SP3 are reserved
+	# for future rendering work and are shown as disabled placeholders so
+	# the section is discoverable before they exist.
+	_add_section_header("RENDERING REBUILD")
+	var sp1_btn := _make_button("SP1 — SPRITE-SHEET ANIMATION (crowd viewer)")
+	sp1_btn.pressed.connect(_on_open_sp1_crowd_viewer)
+	content.add_child(sp1_btn)
+	var sp2_btn := _make_button("SP2 — (reserved)")
+	sp2_btn.disabled = true
+	content.add_child(sp2_btn)
+	var sp3_btn := _make_button("SP3 — (reserved)")
+	sp3_btn.disabled = true
+	content.add_child(sp3_btn)
+
 	_add_section_header("GOLD RUSH PREVIEWS")
 	for rush_id in RUSH_IDS:
 		var btn := _make_button(
@@ -232,6 +247,11 @@ func _on_open_rustler_rig() -> void:
 	AudioBus.play_tap()
 	DebugLog.add("debug: open candy rustler rig preview")
 	get_tree().change_scene_to_file("res://scenes/candy_rustler_rig_preview.tscn")
+
+func _on_open_sp1_crowd_viewer() -> void:
+	AudioBus.play_tap()
+	DebugLog.add("debug: open SP1 crowd viewer")
+	get_tree().change_scene_to_file("res://scenes/sp1_crowd_viewer.tscn")
 
 func _on_play_level_2() -> void:
 	AudioBus.play_tap()

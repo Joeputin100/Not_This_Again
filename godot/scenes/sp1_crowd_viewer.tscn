@@ -1,0 +1,146 @@
+[gd_scene load_steps=5 format=3 uid="uid://b0nttg_sp1_crowd_001"]
+
+; SP1 debug crowd viewer — 3D scene with a grassy plane, one FlipbookCrowd,
+; a slider for member count, a d-pad to walk the crowd, and a perf readout.
+; Accessed from debug_menu's "RENDERING REBUILD" section.
+
+[ext_resource type="Script" path="res://scripts/sp1_crowd_viewer.gd" id="1_script"]
+[ext_resource type="Theme" path="res://assets/theme.tres" id="2_theme"]
+
+[sub_resource type="PlaneMesh" id="PlaneMesh_grass"]
+size = Vector2(60, 60)
+
+[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_grass"]
+albedo_color = Color(0.27, 0.55, 0.20, 1)
+roughness = 0.95
+metallic_specular = 0.0
+
+[node name="SP1CrowdViewer" type="Node3D"]
+script = ExtResource("1_script")
+
+[node name="Camera3D" type="Camera3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 0.707, -0.707, 0, 0.707, 0.707, 0, 8, 8)
+fov = 50.0
+
+[node name="DirectionalLight3D" type="DirectionalLight3D" parent="."]
+transform = Transform3D(0.866, -0.354, 0.354, 0, 0.707, 0.707, -0.5, -0.612, 0.612, 0, 10, 0)
+light_energy = 1.1
+light_color = Color(1.0, 0.96, 0.85, 1)
+
+[node name="FillLight" type="DirectionalLight3D" parent="."]
+transform = Transform3D(-0.866, 0.354, -0.354, 0, 0.707, 0.707, 0.5, 0.612, -0.612, 0, 10, 0)
+light_energy = 0.35
+light_color = Color(0.7, 0.78, 1.0, 1)
+
+[node name="Grass" type="MeshInstance3D" parent="."]
+mesh = SubResource("PlaneMesh_grass")
+material_override = SubResource("StandardMaterial3D_grass")
+
+[node name="UI" type="CanvasLayer" parent="."]
+
+[node name="Panel" type="PanelContainer" parent="UI"]
+anchors_preset = -1
+anchor_left = 0.0
+anchor_top = 1.0
+anchor_right = 0.0
+anchor_bottom = 1.0
+offset_left = 30.0
+offset_top = -760.0
+offset_right = 540.0
+offset_bottom = -30.0
+theme = ExtResource("2_theme")
+
+[node name="VBox" type="VBoxContainer" parent="UI/Panel"]
+theme_override_constants/separation = 12
+
+[node name="CharLabel" type="Label" parent="UI/Panel/VBox"]
+text = "Character"
+theme_override_font_sizes/font_size = 28
+theme_override_colors/font_color = Color(0.95, 0.78, 0.35, 1)
+
+[node name="CharSelect" type="OptionButton" parent="UI/Panel/VBox"]
+custom_minimum_size = Vector2(0, 72)
+theme_override_font_sizes/font_size = 30
+
+[node name="CountLabel" type="Label" parent="UI/Panel/VBox"]
+text = "Crowd size: 20"
+theme_override_font_sizes/font_size = 28
+theme_override_colors/font_color = Color(0.95, 0.78, 0.35, 1)
+
+[node name="CountSlider" type="HSlider" parent="UI/Panel/VBox"]
+custom_minimum_size = Vector2(0, 60)
+min_value = 1.0
+max_value = 200.0
+value = 20.0
+step = 1.0
+
+[node name="DPadLabel" type="Label" parent="UI/Panel/VBox"]
+text = "Move crowd"
+theme_override_font_sizes/font_size = 28
+theme_override_colors/font_color = Color(0.95, 0.78, 0.35, 1)
+
+[node name="DPad" type="GridContainer" parent="UI/Panel/VBox"]
+columns = 3
+theme_override_constants/h_separation = 8
+theme_override_constants/v_separation = 8
+
+[node name="dp_blank_tl" type="Control" parent="UI/Panel/VBox/DPad"]
+custom_minimum_size = Vector2(120, 120)
+
+[node name="Up" type="Button" parent="UI/Panel/VBox/DPad"]
+custom_minimum_size = Vector2(120, 120)
+text = "↑"
+theme_override_font_sizes/font_size = 48
+
+[node name="dp_blank_tr" type="Control" parent="UI/Panel/VBox/DPad"]
+custom_minimum_size = Vector2(120, 120)
+
+[node name="Left" type="Button" parent="UI/Panel/VBox/DPad"]
+custom_minimum_size = Vector2(120, 120)
+text = "←"
+theme_override_font_sizes/font_size = 48
+
+[node name="dp_blank_mid" type="Control" parent="UI/Panel/VBox/DPad"]
+custom_minimum_size = Vector2(120, 120)
+
+[node name="Right" type="Button" parent="UI/Panel/VBox/DPad"]
+custom_minimum_size = Vector2(120, 120)
+text = "→"
+theme_override_font_sizes/font_size = 48
+
+[node name="dp_blank_bl" type="Control" parent="UI/Panel/VBox/DPad"]
+custom_minimum_size = Vector2(120, 120)
+
+[node name="Down" type="Button" parent="UI/Panel/VBox/DPad"]
+custom_minimum_size = Vector2(120, 120)
+text = "↓"
+theme_override_font_sizes/font_size = 48
+
+[node name="dp_blank_br" type="Control" parent="UI/Panel/VBox/DPad"]
+custom_minimum_size = Vector2(120, 120)
+
+[node name="Perf" type="Label" parent="UI"]
+anchors_preset = -1
+anchor_left = 1.0
+anchor_right = 1.0
+offset_left = -480.0
+offset_top = 30.0
+offset_right = -30.0
+offset_bottom = 90.0
+text = "FPS - draws - VRAM -"
+horizontal_alignment = 2
+theme = ExtResource("2_theme")
+theme_override_font_sizes/font_size = 28
+theme_override_colors/font_color = Color(0.95, 0.78, 0.35, 1)
+theme_override_colors/font_outline_color = Color(0.18, 0.10, 0.05, 1)
+theme_override_constants/outline_size = 4
+
+[node name="BackButton" type="Button" parent="UI"]
+anchors_preset = -1
+offset_left = 30.0
+offset_top = 30.0
+offset_right = 240.0
+offset_bottom = 110.0
+text = "← BACK"
+theme = ExtResource("2_theme")
+theme_override_font_sizes/font_size = 36
