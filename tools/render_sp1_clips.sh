@@ -53,3 +53,17 @@ for breed in rir leghorn silkie; do
     --prompt "A cartoon $breed chicken tumbling head-over-heels, legs flailing, beak open mid-crow. One smooth seamless looping cycle." \
     --out-name ${breed}_tumble --out-dir "$CHICK"
 done
+
+# ----- Build atlases for every SP1 clip (Task 5) -----
+# Runs build_atlas.py on every .ogv under each character dir. Missing dirs
+# (characters not yet rendered) are skipped via the -e guard. Output is
+# atlas PNG + .atlas.json sidecar keyed by ${dir}_${clipname}.
+ATLAS=godot/assets/sprites/atlases
+mkdir -p "$ATLAS"
+for dir in cowboy pete vagrant prospector humbug pusher chicken; do
+  for clip in godot/assets/videos/$dir/*.ogv; do
+    [ -e "$clip" ] || continue
+    base=$(basename "$clip" .ogv)
+    python3 tools/build_atlas.py --clip "$clip" --out "$ATLAS/${dir}_${base}"
+  done
+done
