@@ -1,14 +1,14 @@
-extends Node3D
+extends Node2D
 
-# SP1 debug crowd viewer: a 3D scene with a grassy plane, one FlipbookCrowd,
-# a slider to dial the member count, and a d-pad to walk the crowd around
-# the plane. Lets you look at the crowd animations in isolation from
-# gameplay — wired to the debug menu, not the gameplay path.
+# SP1 debug crowd viewer. The scene roots in Node2D + SubViewport because
+# the project's main window uses canvas_items stretch mode, so pure-Node3D
+# scenes don't activate their cameras under it (same reason terrain_3d
+# uses the SubViewport pattern). The 3D content (grass + crowd) lives
+# inside ViewportContainer/Viewport3D; the UI (slider, d-pad, perf) sits
+# in a CanvasLayer above.
 
 const FlipbookCrowd = preload("res://scripts/flipbook_crowd.gd")
 
-# Character → animation clips that crowd loops between. Each character has
-# its own list because clip names are character-prefixed by Task 5.
 const CHARACTERS := {
 	"cowboy": [
 		"cowboy_idle_a", "cowboy_idle_b", "cowboy_idle_c",
@@ -47,15 +47,16 @@ const CHARACTERS := {
 	"humbug": ["humbug_tip", "humbug_thought", "humbug_canard"],
 }
 
-const MOVE_SPEED := 4.0   # m/s when a d-pad direction is held
-const SPAWN_RADIUS := 5.0 # crowd members spread within this XZ radius
+const MOVE_SPEED := 4.0
+const SPAWN_RADIUS := 5.0
 
 var _crowd: Node3D = null
 var _character := "cowboy"
 var _target_count := 20
-var _ids: Array[int] = []     # member ids in insertion order
-var _move := Vector3.ZERO     # velocity from d-pad
+var _ids: Array[int] = []
+var _move := Vector3.ZERO
 
+@onready var viewport_3d: SubViewport = $ViewportContainer/Viewport3D
 @onready var slider: HSlider = $UI/Panel/VBox/CountSlider
 @onready var count_label: Label = $UI/Panel/VBox/CountLabel
 @onready var char_select: OptionButton = $UI/Panel/VBox/CharSelect
@@ -67,25 +68,44 @@ var _move := Vector3.ZERO     # velocity from d-pad
 @onready var dpad_right: Button = $UI/Panel/VBox/DPad/Right
 
 func _ready() -> void:
+	DebugLog.add("sp1_crowd_viewer: _ready start")
 	get_tree().set_quit_on_go_back(false)
 	if get_window():
 		get_window().go_back_requested.connect(_on_back_pressed)
-	back_button.pressed.connect(_on_back_pressed)
-	_populate_character_options()
-	slider.value_changed.connect(_on_slider_changed)
-	char_select.item_selected.connect(_on_character_selected)
+	if viewport_3d == null:
+		DebugLog.add("sp1_crowd_viewer: FATAL viewport_3d missing — abort")
+		return
+	DebugLog.add("sp1_crowd_viewer: viewport %s" % str(viewport_3d.size))
+	if back_button == null:
+		DebugLog.add("sp1_crowd_viewer: WARN back_button null")
+	else:
+		back_button.pressed.connect(_on_back_pressed)
+	if char_select == null or slider == null:
+		DebugLog.add("sp1_crowd_viewer: WARN UI missing — char_select=%s slider=%s" % [
+			char_select, slider])
+	else:
+		_populate_character_options()
+		slider.value_changed.connect(_on_slider_changed)
+		char_select.item_selected.connect(_on_character_selected)
 	_wire_dpad()
+	DebugLog.add("sp1_crowd_viewer: building crowd for %s" % _character)
 	_build_crowd(_character)
+	DebugLog.add("sp1_crowd_viewer: crowd built, adding %d members" % _target_count)
 	_set_count(_target_count)
-	_update_count_label()
+	if count_label:
+		_update_count_label()
+	DebugLog.add("sp1_crowd_viewer: _ready done")
 
 func _populate_character_options() -> void:
 	char_select.clear()
 	for c in CHARACTERS.keys():
 		char_select.add_item(c)
-	char_select.selected = 0  # cowboy
+	char_select.selected = 0
 
 func _wire_dpad() -> void:
+	if dpad_up == null or dpad_down == null or dpad_left == null or dpad_right == null:
+		DebugLog.add("sp1_crowd_viewer: WARN dpad buttons missing")
+		return
 	dpad_up.button_down.connect(func(): _move.z = -MOVE_SPEED)
 	dpad_up.button_up.connect(func(): _move.z = 0.0)
 	dpad_down.button_down.connect(func(): _move.z = MOVE_SPEED)
@@ -113,14 +133,16 @@ func _update_count_label() -> void:
 	count_label.text = "Crowd size: %d" % _target_count
 
 func _build_crowd(character: String) -> void:
-	# Tear down any prior crowd and its MultiMesh children, then build fresh.
 	if _crowd:
 		_crowd.queue_free()
 		_crowd = null
 	_ids.clear()
 	_crowd = FlipbookCrowd.new()
 	_crowd.name = "Crowd"
-	add_child(_crowd)
+	# Crowd must live inside the 3D SubViewport so its MeshInstances see
+	# the Camera3D + lights set up there. Adding to self (Node2D) would
+	# put it in 2D space where the 3D shader never runs.
+	viewport_3d.add_child(_crowd)
 	_crowd.configure(character, CHARACTERS[character])
 
 func _set_count(n: int) -> void:
@@ -138,12 +160,13 @@ func _set_count(n: int) -> void:
 func _process(dt: float) -> void:
 	if _crowd and _move.length_squared() > 0.0:
 		_crowd.position += _move * dt
-	perf.text = "FPS %d  draws %d  VRAM %.0f MB" % [
-		Engine.get_frames_per_second(),
-		RenderingServer.get_rendering_info(
-			RenderingServer.RENDERING_INFO_TOTAL_DRAW_CALLS_IN_FRAME),
-		RenderingServer.get_rendering_info(
-			RenderingServer.RENDERING_INFO_TEXTURE_MEM_USED) / 1048576.0]
+	if perf:
+		perf.text = "FPS %d  draws %d  VRAM %.0f MB" % [
+			Engine.get_frames_per_second(),
+			RenderingServer.get_rendering_info(
+				RenderingServer.RENDERING_INFO_TOTAL_DRAW_CALLS_IN_FRAME),
+			RenderingServer.get_rendering_info(
+				RenderingServer.RENDERING_INFO_TEXTURE_MEM_USED) / 1048576.0]
 
 func _on_back_pressed() -> void:
 	if get_node_or_null("/root/AudioBus"):

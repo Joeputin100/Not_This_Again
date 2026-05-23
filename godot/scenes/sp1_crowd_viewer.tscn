@@ -1,8 +1,12 @@
 [gd_scene load_steps=5 format=3 uid="uid://b0nttg_sp1_crowd_001"]
 
-; SP1 debug crowd viewer — 3D scene with a grassy plane, one FlipbookCrowd,
-; a slider for member count, a d-pad to walk the crowd, and a perf readout.
-; Accessed from debug_menu's "RENDERING REBUILD" section.
+; SP1 debug crowd viewer — 3D crowd preview wired through a SubViewport
+; so it renders correctly under the project's mobile / canvas_items
+; pipeline (same pattern as terrain_3d.tscn / level_3d.tscn). The 3D
+; content (camera, lights, grass plane, crowd) lives inside the
+; SubViewport; a SubViewportContainer displays its texture. The slider /
+; d-pad / perf-readout UI sits in a CanvasLayer above. Accessed from
+; debug_menu's "RENDERING REBUILD" section.
 
 [ext_resource type="Script" path="res://scripts/sp1_crowd_viewer.gd" id="1_script"]
 [ext_resource type="Theme" path="res://assets/theme.tres" id="2_theme"]
@@ -15,24 +19,44 @@ albedo_color = Color(0.27, 0.55, 0.20, 1)
 roughness = 0.95
 metallic_specular = 0.0
 
-[node name="SP1CrowdViewer" type="Node3D"]
+[node name="SP1CrowdViewer" type="Node2D"]
 script = ExtResource("1_script")
 
-[node name="Camera3D" type="Camera3D" parent="."]
+[node name="Background" type="ColorRect" parent="."]
+offset_right = 1080.0
+offset_bottom = 1920.0
+color = Color(0.42, 0.62, 0.85, 1)
+mouse_filter = 2
+
+[node name="ViewportContainer" type="SubViewportContainer" parent="."]
+offset_right = 1080.0
+offset_bottom = 1920.0
+stretch = true
+mouse_filter = 2
+
+[node name="Viewport3D" type="SubViewport" parent="ViewportContainer"]
+own_world_3d = true
+transparent_bg = false
+handle_input_locally = false
+size = Vector2i(1080, 1920)
+render_target_update_mode = 4
+
+[node name="Camera3D" type="Camera3D" parent="ViewportContainer/Viewport3D"]
 transform = Transform3D(1, 0, 0, 0, 0.707, -0.707, 0, 0.707, 0.707, 0, 8, 8)
+current = true
 fov = 50.0
 
-[node name="DirectionalLight3D" type="DirectionalLight3D" parent="."]
+[node name="KeyLight" type="DirectionalLight3D" parent="ViewportContainer/Viewport3D"]
 transform = Transform3D(0.866, -0.354, 0.354, 0, 0.707, 0.707, -0.5, -0.612, 0.612, 0, 10, 0)
 light_energy = 1.1
 light_color = Color(1.0, 0.96, 0.85, 1)
 
-[node name="FillLight" type="DirectionalLight3D" parent="."]
+[node name="FillLight" type="DirectionalLight3D" parent="ViewportContainer/Viewport3D"]
 transform = Transform3D(-0.866, 0.354, -0.354, 0, 0.707, 0.707, 0.5, 0.612, -0.612, 0, 10, 0)
 light_energy = 0.35
 light_color = Color(0.7, 0.78, 1.0, 1)
 
-[node name="Grass" type="MeshInstance3D" parent="."]
+[node name="Grass" type="MeshInstance3D" parent="ViewportContainer/Viewport3D"]
 mesh = SubResource("PlaneMesh_grass")
 material_override = SubResource("StandardMaterial3D_grass")
 
