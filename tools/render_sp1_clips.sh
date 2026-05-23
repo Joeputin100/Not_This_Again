@@ -54,16 +54,22 @@ for breed in rir leghorn silkie; do
     --out-name ${breed}_tumble --out-dir "$CHICK"
 done
 
-# ----- Build atlases for every SP1 clip (Task 5) -----
+# ----- Build atlases for every SP1 clip (Task 5 / Task 10) -----
 # Runs build_atlas.py on every .ogv under each character dir. Missing dirs
 # (characters not yet rendered) are skipped via the -e guard. Output is
 # atlas PNG + .atlas.json sidecar keyed by ${dir}_${clipname}.
+#
+# --scale 0.25 is the locked atlas resolution per Task 10. Source frames
+# are 720×1280 (Veo 9:16); a quarter-scale frame is 180×320, which is
+# still over-sampled for the device render where each character occupies
+# roughly 100–200 px of screen height. Dropped the APK from ~1.3 GB
+# (source-res atlases) to ~350 MB (locked-res atlases).
 ATLAS=godot/assets/sprites/atlases
 mkdir -p "$ATLAS"
 for dir in cowboy pete vagrant prospector humbug pusher chicken; do
   for clip in godot/assets/videos/$dir/*.ogv; do
     [ -e "$clip" ] || continue
     base=$(basename "$clip" .ogv)
-    python3 tools/build_atlas.py --clip "$clip" --out "$ATLAS/${dir}_${base}"
+    python3 tools/build_atlas.py --clip "$clip" --scale 0.25 --out "$ATLAS/${dir}_${base}"
   done
 done

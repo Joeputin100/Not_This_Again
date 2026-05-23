@@ -4,17 +4,22 @@
 Usage:
   build_atlas.py --clip path/to/clip.ogv --out godot/assets/sprites/atlases/cowboy_idle_a
   build_atlas.py --frames path/to/frames_dir --fps 24 --out .../name
+  build_atlas.py --clip ... --scale 0.25 --out ...   # ¼-resolution atlas
 
 Produces <out>.png (the grid atlas, RGBA with transparent background) and
 <out>.atlas.json ({cols, rows, frame_count, fps}).
 
 Pipeline per frame:
-  1. Letterbox strip: if Veo's input start frame wasn't 9:16, Veo padded
+  1. Optional scale: resize each frame by --scale (default 1.0) using
+     LANCZOS before any other work. The shipped APK should run from the
+     device-locked render resolution (see Task 10 in the SP1 plan), not
+     from the source-res 7200×12800 atlases that live in git.
+  2. Letterbox strip: if Veo's input start frame wasn't 9:16, Veo padded
      the output with solid pure-black bands top/bottom. Detect those and
      mark their pixels fully transparent.
-  2. Chroma-key Veo's green to transparent (vectorized numpy distance,
+  3. Chroma-key Veo's green to transparent (vectorized numpy distance,
      ~50x faster than per-pixel Python loop).
-  3. Zero out the RGB channels wherever alpha became 0 — keeps the file
+  4. Zero out the RGB channels wherever alpha became 0 — keeps the file
      small and shows real transparency in viewers that don't honour alpha.
 """
 import argparse
@@ -87,8 +92,15 @@ def key_frame(img: Image.Image) -> Image.Image:
     return Image.fromarray(arr)
 
 
-def build(frames: list[Path], fps: float, out: Path) -> None:
-    imgs = [key_frame(Image.open(f)) for f in sorted(frames)]
+def build(frames: list[Path], fps: float, out: Path, scale: float = 1.0) -> None:
+    imgs: list[Image.Image] = []
+    for f in sorted(frames):
+        img = Image.open(f)
+        if scale != 1.0:
+            new_size = (max(1, int(round(img.width * scale))),
+                        max(1, int(round(img.height * scale))))
+            img = img.resize(new_size, Image.Resampling.LANCZOS)
+        imgs.append(key_frame(img))
     n = len(imgs)
     cols = math.ceil(math.sqrt(n))
     rows = math.ceil(n / cols)
@@ -108,15 +120,17 @@ def main() -> None:
     ap.add_argument("--clip")
     ap.add_argument("--frames")
     ap.add_argument("--fps", type=float, default=24.0)
+    ap.add_argument("--scale", type=float, default=1.0,
+                    help="resize each frame by this factor (LANCZOS) before composition")
     ap.add_argument("--out", required=True)
     a = ap.parse_args()
     out = Path(a.out)
     if a.clip:
         with tempfile.TemporaryDirectory() as td:
             fps = extract_frames(Path(a.clip), Path(td))
-            build(sorted(Path(td).glob("f_*.png")), fps, out)
+            build(sorted(Path(td).glob("f_*.png")), fps, out, scale=a.scale)
     elif a.frames:
-        build(sorted(Path(a.frames).glob("*.png")), a.fps, out)
+        build(sorted(Path(a.frames).glob("*.png")), a.fps, out, scale=a.scale)
     else:
         sys.exit("need --clip or --frames")
 
