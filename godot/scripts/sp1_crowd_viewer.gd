@@ -57,6 +57,7 @@ var _ids: Array[int] = []
 var _move := Vector3.ZERO
 
 @onready var viewport_3d: SubViewport = $ViewportContainer/Viewport3D
+@onready var camera_3d: Camera3D = $ViewportContainer/Viewport3D/Camera3D
 @onready var slider: HSlider = $UI/Panel/VBox/CountSlider
 @onready var count_label: Label = $UI/Panel/VBox/CountLabel
 @onready var char_select: OptionButton = $UI/Panel/VBox/CharSelect
@@ -76,6 +77,15 @@ func _ready() -> void:
 		DebugLog.add("sp1_crowd_viewer: FATAL viewport_3d missing — abort")
 		return
 	DebugLog.add("sp1_crowd_viewer: viewport %s" % str(viewport_3d.size))
+	# Point the camera at the origin where the grass + crowd live.
+	# Hand-written Transform3D for pitch-down rotation in the .tscn was
+	# producing an up-looking basis — let Godot compute the orientation.
+	if camera_3d:
+		camera_3d.look_at(Vector3.ZERO, Vector3.UP)
+		DebugLog.add("sp1_crowd_viewer: camera look_at(origin) from %s" %
+			str(camera_3d.global_position))
+	else:
+		DebugLog.add("sp1_crowd_viewer: WARN camera_3d null")
 	if back_button == null:
 		DebugLog.add("sp1_crowd_viewer: WARN back_button null")
 	else:
