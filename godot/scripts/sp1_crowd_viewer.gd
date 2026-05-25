@@ -101,6 +101,10 @@ const DIRECTIONS := {
 const MOVE_SPEED := 4.0
 const SPAWN_RADIUS := 5.0
 const GRASS_HALF := 25.0    # crowd clamp bound — keeps members on the visible grass
+# Crowd quads are 1.125 x 2.0 (set in flipbook_crowd.configure). The mesh
+# centers on its origin, so the quad spans y=-1..+1 in local space — half
+# below ground. Lifting each member by half the height puts feet at y=0.
+const CHARACTER_HALF_HEIGHT := 1.0
 
 # Grass field: MultiMesh of billboarded grass-tuft sprites, expanded to a
 # full field per the roguelike webgl demo. Tufts share one draw call via
@@ -254,7 +258,7 @@ func _set_count(n: int) -> void:
 	while _ids.size() < n:
 		var clip: String = clips[_ids.size() % clips.size()]
 		var x := Transform3D(Basis(), Vector3(
-			randf_range(-SPAWN_RADIUS, SPAWN_RADIUS), 0.0,
+			randf_range(-SPAWN_RADIUS, SPAWN_RADIUS), CHARACTER_HALF_HEIGHT,
 			randf_range(-SPAWN_RADIUS, SPAWN_RADIUS)))
 		var id: int = _crowd.add_member(clip, x)
 		_ids.append(id)
