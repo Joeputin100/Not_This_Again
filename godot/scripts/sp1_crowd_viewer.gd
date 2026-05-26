@@ -101,6 +101,46 @@ const DIRECTIONS := {
 const MOVE_SPEED := 4.0
 const SPAWN_RADIUS := 5.0
 const GRASS_HALF := 25.0    # crowd clamp bound — keeps members on the visible grass
+
+# Lighting presets — drive KeyLight + WorldEnvironment to fake different
+# times of day. Each preset's shadow direction is the same (the light
+# transform is fixed; we vary colour/energy + ambient/background). For
+# proper "low sun = long shadows" we'd vary the light's pitch too, which
+# would be a future iteration.
+const LIGHTING_PRESETS := {
+	"daylight": {
+		"light_color":   Color(1.00, 0.96, 0.82, 1),
+		"light_energy":  1.2,
+		"ambient_color": Color(0.78, 0.82, 0.92, 1),
+		"ambient_energy": 0.3,
+		"bg_color":      Color(0.42, 0.62, 0.85, 1),
+		"shadow_dim":    0.55,
+	},
+	"sunset": {
+		"light_color":   Color(1.00, 0.55, 0.30, 1),
+		"light_energy":  1.5,
+		"ambient_color": Color(0.92, 0.55, 0.45, 1),
+		"ambient_energy": 0.4,
+		"bg_color":      Color(0.92, 0.55, 0.30, 1),
+		"shadow_dim":    0.45,
+	},
+	"moonlight": {
+		"light_color":   Color(0.60, 0.72, 1.00, 1),
+		"light_energy":  0.55,
+		"ambient_color": Color(0.18, 0.24, 0.48, 1),
+		"ambient_energy": 0.20,
+		"bg_color":      Color(0.06, 0.09, 0.22, 1),
+		"shadow_dim":    0.30,
+	},
+	"overcast": {
+		"light_color":   Color(0.92, 0.94, 0.95, 1),
+		"light_energy":  0.6,
+		"ambient_color": Color(0.86, 0.88, 0.92, 1),
+		"ambient_energy": 0.7,
+		"bg_color":      Color(0.78, 0.80, 0.82, 1),
+		"shadow_dim":    0.75,
+	},
+}
 # Crowd quads are 1.125 x 2.0 (set in flipbook_crowd.configure). The mesh
 # centers on its origin, so the quad spans y=-1..+1 in local space — half
 # below ground. Lifting each member by half the height puts feet at y=0.
@@ -126,9 +166,12 @@ var _move := Vector3.ZERO
 
 @onready var viewport_3d: SubViewport = $ViewportContainer/Viewport3D
 @onready var camera_3d: Camera3D = $ViewportContainer/Viewport3D/Camera3D
+@onready var key_light: DirectionalLight3D = $ViewportContainer/Viewport3D/KeyLight
+@onready var world_env: WorldEnvironment = $ViewportContainer/Viewport3D/WorldEnvironment
 @onready var slider: HSlider = $UI/Panel/VBox/CountSlider
 @onready var count_label: Label = $UI/Panel/VBox/CountLabel
 @onready var char_select: OptionButton = $UI/Panel/VBox/CharSelect
+@onready var light_select: OptionButton = $UI/Panel/VBox/LightSelect
 @onready var perf: Label = $UI/Perf
 @onready var back_button: Button = $UI/BackButton
 @onready var dpad_up: Button = $UI/Panel/VBox/DPad/Up
@@ -158,8 +201,12 @@ func _ready() -> void:
 			char_select, slider])
 	else:
 		_populate_character_options()
+		_populate_lighting_options()
 		slider.value_changed.connect(_on_slider_changed)
 		char_select.item_selected.connect(_on_character_selected)
+		if light_select:
+			light_select.item_selected.connect(_on_lighting_selected)
+			_apply_lighting_preset("daylight")
 	# d-pad inputs are polled in _process (see _update_direction) so we
 	# can handle the case where the user releases one button while another
 	# is still held — signal-only connects don't track multi-button state.
@@ -177,6 +224,48 @@ func _populate_character_options() -> void:
 	for c in CHARACTERS.keys():
 		char_select.add_item(c)
 	char_select.selected = 0
+
+func _populate_lighting_options() -> void:
+	if light_select == null:
+		return
+	light_select.clear()
+	for k in LIGHTING_PRESETS.keys():
+		light_select.add_item(k)
+	light_select.selected = 0  # daylight
+
+func _on_lighting_selected(idx: int) -> void:
+	var keys: Array = LIGHTING_PRESETS.keys()
+	_apply_lighting_preset(keys[idx])
+
+func _apply_lighting_preset(name: String) -> void:
+	var p: Dictionary = LIGHTING_PRESETS.get(name, {})
+	if p.is_empty():
+		return
+	if key_light:
+		key_light.light_color = p["light_color"]
+		key_light.light_energy = p["light_energy"]
+	if world_env and world_env.environment:
+		var env: Environment = world_env.environment
+		env.ambient_light_color = p["ambient_color"]
+		env.ambient_light_energy = p["ambient_energy"]
+		env.background_color = p["bg_color"]
+	# Push shadow_dim into every crowd-MultiMesh shader so figures darken
+	# more in moonlight, less in overcast.
+	if _crowd:
+		var sd: float = p["shadow_dim"]
+		for child in _crowd.get_children():
+			if child is MultiMeshInstance3D and child.material_override is ShaderMaterial:
+				(child.material_override as ShaderMaterial).set_shader_parameter("shadow_dim", sd)
+	# Keep the OptionButton's visible label in sync if this was invoked from
+	# code (not the dropdown signal).
+	if light_select:
+		var i := 0
+		for k in LIGHTING_PRESETS.keys():
+			if k == name:
+				light_select.selected = i
+				break
+			i += 1
+	DebugLog.add("sp1_crowd_viewer: lighting preset = %s" % name)
 
 func _on_character_selected(idx: int) -> void:
 	var keys: Array = CHARACTERS.keys()

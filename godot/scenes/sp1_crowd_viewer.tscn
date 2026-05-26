@@ -112,7 +112,7 @@ anchor_top = 1.0
 anchor_right = 0.0
 anchor_bottom = 1.0
 offset_left = 30.0
-offset_top = -760.0
+offset_top = -900.0
 offset_right = 540.0
 offset_bottom = -30.0
 theme = ExtResource("2_theme")
@@ -126,6 +126,15 @@ theme_override_font_sizes/font_size = 28
 theme_override_colors/font_color = Color(0.95, 0.78, 0.35, 1)
 
 [node name="CharSelect" type="OptionButton" parent="UI/Panel/VBox"]
+custom_minimum_size = Vector2(0, 72)
+theme_override_font_sizes/font_size = 30
+
+[node name="LightLabel" type="Label" parent="UI/Panel/VBox"]
+text = "Lighting"
+theme_override_font_sizes/font_size = 28
+theme_override_colors/font_color = Color(0.95, 0.78, 0.35, 1)
+
+[node name="LightSelect" type="OptionButton" parent="UI/Panel/VBox"]
 custom_minimum_size = Vector2(0, 72)
 theme_override_font_sizes/font_size = 30
 
