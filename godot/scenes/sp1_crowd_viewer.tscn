@@ -1,4 +1,4 @@
-[gd_scene load_steps=7 format=3 uid="uid://b0nttg_sp1_crowd_001"]
+[gd_scene load_steps=9 format=3 uid="uid://b0nttg_sp1_crowd_001"]
 
 ; SP1 debug crowd viewer — 3D crowd preview wired through a SubViewport
 ; so it renders correctly under the project's mobile / canvas_items
@@ -33,6 +33,20 @@ roughness = 0.95
 metallic_specular = 0.0
 uv1_scale = Vector3(12, 12, 1)
 
+; Environment provides ambient fill so areas not directly hit by the key
+; light still read clearly. The horizon/ambient color is a warm grey-blue,
+; tunable later per "level lighting preset" (daylight / sunset / moonlight).
+[sub_resource type="Environment" id="Env_daylight"]
+background_mode = 1
+background_color = Color(0.42, 0.62, 0.85, 1)
+ambient_light_source = 2
+ambient_light_color = Color(0.78, 0.82, 0.92, 1)
+ambient_light_energy = 0.3
+tonemap_mode = 2
+
+[sub_resource type="CameraAttributesPractical" id="CamAttr_daylight"]
+
+
 [node name="SP1CrowdViewer" type="Node2D"]
 script = ExtResource("1_script")
 
@@ -55,24 +69,39 @@ handle_input_locally = false
 size = Vector2i(1080, 1920)
 render_target_update_mode = 4
 
+[node name="WorldEnvironment" type="WorldEnvironment" parent="ViewportContainer/Viewport3D"]
+environment = SubResource("Env_daylight")
+
 [node name="Camera3D" type="Camera3D" parent="ViewportContainer/Viewport3D"]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 8, 8)
 current = true
 fov = 50.0
+attributes = SubResource("CamAttr_daylight")
 
+; Sun-style light: pitched ~30° down from horizontal, casting shadows
+; toward camera-left so they're clearly visible from the (0,8,8) camera
+; angle. Lower shadow_bias because the cowboy quads are thin (alpha-cut).
 [node name="KeyLight" type="DirectionalLight3D" parent="ViewportContainer/Viewport3D"]
-transform = Transform3D(0.866, -0.354, 0.354, 0, 0.707, 0.707, -0.5, -0.612, 0.612, 0, 10, 0)
-light_energy = 1.1
-light_color = Color(1.0, 0.96, 0.85, 1)
+transform = Transform3D(0.707, 0, -0.707, -0.354, 0.866, -0.354, 0.612, 0.5, 0.612, 4, 8, 0)
+light_energy = 1.2
+light_color = Color(1.0, 0.96, 0.82, 1)
+shadow_enabled = true
+shadow_bias = 0.02
+shadow_normal_bias = 0.5
+shadow_blur = 1.0
+directional_shadow_mode = 1
+directional_shadow_max_distance = 60.0
 
 [node name="FillLight" type="DirectionalLight3D" parent="ViewportContainer/Viewport3D"]
 transform = Transform3D(-0.866, 0.354, -0.354, 0, 0.707, 0.707, 0.5, 0.612, -0.612, 0, 10, 0)
 light_energy = 0.35
 light_color = Color(0.7, 0.78, 1.0, 1)
+shadow_enabled = false
 
 [node name="Grass" type="MeshInstance3D" parent="ViewportContainer/Viewport3D"]
 mesh = SubResource("PlaneMesh_grass")
 material_override = SubResource("StandardMaterial3D_grass")
+
 
 [node name="UI" type="CanvasLayer" parent="."]
 

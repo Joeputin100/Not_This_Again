@@ -10,8 +10,12 @@ shader_type spatial;
 // offset, every tuft would sway in lock-step, which reads as artificial.
 // Bottom of each quad stays planted (top sways) so the field looks like
 // grass anchored to the ground, not floating cards.
+//
+// NOT unshaded so the material participates in shadow casting + receiving.
+// Like flipbook.gdshader, the light() function preserves the pre-shaded
+// look (no Lambert dot product) and just applies ATTENUATION/shadow tint.
 
-render_mode blend_mix, depth_draw_opaque, cull_disabled, unshaded;
+render_mode blend_mix, depth_draw_opaque, cull_disabled, depth_prepass_alpha;
 
 uniform sampler2D albedo_tex : source_color, filter_linear_mipmap;
 uniform vec4 modulate : source_color = vec4(1.0);
@@ -21,6 +25,7 @@ uniform float sway_freq : hint_range(0.1, 5.0) = 1.5;
 uniform float bob_amp : hint_range(0.0, 0.10) = 0.020;
 uniform float bob_freq : hint_range(0.1, 5.0) = 2.2;
 uniform float mesh_height : hint_range(0.1, 5.0) = 0.7;
+uniform float shadow_dim : hint_range(0.0, 1.0) = 0.55;
 
 void vertex() {
 	// MultiMesh.instance_custom_data.r in [0,1] -> phase offset 0..2π.
@@ -61,5 +66,15 @@ void fragment() {
 	vec4 tex = texture(albedo_tex, UV) * modulate;
 	if (tex.a < alpha_cutoff) { discard; }
 	ALBEDO = tex.rgb;
+	METALLIC = 0.0;
+	ROUGHNESS = 1.0;
+	SPECULAR = 0.0;
 	ALPHA = 1.0;
+}
+
+void light() {
+	// Same pattern as flipbook.gdshader — preserve pre-shaded art, only
+	// modulate by ATTENUATION (shadow factor).
+	float f = mix(shadow_dim, 1.0, ATTENUATION);
+	DIFFUSE_LIGHT += ALBEDO * LIGHT_COLOR * f;
 }
