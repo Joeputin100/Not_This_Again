@@ -78,19 +78,15 @@ current = true
 fov = 50.0
 attributes = SubResource("CamAttr_daylight")
 
-; Sun-style light: pitched ~30° down from horizontal, casting shadows
-; toward camera-left so they're clearly visible from the (0,8,8) camera
-; angle. Lower shadow_bias because the cowboy quads are thin (alpha-cut).
+; Sun-style light pitched ~30° down from horizontal. Shadows disabled here
+; because the flipbook + grass_field shaders are `unshaded` (can't cast
+; shadows anyway, per Godot 4's Mobile renderer behaviour). The figure
+; shadow-cast feature is deferred — blob-shadow planes will replace this.
 [node name="KeyLight" type="DirectionalLight3D" parent="ViewportContainer/Viewport3D"]
 transform = Transform3D(0.707, 0, -0.707, -0.354, 0.866, -0.354, 0.612, 0.5, 0.612, 4, 8, 0)
 light_energy = 1.2
 light_color = Color(1.0, 0.96, 0.82, 1)
-shadow_enabled = true
-shadow_bias = 0.02
-shadow_normal_bias = 0.5
-shadow_blur = 1.0
-directional_shadow_mode = 1
-directional_shadow_max_distance = 60.0
+shadow_enabled = false
 
 [node name="FillLight" type="DirectionalLight3D" parent="ViewportContainer/Viewport3D"]
 transform = Transform3D(-0.866, 0.354, -0.354, 0, 0.707, 0.707, 0.5, 0.612, -0.612, 0, 10, 0)

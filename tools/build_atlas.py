@@ -38,7 +38,10 @@ Image.MAX_IMAGE_PIXELS = None
 
 GREEN = (0, 177, 64)        # Veo chroma-green; tune if a clip differs
 KEY_TOLERANCE = 70          # per-channel summed distance (×3) treated as background
-LETTERBOX_ROW_THRESHOLD = 0.95  # fraction of near-black pixels needed to call a row letterbox
+LETTERBOX_ROW_THRESHOLD = 0.80  # fraction of near-black pixels needed to call a row letterbox
+                                # (relaxed from 0.95 — prospector_death has a transition zone
+                                # between bar and figure at ~80-93% blackness that the stricter
+                                # threshold missed, leaving a visible inner strip on-device)
 LETTERBOX_BLACK_SUM = 15    # rgb-sum <= this counts as "near-black" (catches Veo's
                             # (1,1,1)-ish compression noise around true (0,0,0) bands)
 

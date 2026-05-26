@@ -31,7 +31,13 @@ func _ready() -> void:
 		get_tree().quit(2); return
 	var instance: Node = packed.instantiate()
 	add_child(instance)
-	await get_tree().create_timer(WAIT_SECONDS).timeout
+	# Use frame-count wait instead of wall-clock — under heavy software-renderer
+	# load (800 grass tufts + 20 crowd MultiMesh instances) the SceneTree
+	# timer can stall and never fire. 8 process_frames is enough at any fps
+	# for NoiseTexture2D + atlas loads + first MultiMesh render to settle.
+	for i in 8:
+		await get_tree().process_frame
+		print("    frame ", i + 1, " ready")
 	var img: Image = null
 	if _mode == "subviewport":
 		var sv: SubViewport = instance.get_node_or_null("ViewportContainer/Viewport3D")

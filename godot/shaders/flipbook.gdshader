@@ -1,22 +1,22 @@
 shader_type spatial;
-// NOT unshaded: dropping unshaded so the material participates in the shadow
-// pass — Godot 4's GL Compatibility & Mobile renderers skip shadow casting
-// for unshaded materials. We get pre-shaded-art behaviour back via a custom
-// light() function that ignores diffuse direction but applies shadow
-// attenuation (so figures darken in someone else's shadow).
-// Plain opaque rendering — the fragment's discard makes this an alpha-test
-// (not alpha-blend). Treating as opaque keeps the Z-buffer authoritative so
-// crowd members and grass tufts never swap front/back as the crowd moves
-// (alpha-blend would force per-pixel sorting that's not depth-correct).
+// `unshaded` (back from a brief attempt to use a custom light() for shadow
+// tinting — that produced "Pete's white shirt invisible" artifacts on the
+// Mobile renderer, best guess being NaN ATTENUATION or platform-specific
+// clamping inside the custom light() path. Reverted to plain unshaded so
+// the texture renders exactly as drawn.)
 //
-// depth_prepass_alpha is REQUIRED for Mobile renderer: without it, the
-// depth pre-pass uses a simpler shader that doesn't run discard, so the
-// depth buffer treats the entire quad rectangle as solid. Behind-quad
-// fragments then get Z-rejected even where the quad is transparent,
-// causing other crowd members + grass tufts to render with holes
-// "punched out" by quads in front of them. Forward+ renderer is lenient
-// about this; Mobile is strict.
-render_mode cull_disabled, depth_draw_opaque, depth_prepass_alpha;
+// `depth_prepass_alpha` REQUIRED: without it, the depth pre-pass uses a
+// simpler shader that doesn't run discard, so the depth buffer treats the
+// entire quad rectangle as solid. Behind-quad fragments then get Z-rejected
+// even where the quad is transparent, causing other crowd members + grass
+// tufts to render with figure-quad-shaped holes punched through them.
+// Forward+ renderer is lenient; Mobile renderer is strict.
+//
+// Shadow casting from these figures is not supported by `unshaded`. The
+// shadow-casting feature target uses blob-shadow planes (separate
+// implementation) so the figure outline still casts a directional shadow
+// without forcing the figure shader to participate in lighting.
+render_mode unshaded, cull_disabled, depth_draw_opaque, depth_prepass_alpha;
 
 // Atlas playback. The same shader serves singletons (Pete, Humbug) and
 // MultiMesh crowds (cowboy, chicken, etc.) — set use_instance=1 for crowds
@@ -66,16 +66,5 @@ void fragment() {
     vec4 c = texture(atlas, uv);
     if (c.a < alpha_clip) { discard; }
     ALBEDO = c.rgb;
-    METALLIC = 0.0;
-    ROUGHNESS = 1.0;
-    SPECULAR = 0.0;
     ALPHA = 1.0;
-}
-
-void light() {
-    // Preserve the pre-shaded paper-cutout look: ignore the Lambert dot
-    // product and just modulate by ATTENUATION (1.0 fully lit, 0.0 in shadow).
-    // shadow_dim controls the minimum brightness when fully shadowed.
-    float f = mix(shadow_dim, 1.0, ATTENUATION);
-    DIFFUSE_LIGHT += ALBEDO * LIGHT_COLOR * f;
 }

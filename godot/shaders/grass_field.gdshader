@@ -11,16 +11,20 @@ shader_type spatial;
 // Bottom of each quad stays planted (top sways) so the field looks like
 // grass anchored to the ground, not floating cards.
 //
-// NOT unshaded so the material participates in shadow casting + receiving.
-// Like flipbook.gdshader, the light() function preserves the pre-shaded
-// look (no Lambert dot product) and just applies ATTENUATION/shadow tint.
+// `unshaded` (mirrors flipbook.gdshader) — the lighting-feature custom
+// light() path triggered Mobile-renderer artifacts (Pete white-shirt
+// transparency), so figures + tufts are drawn flat-shaded from the
+// texture exactly as authored.
 
 // Plain opaque rendering — alpha-test via discard, Z-buffer handles all
 // occlusion between tufts and crowd members. depth_prepass_alpha is
 // required for Mobile renderer alpha-cutout correctness; without it the
 // transparent halo around each tuft writes "solid" depth and punches
 // holes through whatever's behind (see flipbook.gdshader comment).
-render_mode cull_disabled, depth_draw_opaque, depth_prepass_alpha;
+// Back to unshaded for Mobile-renderer compatibility; same rationale as
+// flipbook.gdshader's render mode. depth_prepass_alpha stays for proper
+// alpha-cutout depth.
+render_mode unshaded, cull_disabled, depth_draw_opaque, depth_prepass_alpha;
 
 uniform sampler2D albedo_tex : source_color, filter_linear_mipmap;
 uniform vec4 modulate : source_color = vec4(1.0);
@@ -71,15 +75,5 @@ void fragment() {
 	vec4 tex = texture(albedo_tex, UV) * modulate;
 	if (tex.a < alpha_cutoff) { discard; }
 	ALBEDO = tex.rgb;
-	METALLIC = 0.0;
-	ROUGHNESS = 1.0;
-	SPECULAR = 0.0;
 	ALPHA = 1.0;
-}
-
-void light() {
-	// Same pattern as flipbook.gdshader — preserve pre-shaded art, only
-	// modulate by ATTENUATION (shadow factor).
-	float f = mix(shadow_dim, 1.0, ATTENUATION);
-	DIFFUSE_LIGHT += ALBEDO * LIGHT_COLOR * f;
 }
