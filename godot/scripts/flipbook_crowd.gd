@@ -36,6 +36,11 @@ func configure(_character: String, clips: Array) -> void:
 		mat.set_shader_parameter("fps", float(meta["fps"]))
 		mat.set_shader_parameter("use_instance", 1)   # read start/phase/flip per instance
 		mmi.material_override = mat
+		# Cast shadows so each member contributes a figure-shaped shadow via
+		# the alpha-aware depth-pre-pass. Default is ON but being explicit
+		# documents the dependency and survives any future refactor that
+		# might set it to SHADOW_OFF (e.g., for a low-end-device option).
+		mmi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_ON
 		add_child(mmi)
 		_meshes[clip] = mmi
 

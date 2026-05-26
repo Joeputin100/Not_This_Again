@@ -8,7 +8,15 @@ shader_type spatial;
 // (not alpha-blend). Treating as opaque keeps the Z-buffer authoritative so
 // crowd members and grass tufts never swap front/back as the crowd moves
 // (alpha-blend would force per-pixel sorting that's not depth-correct).
-render_mode cull_disabled, depth_draw_opaque;
+//
+// depth_prepass_alpha is REQUIRED for Mobile renderer: without it, the
+// depth pre-pass uses a simpler shader that doesn't run discard, so the
+// depth buffer treats the entire quad rectangle as solid. Behind-quad
+// fragments then get Z-rejected even where the quad is transparent,
+// causing other crowd members + grass tufts to render with holes
+// "punched out" by quads in front of them. Forward+ renderer is lenient
+// about this; Mobile is strict.
+render_mode cull_disabled, depth_draw_opaque, depth_prepass_alpha;
 
 // Atlas playback. The same shader serves singletons (Pete, Humbug) and
 // MultiMesh crowds (cowboy, chicken, etc.) — set use_instance=1 for crowds

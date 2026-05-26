@@ -316,6 +316,7 @@ func _spawn_grass_field() -> void:
 	mat.set_shader_parameter("bob_freq", 2.2)
 	mmi.material_override = mat
 	mmi.multimesh = mm
+	mmi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_ON
 	viewport_3d.add_child(mmi)
 	mm.instance_count = GRASS_TUFT_COUNT
 	for i in GRASS_TUFT_COUNT:

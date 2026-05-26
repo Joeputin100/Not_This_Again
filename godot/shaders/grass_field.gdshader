@@ -16,9 +16,11 @@ shader_type spatial;
 // look (no Lambert dot product) and just applies ATTENUATION/shadow tint.
 
 // Plain opaque rendering — alpha-test via discard, Z-buffer handles all
-// occlusion between tufts and crowd members. Avoids the "crowd over/under
-// grass swaps on movement" bug that alpha-blend sorting causes.
-render_mode depth_draw_opaque, cull_disabled;
+// occlusion between tufts and crowd members. depth_prepass_alpha is
+// required for Mobile renderer alpha-cutout correctness; without it the
+// transparent halo around each tuft writes "solid" depth and punches
+// holes through whatever's behind (see flipbook.gdshader comment).
+render_mode cull_disabled, depth_draw_opaque, depth_prepass_alpha;
 
 uniform sampler2D albedo_tex : source_color, filter_linear_mipmap;
 uniform vec4 modulate : source_color = vec4(1.0);
