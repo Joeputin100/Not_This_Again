@@ -85,10 +85,12 @@ const DIRECTIONS := {
 		"back":  "pusher_run_forward",
 	},
 	"chicken": {
-		"fwd":   "chicken_rir_scramble",
-		"left":  "chicken_leghorn_scramble",
-		"right": "chicken_silkie_scramble",
-		"back":  "chicken_rir_scramble",
+		# Chickens are in-place panickers; "directional walk" doesn't really
+		# apply. d-pad press just intensifies the panic (scramble) but keeps
+		# whatever breed each member was spawned with — _apply_direction_to_crowd
+		# treats missing direction keys as "stay on initial clip", and idle
+		# returns to spawn-variety. This entry is kept empty intentionally so
+		# the d-pad doesn't cause breeds to swap on the crowd.
 	},
 	"humbug": {
 		"fwd":   "humbug_tip",

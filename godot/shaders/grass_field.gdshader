@@ -15,7 +15,10 @@ shader_type spatial;
 // Like flipbook.gdshader, the light() function preserves the pre-shaded
 // look (no Lambert dot product) and just applies ATTENUATION/shadow tint.
 
-render_mode blend_mix, depth_draw_opaque, cull_disabled, depth_prepass_alpha;
+// Plain opaque rendering — alpha-test via discard, Z-buffer handles all
+// occlusion between tufts and crowd members. Avoids the "crowd over/under
+// grass swaps on movement" bug that alpha-blend sorting causes.
+render_mode depth_draw_opaque, cull_disabled;
 
 uniform sampler2D albedo_tex : source_color, filter_linear_mipmap;
 uniform vec4 modulate : source_color = vec4(1.0);

@@ -38,7 +38,9 @@ Image.MAX_IMAGE_PIXELS = None
 
 GREEN = (0, 177, 64)        # Veo chroma-green; tune if a clip differs
 KEY_TOLERANCE = 70          # per-channel summed distance (×3) treated as background
-LETTERBOX_ROW_THRESHOLD = 0.99  # fraction of pure-black pixels needed to call a row "letterbox"
+LETTERBOX_ROW_THRESHOLD = 0.95  # fraction of near-black pixels needed to call a row letterbox
+LETTERBOX_BLACK_SUM = 15    # rgb-sum <= this counts as "near-black" (catches Veo's
+                            # (1,1,1)-ish compression noise around true (0,0,0) bands)
 
 
 def extract_frames(clip: Path, dst: Path) -> float:
@@ -65,20 +67,34 @@ def key_frame(img: Image.Image) -> Image.Image:
     H = arr.shape[0]
     rgb = arr[..., :3]
 
-    # 1. Letterbox: rows that are ≥99% pure black at the very top / bottom.
-    # We only walk inward from the edges so we never zero a black interior
-    # row that happens to be dim.
-    row_blackness = (rgb.sum(axis=-1) == 0).mean(axis=1)
+    # 1. Letterbox: rows / columns near the edges that are ≥95% near-black.
+    # Veo's letterbox bands aren't always pure (0,0,0) — JPEG-like noise in
+    # the OGV encoding makes them (1,1,1)-ish, so allow a small tolerance.
+    # Walk INWARD from each edge so we never zero a dark interior band.
+    near_black = (rgb.sum(axis=-1) <= LETTERBOX_BLACK_SUM)
+    row_blackness = near_black.mean(axis=1)
+    col_blackness = near_black.mean(axis=0)
+    W = arr.shape[1]
     top = 0
     while top < H and row_blackness[top] >= LETTERBOX_ROW_THRESHOLD:
         top += 1
     bottom = H
     while bottom > top and row_blackness[bottom - 1] >= LETTERBOX_ROW_THRESHOLD:
         bottom -= 1
+    left = 0
+    while left < W and col_blackness[left] >= LETTERBOX_ROW_THRESHOLD:
+        left += 1
+    right = W
+    while right > left and col_blackness[right - 1] >= LETTERBOX_ROW_THRESHOLD:
+        right -= 1
     if top > 0:
         arr[:top] = 0
     if bottom < H:
         arr[bottom:] = 0
+    if left > 0:
+        arr[:, :left] = 0
+    if right < W:
+        arr[:, right:] = 0
 
     # 2. Chroma-key the green: same per-channel summed distance threshold as
     # before, just vectorized.

@@ -4,7 +4,11 @@ shader_type spatial;
 // for unshaded materials. We get pre-shaded-art behaviour back via a custom
 // light() function that ignores diffuse direction but applies shadow
 // attenuation (so figures darken in someone else's shadow).
-render_mode cull_disabled, depth_draw_opaque, depth_prepass_alpha;
+// Plain opaque rendering — the fragment's discard makes this an alpha-test
+// (not alpha-blend). Treating as opaque keeps the Z-buffer authoritative so
+// crowd members and grass tufts never swap front/back as the crowd moves
+// (alpha-blend would force per-pixel sorting that's not depth-correct).
+render_mode cull_disabled, depth_draw_opaque;
 
 // Atlas playback. The same shader serves singletons (Pete, Humbug) and
 // MultiMesh crowds (cowboy, chicken, etc.) — set use_instance=1 for crowds
