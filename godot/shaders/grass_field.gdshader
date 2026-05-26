@@ -24,7 +24,10 @@ shader_type spatial;
 // Back to unshaded for Mobile-renderer compatibility; same rationale as
 // flipbook.gdshader's render mode. depth_prepass_alpha stays for proper
 // alpha-cutout depth.
-render_mode unshaded, cull_disabled, depth_draw_opaque, depth_prepass_alpha;
+// Mirror flipbook.gdshader's render mode: back to blend_mix so the
+// transparent halo doesn't write depth and punch holes through figures
+// behind it on the Mobile renderer.
+render_mode unshaded, cull_disabled, depth_draw_opaque, blend_mix;
 
 uniform sampler2D albedo_tex : source_color, filter_linear_mipmap;
 uniform vec4 modulate : source_color = vec4(1.0);
@@ -75,5 +78,5 @@ void fragment() {
 	vec4 tex = texture(albedo_tex, UV) * modulate;
 	if (tex.a < alpha_cutoff) { discard; }
 	ALBEDO = tex.rgb;
-	ALPHA = 1.0;
+	ALPHA = tex.a;   // pass-through for blend_mix
 }

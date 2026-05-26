@@ -16,7 +16,16 @@ shader_type spatial;
 // shadow-casting feature target uses blob-shadow planes (separate
 // implementation) so the figure outline still casts a directional shadow
 // without forcing the figure shader to participate in lighting.
-render_mode unshaded, cull_disabled, depth_draw_opaque, depth_prepass_alpha;
+// Back to alpha-blend after a Mobile-renderer regression: opaque rendering
+// with depth_prepass_alpha was supposed to let transparent halos skip
+// depth-writing, but on Mobile the halo still wrote depth, so overlapping
+// quads punched holes through each other's figure bodies (Pete's torso
+// disappeared behind another Pete's halo). blend_mix never writes depth
+// for transparent pixels, so the holes go away. Trade-off: the alpha-blend
+// sort isn't always camera-depth-correct, so close-by figures + grass can
+// swap front/back during movement — a smaller visible bug than Pete's
+// transparent torso.
+render_mode unshaded, cull_disabled, depth_draw_opaque, blend_mix;
 
 // Atlas playback. The same shader serves singletons (Pete, Humbug) and
 // MultiMesh crowds (cowboy, chicken, etc.) — set use_instance=1 for crowds
@@ -66,5 +75,5 @@ void fragment() {
     vec4 c = texture(atlas, uv);
     if (c.a < alpha_clip) { discard; }
     ALBEDO = c.rgb;
-    ALPHA = 1.0;
+    ALPHA = c.a;   // pass-through alpha so blend_mix doesn't fight the discard
 }
