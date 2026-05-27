@@ -145,8 +145,14 @@ const LIGHTING_PRESETS := {
 		"ambient_color": Color(0.92, 0.55, 0.45, 1),
 		"ambient_energy": 0.4,
 		"bg_color":      Color(0.92, 0.55, 0.30, 1),
-		# Long warm-dark shadow stretched away from a low setting sun.
-		"shadow_offset": Vector3(0.40, 0.0, 0.80),
+		# Long warm-dark shadow stretched away from a low setting sun. Offset
+		# is now interpreted as the FAR-TIP of the shadow relative to the
+		# feet (flipbook_crowd._rebuild_shadows handles this) — so a 1.5m
+		# Z offset means the shadow stretches 1.5m forward and the near edge
+		# sits at the character's feet. Bumped from (0.40, 0.80) since the
+		# old "center-of-shadow" interpretation made longer offsets push the
+		# whole blob past the feet.
+		"shadow_offset": Vector3(0.60, 0.0, 1.50),
 		"shadow_color":  Color(0.18, 0.05, 0.02, 0.55),
 		"shadow_scale":  1.3,
 	},

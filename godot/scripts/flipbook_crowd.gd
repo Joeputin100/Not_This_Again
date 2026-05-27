@@ -157,14 +157,23 @@ func _rebuild_shadows() -> void:
 	var ids: Array = _member_clip.keys()
 	var mm: MultiMesh = _shadow_mmi.multimesh
 	mm.instance_count = ids.size()
-	var basis := Basis().scaled(Vector3(_shadow_scale, 1.0, _shadow_scale))
+	# Interpret _shadow_offset as "vector from feet to the FAR tip of the
+	# shadow". Place the shadow plane's CENTER halfway along that vector and
+	# stretch the plane along the offset direction so the near edge anchors
+	# exactly at the character's feet. Without this, sunset's long offset
+	# moves the entire blob past the feet and the character looks
+	# disconnected from its shadow.
+	var stretch_x: float = maxf(1.0, absf(_shadow_offset.x) / SHADOW_PLANE_SIZE.x)
+	var stretch_z: float = maxf(1.0, absf(_shadow_offset.z) / SHADOW_PLANE_SIZE.y)
+	var basis := Basis().scaled(Vector3(
+		_shadow_scale * stretch_x, 1.0, _shadow_scale * stretch_z))
 	for i in ids.size():
 		var pos: Vector3 = _member_xform[ids[i]].origin
 		# Shadow Y is tiny (above ground plane to win z-fight) but the
 		# crowd_shadow shader's depth_test_disabled makes that moot — kept
 		# small anyway for any future shader that does test depth.
 		var shadow_pos := Vector3(
-			pos.x + _shadow_offset.x,
+			pos.x + _shadow_offset.x * 0.5,
 			0.01,
-			pos.z + _shadow_offset.z)
+			pos.z + _shadow_offset.z * 0.5)
 		mm.set_instance_transform(i, Transform3D(basis, shadow_pos))
