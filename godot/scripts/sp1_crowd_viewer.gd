@@ -116,12 +116,11 @@ const LIGHTING_PRESETS := {
 		"ambient_color": Color(0.78, 0.82, 0.92, 1),
 		"ambient_energy": 0.3,
 		"bg_color":      Color(0.42, 0.62, 0.85, 1),
-		# Blob-shadow params: short, slight offset. Pure dark + ~75% alpha
-		# so the shadow reads against the textured grass without looking
-		# painted-on; SHADOW_PLANE_SIZE × scale = ~1.7×1.2 m projection.
-		"shadow_offset": Vector3(0.20, 0.0, 0.40),
+		# Blob-shadow params: high overhead sun, shadow basically under feet
+		# with a tiny offset to suggest the sun isn't perfectly vertical.
+		"shadow_offset": Vector3(0.05, 0.0, 0.10),
 		"shadow_color":  Color(0.00, 0.00, 0.02, 0.75),
-		"shadow_scale":  1.2,
+		"shadow_scale":  1.0,
 	},
 	"sunset": {
 		"light_color":   Color(1.00, 0.55, 0.30, 1),
@@ -130,9 +129,9 @@ const LIGHTING_PRESETS := {
 		"ambient_energy": 0.4,
 		"bg_color":      Color(0.92, 0.55, 0.30, 1),
 		# Long warm-dark shadow stretched away from a low setting sun.
-		"shadow_offset": Vector3(0.70, 0.0, 1.20),
+		"shadow_offset": Vector3(0.40, 0.0, 0.80),
 		"shadow_color":  Color(0.18, 0.05, 0.02, 0.55),
-		"shadow_scale":  1.4,
+		"shadow_scale":  1.3,
 	},
 	"moonlight": {
 		"light_color":   Color(0.60, 0.72, 1.00, 1),
@@ -140,10 +139,10 @@ const LIGHTING_PRESETS := {
 		"ambient_color": Color(0.18, 0.24, 0.48, 1),
 		"ambient_energy": 0.20,
 		"bg_color":      Color(0.06, 0.09, 0.22, 1),
-		# Faint cool-blue shadow, modest offset.
-		"shadow_offset": Vector3(0.18, 0.0, 0.30),
+		# Faint cool-blue shadow, very small offset (moon high but soft).
+		"shadow_offset": Vector3(0.04, 0.0, 0.08),
 		"shadow_color":  Color(0.02, 0.04, 0.10, 0.35),
-		"shadow_scale":  0.9,
+		"shadow_scale":  0.85,
 	},
 	"overcast": {
 		"light_color":   Color(0.92, 0.94, 0.95, 1),
@@ -152,9 +151,9 @@ const LIGHTING_PRESETS := {
 		"ambient_energy": 0.7,
 		"bg_color":      Color(0.78, 0.80, 0.82, 1),
 		# Tiny centred ambient-occlusion-style shadow (no directional sun).
-		"shadow_offset": Vector3(0.0, 0.0, 0.05),
+		"shadow_offset": Vector3(0.0, 0.0, 0.0),
 		"shadow_color":  Color(0.06, 0.06, 0.08, 0.40),
-		"shadow_scale":  0.85,
+		"shadow_scale":  0.80,
 	},
 }
 
@@ -333,11 +332,33 @@ func _spawn_grass_field() -> void:
 	mat.set_shader_parameter("sway_freq", 1.5)
 	mat.set_shader_parameter("bob_amp", 0.020)
 	mat.set_shader_parameter("bob_freq", 2.2)
+	# Default render_priority (0) — crowd's flipbook material is +10 so the
+	# alpha-blend sort always puts crowd members above grass tufts.
 	mmi.material_override = mat
 	mmi.multimesh = mm
-	mmi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_ON
+	mmi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	viewport_3d.add_child(mmi)
 	mm.instance_count = GRASS_TUFT_COUNT
+	# Parallel MultiMesh of small blob-shadows under each tuft. Re-uses the
+	# crowd_shadow.gdshader; instance positions match the tuft XZ positions.
+	var sh_mmi := MultiMeshInstance3D.new()
+	sh_mmi.name = "GrassShadows"
+	var sh_mm := MultiMesh.new()
+	sh_mm.transform_format = MultiMesh.TRANSFORM_3D
+	var sh_plane := PlaneMesh.new()
+	sh_plane.size = Vector2(0.65, 0.45)  # smaller blob per tuft
+	sh_mm.mesh = sh_plane
+	sh_mmi.multimesh = sh_mm
+	var sh_mat := ShaderMaterial.new()
+	sh_mat.shader = preload("res://shaders/crowd_shadow.gdshader")
+	sh_mat.set_shader_parameter("shadow_color", Color(0.0, 0.0, 0.02, 0.55))
+	sh_mat.set_shader_parameter("softness", 0.55)
+	sh_mat.render_priority = -5   # under everything else (behind crowd's +10)
+	sh_mmi.material_override = sh_mat
+	sh_mmi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	viewport_3d.add_child(sh_mmi)
+	sh_mm.instance_count = GRASS_TUFT_COUNT
+
 	for i in GRASS_TUFT_COUNT:
 		var pos := Vector3(
 			randf_range(-GRASS_HALF, GRASS_HALF), GRASS_TUFT_HEIGHT * 0.5,
@@ -347,7 +368,12 @@ func _spawn_grass_field() -> void:
 		mm.set_instance_transform(i, xform)
 		# r = sway phase 0..1 (shader maps to 0..2π).
 		mm.set_instance_custom_data(i, Color(randf(), 0.0, 0.0, 0.0))
-	DebugLog.add("sp1_crowd_viewer: spawned %d grass tufts" % GRASS_TUFT_COUNT)
+		# Matching shadow: same XZ, scaled to the tuft size, slightly offset
+		# to suggest sun direction (consistent with the crowd's default).
+		var sh_pos := Vector3(pos.x + 0.05, 0.01, pos.z + 0.10)
+		var sh_xform := Transform3D(Basis().scaled(Vector3(s, 1.0, s)), sh_pos)
+		sh_mm.set_instance_transform(i, sh_xform)
+	DebugLog.add("sp1_crowd_viewer: spawned %d grass tufts (+ shadows)" % GRASS_TUFT_COUNT)
 
 
 func _build_crowd(character: String) -> void:
