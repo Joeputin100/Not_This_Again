@@ -133,11 +133,14 @@ const LIGHTING_PRESETS := {
 		"ambient_color": Color(0.78, 0.82, 0.92, 1),
 		"ambient_energy": 0.3,
 		"bg_color":      Color(0.42, 0.62, 0.85, 1),
-		# Blob-shadow params: high overhead sun, shadow basically under feet
-		# with a tiny offset to suggest the sun isn't perfectly vertical.
 		"shadow_offset": Vector3(0.05, 0.0, 0.10),
 		"shadow_color":  Color(0.00, 0.00, 0.02, 0.75),
 		"shadow_scale":  1.0,
+		"sun_visible":   true,
+		"sun_height":    18.0,
+		"sun_swirl_a":   Color(0.96, 0.78, 0.42, 1),
+		"sun_swirl_b":   Color(0.90, 0.64, 0.23, 1),
+		"moon_visible":  false,
 	},
 	"sunset": {
 		"light_color":   Color(1.00, 0.55, 0.30, 1),
@@ -145,16 +148,14 @@ const LIGHTING_PRESETS := {
 		"ambient_color": Color(0.92, 0.55, 0.45, 1),
 		"ambient_energy": 0.4,
 		"bg_color":      Color(0.92, 0.55, 0.30, 1),
-		# Long warm-dark shadow stretched away from a low setting sun. Offset
-		# is now interpreted as the FAR-TIP of the shadow relative to the
-		# feet (flipbook_crowd._rebuild_shadows handles this) — so a 1.5m
-		# Z offset means the shadow stretches 1.5m forward and the near edge
-		# sits at the character's feet. Bumped from (0.40, 0.80) since the
-		# old "center-of-shadow" interpretation made longer offsets push the
-		# whole blob past the feet.
 		"shadow_offset": Vector3(0.60, 0.0, 1.50),
 		"shadow_color":  Color(0.18, 0.05, 0.02, 0.55),
 		"shadow_scale":  1.3,
+		"sun_visible":   true,
+		"sun_height":    7.0,
+		"sun_swirl_a":   Color(0.95, 0.42, 0.18, 1),
+		"sun_swirl_b":   Color(0.72, 0.24, 0.10, 1),
+		"moon_visible":  false,
 	},
 	"moonlight": {
 		"light_color":   Color(0.60, 0.72, 1.00, 1),
@@ -162,10 +163,13 @@ const LIGHTING_PRESETS := {
 		"ambient_color": Color(0.18, 0.24, 0.48, 1),
 		"ambient_energy": 0.20,
 		"bg_color":      Color(0.06, 0.09, 0.22, 1),
-		# Faint cool-blue shadow, very small offset (moon high but soft).
 		"shadow_offset": Vector3(0.04, 0.0, 0.08),
 		"shadow_color":  Color(0.02, 0.04, 0.10, 0.35),
 		"shadow_scale":  0.85,
+		"sun_visible":   false,
+		"moon_visible":  true,
+		"moon_height":   16.0,
+		"moon_bite_depth": 0.4,
 	},
 	"overcast": {
 		"light_color":   Color(0.92, 0.94, 0.95, 1),
@@ -173,10 +177,14 @@ const LIGHTING_PRESETS := {
 		"ambient_color": Color(0.86, 0.88, 0.92, 1),
 		"ambient_energy": 0.7,
 		"bg_color":      Color(0.78, 0.80, 0.82, 1),
-		# Tiny centred ambient-occlusion-style shadow (no directional sun).
 		"shadow_offset": Vector3(0.0, 0.0, 0.0),
 		"shadow_color":  Color(0.06, 0.06, 0.08, 0.40),
 		"shadow_scale":  0.80,
+		"sun_visible":   true,
+		"sun_height":    14.0,
+		"sun_swirl_a":   Color(0.91, 0.79, 0.61, 1),
+		"sun_swirl_b":   Color(0.72, 0.60, 0.43, 1),
+		"moon_visible":  false,
 	},
 }
 
@@ -236,6 +244,9 @@ func _ready() -> void:
 			str(camera_3d.global_position))
 	else:
 		DebugLog.add("sp1_crowd_viewer: WARN camera_3d null")
+	var sky := $ViewportContainer/Viewport3D/Sky
+	if sky and camera_3d:
+		sky.bind_camera(camera_3d)
 	if back_button:
 		back_button.pressed.connect(_on_back_pressed)
 	if char_select == null or slider == null:
@@ -308,6 +319,9 @@ func _apply_lighting_preset(name: String) -> void:
 				light_select.selected = i
 				break
 			i += 1
+	var sky := $ViewportContainer/Viewport3D/Sky
+	if sky and sky.has_method("apply_preset"):
+		sky.apply_preset(p, p["shadow_offset"])
 	DebugLog.add("sp1_crowd_viewer: lighting preset = %s" % name)
 
 func _on_character_selected(idx: int) -> void:
