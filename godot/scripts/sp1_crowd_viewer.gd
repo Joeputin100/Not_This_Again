@@ -193,6 +193,8 @@ var _move := Vector3.ZERO
 @onready var count_label: Label = $UI/Panel/VBox/CountLabel
 @onready var char_select: OptionButton = $UI/Panel/VBox/CharSelect
 @onready var light_select: OptionButton = $UI/Panel/VBox/LightSelect
+@onready var size_slider: HSlider = $UI/Panel/VBox/SizeSlider
+@onready var size_label: Label = $UI/Panel/VBox/SizeLabel
 @onready var perf: Label = $UI/Perf
 @onready var back_button: Button = $UI/BackButton
 @onready var dpad_up: Button = $UI/Panel/VBox/DPad/Up
@@ -228,6 +230,8 @@ func _ready() -> void:
 		if light_select:
 			light_select.item_selected.connect(_on_lighting_selected)
 			_apply_lighting_preset("daylight")
+		if size_slider:
+			size_slider.value_changed.connect(_on_size_changed)
 	# d-pad inputs are polled in _process (see _update_direction) so we
 	# can handle the case where the user releases one button while another
 	# is still held — signal-only connects don't track multi-button state.
@@ -302,6 +306,16 @@ func _on_slider_changed(val: float) -> void:
 	_target_count = int(val)
 	_update_count_label()
 	_set_count(_target_count)
+
+func _on_size_changed(val: float) -> void:
+	# Scaling the whole crowd Node3D is the cheapest way to upsize every
+	# member's quad uniformly — also scales the blob-shadows because they
+	# live under the same parent. Slider range 0.5..5.0; 1.0 = the spawn
+	# size set in flipbook_crowd.gd.
+	if _crowd:
+		_crowd.scale = Vector3(val, val, val)
+	if size_label:
+		size_label.text = "Character size: %.1f×" % val
 
 func _update_count_label() -> void:
 	count_label.text = "Crowd size: %d" % _target_count
