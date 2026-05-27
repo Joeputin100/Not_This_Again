@@ -46,7 +46,15 @@ uniform float start_time = 0.0;   // used when use_instance == 0
 uniform float phase = 0.0;
 uniform int use_instance = 0;     // 1 = read start/phase/flip from INSTANCE_CUSTOM
 uniform float alpha_clip = 0.2;
-uniform float shadow_dim : hint_range(0.0, 1.0) = 0.55;   // 0=black in shadow, 1=no dimming
+uniform float shadow_dim : hint_range(0.0, 1.0) = 0.55;   // unused; kept for compatibility
+
+// "Milling" drift — per-instance sinusoidal world-space offset so an idle
+// crowd jostles around instead of standing perfectly still. Phase comes
+// from INSTANCE_CUSTOM.r (start_time), which is randomised per member when
+// FlipbookCrowd adds them, so all members drift on independent rhythms.
+// Set mill_amp=0 to disable.
+uniform float mill_amp : hint_range(0.0, 2.0) = 0.0;
+uniform float mill_freq : hint_range(0.0, 5.0) = 0.4;
 
 varying float v_start;
 varying float v_phase;
@@ -56,8 +64,23 @@ void vertex() {
     v_start = use_instance == 1 ? INSTANCE_CUSTOM.r : start_time;
     v_phase = use_instance == 1 ? INSTANCE_CUSTOM.g : phase;
     v_flip  = use_instance == 1 ? INSTANCE_CUSTOM.b : 0.0;
-    // Y-axis billboard: face the camera, stay upright.
-    mat4 mv = VIEW_MATRIX * MODEL_MATRIX;
+
+    // Per-instance milling drift in world space. Each instance jostles
+    // around its spawn position on independent x/z sinusoids; phase from
+    // its own start_time so the whole crowd doesn't sway in unison.
+    float mp = v_start * 6.28318;
+    vec3 mill = vec3(
+        sin(TIME * mill_freq + mp),
+        0.0,
+        sin(TIME * mill_freq * 0.7 + mp + 1.5)
+    ) * mill_amp;
+
+    // Y-axis billboard: face the camera, stay upright. Apply mill to the
+    // world position before billboarding so the offset is in WORLD space
+    // (not view space), keeping motion grounded as the camera moves.
+    vec3 world_pos = MODEL_MATRIX[3].xyz + mill;
+    mat4 mv = VIEW_MATRIX;
+    mv[3] = VIEW_MATRIX * vec4(world_pos, 1.0);
     mv[0] = vec4(length(MODEL_MATRIX[0].xyz), 0.0, 0.0, 0.0);
     mv[1] = vec4(0.0, length(MODEL_MATRIX[1].xyz), 0.0, 0.0);
     mv[2] = vec4(0.0, 0.0, length(MODEL_MATRIX[2].xyz), 0.0);

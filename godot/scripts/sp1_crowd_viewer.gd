@@ -116,7 +116,12 @@ const LIGHTING_PRESETS := {
 		"ambient_color": Color(0.78, 0.82, 0.92, 1),
 		"ambient_energy": 0.3,
 		"bg_color":      Color(0.42, 0.62, 0.85, 1),
-		"shadow_dim":    0.55,
+		# Blob-shadow params: short, slight offset. Pure dark + ~75% alpha
+		# so the shadow reads against the textured grass without looking
+		# painted-on; SHADOW_PLANE_SIZE × scale = ~1.7×1.2 m projection.
+		"shadow_offset": Vector3(0.20, 0.0, 0.40),
+		"shadow_color":  Color(0.00, 0.00, 0.02, 0.75),
+		"shadow_scale":  1.2,
 	},
 	"sunset": {
 		"light_color":   Color(1.00, 0.55, 0.30, 1),
@@ -124,7 +129,10 @@ const LIGHTING_PRESETS := {
 		"ambient_color": Color(0.92, 0.55, 0.45, 1),
 		"ambient_energy": 0.4,
 		"bg_color":      Color(0.92, 0.55, 0.30, 1),
-		"shadow_dim":    0.45,
+		# Long warm-dark shadow stretched away from a low setting sun.
+		"shadow_offset": Vector3(0.70, 0.0, 1.20),
+		"shadow_color":  Color(0.18, 0.05, 0.02, 0.55),
+		"shadow_scale":  1.4,
 	},
 	"moonlight": {
 		"light_color":   Color(0.60, 0.72, 1.00, 1),
@@ -132,7 +140,10 @@ const LIGHTING_PRESETS := {
 		"ambient_color": Color(0.18, 0.24, 0.48, 1),
 		"ambient_energy": 0.20,
 		"bg_color":      Color(0.06, 0.09, 0.22, 1),
-		"shadow_dim":    0.30,
+		# Faint cool-blue shadow, modest offset.
+		"shadow_offset": Vector3(0.18, 0.0, 0.30),
+		"shadow_color":  Color(0.02, 0.04, 0.10, 0.35),
+		"shadow_scale":  0.9,
 	},
 	"overcast": {
 		"light_color":   Color(0.92, 0.94, 0.95, 1),
@@ -140,9 +151,18 @@ const LIGHTING_PRESETS := {
 		"ambient_color": Color(0.86, 0.88, 0.92, 1),
 		"ambient_energy": 0.7,
 		"bg_color":      Color(0.78, 0.80, 0.82, 1),
-		"shadow_dim":    0.75,
+		# Tiny centred ambient-occlusion-style shadow (no directional sun).
+		"shadow_offset": Vector3(0.0, 0.0, 0.05),
+		"shadow_color":  Color(0.06, 0.06, 0.08, 0.40),
+		"shadow_scale":  0.85,
 	},
 }
+
+# Milling drift — applied to every crowd MultiMesh's flipbook material at
+# spawn time. mill_amp=0 disables (stationary crowd); 0.3 is a soft
+# "shifting weight" idle.
+const CROWD_MILL_AMP := 0.30
+const CROWD_MILL_FREQ := 0.35
 # Crowd quads are 1.125 x 2.0 (set in flipbook_crowd.configure). The mesh
 # centers on its origin, so the quad spans y=-1..+1 in local space — half
 # below ground. Lifting each member by half the height puts feet at y=0.
@@ -251,13 +271,12 @@ func _apply_lighting_preset(name: String) -> void:
 		env.ambient_light_color = p["ambient_color"]
 		env.ambient_light_energy = p["ambient_energy"]
 		env.background_color = p["bg_color"]
-	# Push shadow_dim into every crowd-MultiMesh shader so figures darken
-	# more in moonlight, less in overcast.
-	if _crowd:
-		var sd: float = p["shadow_dim"]
-		for child in _crowd.get_children():
-			if child is MultiMeshInstance3D and child.material_override is ShaderMaterial:
-				(child.material_override as ShaderMaterial).set_shader_parameter("shadow_dim", sd)
+	# Drive blob shadows: offset + colour + scale change per preset so the
+	# "sun angle" reads visually (long warm shadows at sunset, faint cool
+	# in moonlight, tiny ambient-style in overcast). FlipbookCrowd handles
+	# the MultiMesh update.
+	if _crowd and _crowd.has_method("set_shadow_params"):
+		_crowd.set_shadow_params(p["shadow_offset"], p["shadow_color"], p["shadow_scale"])
 	# Keep the OptionButton's visible label in sync if this was invoked from
 	# code (not the dropdown signal).
 	if light_select:
@@ -344,6 +363,13 @@ func _build_crowd(character: String) -> void:
 	# it in 2D space where the 3D shader never runs.
 	viewport_3d.add_child(_crowd)
 	_crowd.configure(character, CHARACTERS[character])
+	# Enable shader-side milling on every clip's MultiMesh material so the
+	# crowd jostles around its spawn positions when idle.
+	for child in _crowd.get_children():
+		if child is MultiMeshInstance3D and child.material_override is ShaderMaterial:
+			var mat: ShaderMaterial = child.material_override
+			mat.set_shader_parameter("mill_amp", CROWD_MILL_AMP)
+			mat.set_shader_parameter("mill_freq", CROWD_MILL_FREQ)
 
 func _set_count(n: int) -> void:
 	var clips: Array = CHARACTERS[_character]
