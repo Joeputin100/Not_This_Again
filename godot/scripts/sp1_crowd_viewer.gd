@@ -104,6 +104,23 @@ const MOVE_SPEED := 4.0
 const SPAWN_RADIUS := 5.0
 const GRASS_HALF := 25.0    # crowd clamp bound — keeps members on the visible grass
 
+# Per-character world-y offset to put feet at ground level. Each character's
+# figure occupies a different vertical fraction of its 9:16 cell — the value
+# below is that fraction (which is also the position.y needed because the
+# figure is vertically centred in the cell and the quad is 2.0 tall, so
+# feet land at world y = position.y - height_ratio = 0 when position.y =
+# height_ratio). Numbers from the figure-bbox scan in `tools/build_atlas.py`
+# notes.
+const CHARACTER_FOOT_Y := {
+	"cowboy":     0.52,
+	"pete":       0.57,
+	"vagrant":    0.57,
+	"prospector": 0.57,
+	"pusher":     0.75,
+	"chicken":    0.43,
+	"humbug":     0.93,
+}
+
 # Lighting presets — drive KeyLight + WorldEnvironment to fake different
 # times of day. Each preset's shadow direction is the same (the light
 # transform is fixed; we vary colour/energy + ambient/background). For
@@ -162,10 +179,6 @@ const LIGHTING_PRESETS := {
 # "shifting weight" idle.
 const CROWD_MILL_AMP := 0.30
 const CROWD_MILL_FREQ := 0.35
-# Crowd quads are 1.125 x 2.0 (set in flipbook_crowd.configure). The mesh
-# centers on its origin, so the quad spans y=-1..+1 in local space — half
-# below ground. Lifting each member by half the height puts feet at y=0.
-const CHARACTER_HALF_HEIGHT := 1.0
 
 # Grass field: MultiMesh of billboarded grass-tuft sprites, expanded to a
 # full field per the roguelike webgl demo. Tufts share one draw call via
@@ -415,8 +428,9 @@ func _set_count(n: int) -> void:
 	var clips: Array = CHARACTERS[_character]
 	while _ids.size() < n:
 		var clip: String = clips[_ids.size() % clips.size()]
+		var foot_y: float = CHARACTER_FOOT_Y.get(_character, 0.57)
 		var x := Transform3D(Basis(), Vector3(
-			randf_range(-SPAWN_RADIUS, SPAWN_RADIUS), CHARACTER_HALF_HEIGHT,
+			randf_range(-SPAWN_RADIUS, SPAWN_RADIUS), foot_y,
 			randf_range(-SPAWN_RADIUS, SPAWN_RADIUS)))
 		var id: int = _crowd.add_member(clip, x)
 		_ids.append(id)
