@@ -37,7 +37,16 @@ from PIL import Image
 Image.MAX_IMAGE_PIXELS = None
 
 GREEN = (0, 177, 64)        # Veo chroma-green; tune if a clip differs
-KEY_TOLERANCE = 70          # per-channel summed distance (×3) treated as background
+# Chroma test: require G near 177 AND R/B both below their thresholds.
+# Previous version used Manhattan distance to GREEN with tolerance 210,
+# which incidentally also keyed mid-grey shadow pixels (e.g. (50,50,50)
+# has Manhattan-diff 191) — that punched holes through Pete's red shirt
+# wherever he had a dark fold/shadow. The "true green" check below
+# requires the pixel to actually look green, not just have a Manhattan
+# distance that happens to round into range.
+GREEN_G_TOLERANCE = 50      # how far G can drift from 177
+GREEN_R_MAX = 90            # R must be below this
+GREEN_B_MAX = 110           # B must be below this
 LETTERBOX_ROW_THRESHOLD = 0.80  # fraction of near-black pixels needed to call a row letterbox
                                 # (relaxed from 0.95 — prospector_death has a transition zone
                                 # between bar and figure at ~80-93% blackness that the stricter
@@ -99,13 +108,19 @@ def key_frame(img: Image.Image) -> Image.Image:
     if right < W:
         arr[:, right:] = 0
 
-    # 2. Chroma-key the green: same per-channel summed distance threshold as
-    # before, just vectorized.
+    # 2. Chroma-key the green: per-channel "true green" test, not Manhattan
+    # distance. The pixel's G must be close to chroma-green's 177 AND its R
+    # and B must each be below their thresholds. Catches Veo's slightly-
+    # varying chroma without false-matching on dark/grey pixels.
     rgb_i = arr[..., :3].astype(np.int16)
-    g_diff = (np.abs(rgb_i[..., 0] - GREEN[0])
-              + np.abs(rgb_i[..., 1] - GREEN[1])
-              + np.abs(rgb_i[..., 2] - GREEN[2]))
-    chroma_mask = g_diff < KEY_TOLERANCE * 3
+    r_ch = rgb_i[..., 0]
+    g_ch = rgb_i[..., 1]
+    b_ch = rgb_i[..., 2]
+    chroma_mask = (
+        (np.abs(g_ch - GREEN[1]) < GREEN_G_TOLERANCE)
+        & (r_ch < GREEN_R_MAX)
+        & (b_ch < GREEN_B_MAX)
+    )
     arr[chroma_mask] = 0
 
     return Image.fromarray(arr)
