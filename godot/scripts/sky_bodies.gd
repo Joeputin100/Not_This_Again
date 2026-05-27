@@ -14,10 +14,16 @@ func bind_camera(camera: Camera3D) -> void:
 	_camera = camera
 
 func apply_preset(preset: Dictionary, shadow_offset: Vector3) -> void:
-	var horiz := Vector2(-shadow_offset.x, -shadow_offset.z)
-	if horiz.length_squared() < 0.0001:
-		horiz = Vector2(0, -1)
-	horiz = horiz.normalized() * SKY_DISTANCE
+	# Light source direction: opposite the shadow, projected into XZ. The
+	# lateral angle is clamped to ±15° so the body stays inside the camera's
+	# horizontal FOV (~28° for our 9:16 viewport at FOV=50°). Without the
+	# clamp, shadow offsets with significant X make the sun fall outside
+	# the visible frame.
+	var raw_angle: float = 0.0
+	if absf(shadow_offset.x) + absf(shadow_offset.z) > 0.0001:
+		raw_angle = atan2(-shadow_offset.x, -shadow_offset.z)
+	var lat_angle: float = clampf(raw_angle, -PI / 36.0, PI / 36.0)
+	var horiz := Vector2(sin(lat_angle), -cos(lat_angle)) * SKY_DISTANCE
 	var sun_visible: bool = preset.get("sun_visible", true)
 	sun_disc.visible = sun_visible
 	sun_stick.visible = sun_visible
@@ -84,8 +90,8 @@ func _pick_variant(body_key: String) -> String:
 func _on_body_tapped(_camera: Node, event: InputEvent, _pos: Vector3,
 					_normal: Vector3, _shape_idx: int,
 					body_key: String, body: Node3D) -> void:
-	var is_touch := event is InputEventScreenTouch and event.pressed
-	var is_click := event is InputEventMouseButton and event.pressed and event.button_index == MOUSE_BUTTON_LEFT
+	var is_touch: bool = event is InputEventScreenTouch and event.pressed
+	var is_click: bool = event is InputEventMouseButton and event.pressed and event.button_index == MOUSE_BUTTON_LEFT
 	if not (is_touch or is_click):
 		return
 	var variant := _pick_variant(body_key)
