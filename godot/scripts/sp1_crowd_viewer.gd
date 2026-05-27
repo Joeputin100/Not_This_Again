@@ -222,6 +222,8 @@ var _move := Vector3.ZERO
 @onready var light_select: OptionButton = $UI/Panel/VBox/LightSelect
 @onready var size_slider: HSlider = $UI/Panel/VBox/SizeSlider
 @onready var size_label: Label = $UI/Panel/VBox/SizeLabel
+@onready var tilt_slider: HSlider = $UI/Panel/VBox/TiltSlider
+@onready var tilt_label: Label = $UI/Panel/VBox/TiltLabel
 @onready var perf: Label = $UI/Perf
 @onready var back_button: Button = $UI/BackButton
 @onready var dpad_up: Button = $UI/Panel/VBox/DPad/Up
@@ -238,11 +240,7 @@ func _ready() -> void:
 		DebugLog.add("sp1_crowd_viewer: FATAL viewport_3d missing — abort")
 		return
 	DebugLog.add("sp1_crowd_viewer: viewport %s" % str(viewport_3d.size))
-	if camera_3d:
-		camera_3d.look_at(Vector3.ZERO, Vector3.UP)
-		DebugLog.add("sp1_crowd_viewer: camera look_at(origin) from %s" %
-			str(camera_3d.global_position))
-	else:
+	if camera_3d == null:
 		DebugLog.add("sp1_crowd_viewer: WARN camera_3d null")
 	var sky := $ViewportContainer/Viewport3D/Sky
 	if sky and camera_3d:
@@ -262,6 +260,9 @@ func _ready() -> void:
 			_apply_lighting_preset("daylight")
 		if size_slider:
 			size_slider.value_changed.connect(_on_size_changed)
+		if tilt_slider:
+			tilt_slider.value_changed.connect(_on_tilt_changed)
+			_on_tilt_changed(tilt_slider.value)
 	# d-pad inputs are polled in _process (see _update_direction) so we
 	# can handle the case where the user releases one button while another
 	# is still held — signal-only connects don't track multi-button state.
@@ -339,6 +340,14 @@ func _on_slider_changed(val: float) -> void:
 	_target_count = int(val)
 	_update_count_label()
 	_set_count(_target_count)
+
+func _on_tilt_changed(degrees: float) -> void:
+	if camera_3d == null:
+		return
+	var pitch_rad := deg_to_rad(degrees)
+	camera_3d.rotation.x = pitch_rad
+	if tilt_label:
+		tilt_label.text = "Camera tilt: %d°" % int(degrees)
 
 func _on_size_changed(val: float) -> void:
 	# Scaling the whole crowd Node3D is the cheapest way to upsize every

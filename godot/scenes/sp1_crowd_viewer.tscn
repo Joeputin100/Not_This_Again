@@ -256,6 +256,18 @@ max_value = 5.0
 value = 1.0
 step = 0.1
 
+[node name="TiltLabel" type="Label" parent="UI/Panel/VBox"]
+text = "Camera tilt: -20°"
+theme_override_font_sizes/font_size = 28
+theme_override_colors/font_color = Color(0.95, 0.78, 0.35, 1)
+
+[node name="TiltSlider" type="HSlider" parent="UI/Panel/VBox"]
+custom_minimum_size = Vector2(0, 60)
+min_value = -60.0
+max_value = 20.0
+value = -20.0
+step = 1.0
+
 [node name="DPadLabel" type="Label" parent="UI/Panel/VBox"]
 text = "Move crowd"
 theme_override_font_sizes/font_size = 28
