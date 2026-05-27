@@ -26,12 +26,13 @@ For the small amount of pure-logic code (`sky_bodies.gd`'s preset math, parallax
 ## File Structure
 
 **New files:**
-- `godot/shaders/sun_lollipop.gdshader` — sun disc (swirl + shimmer + face + blink)
+- `godot/shaders/sun_lollipop.gdshader` — sun disc (swirl + shimmer + face + blink + spin_boost)
 - `godot/shaders/sun_stick.gdshader` — vertical caramel-glass stick
-- `godot/shaders/moon_cookie.gdshader` — moon disc (cookie + bite + face + breath + blink)
-- `godot/scripts/sky_bodies.gd` — Sky node controller (preset, parallax, look_at, bounce, tap routing)
-- `godot/assets/sfx/candy_tap.ogg` — generated tap sound (one shared file; pitch_scale differentiates sun/moon)
-- `scripts/gen_candy_tap_sfx.py` — ElevenLabs SFX generator (offline tool, not shipped to APK)
+- `godot/shaders/moon_cookie.gdshader` — moon disc (cookie + bite + face + breath + blink + wink_override)
+- `godot/scripts/sky_bodies.gd` — Sky node controller (preset, parallax, look_at, variant-aware bounce, SFX routing)
+- `godot/assets/sfx/sky_taps/sun_a_chime.ogg`, `sun_b_stick.ogg`, `sun_c_sparkle.ogg`
+- `godot/assets/sfx/sky_taps/moon_a_squish.ogg`, `moon_b_crunch.ogg`, `moon_c_tink.ogg`
+- `scripts/gen_candy_tap_sfx.py` — variant-aware ElevenLabs SFX generator (offline tool, not shipped to APK)
 
 **Modified files:**
 - `godot/scenes/sp1_crowd_viewer.tscn` — add Sky node + 3 bodies + Area3D + AudioStreamPlayer3D; add "Camera tilt" slider to UI
@@ -39,35 +40,71 @@ For the small amount of pure-logic code (`sky_bodies.gd`'s preset math, parallax
 
 ---
 
-### Task 1: Generate the candy tap sound
+### Task 1: Generate the six candy tap sounds (variant-aware)
 
 **Files:**
 - Create: `scripts/gen_candy_tap_sfx.py`
-- Create: `godot/assets/sfx/candy_tap.ogg`
+- Create: 6 files under `godot/assets/sfx/sky_taps/`
 
-- [ ] **Step 1: Write the SFX generator script**
+- [ ] **Step 1: Write the variant-aware SFX generator script**
 
 ```python
 #!/usr/bin/env python3
-"""Generate candy_tap.ogg via the ElevenLabs SFX API.
+"""Generate one of six candy-tap SFX variants via the ElevenLabs SFX API.
 
-Re-run this script only if the prompt or output settings change — the
-.ogg file is committed to the repo, not regenerated each build.
-Requires ELEVENLABS_API_KEY in env (or pulled from gcloud secret
+Usage:
+  python3 scripts/gen_candy_tap_sfx.py --variant sun_a_chime
+  python3 scripts/gen_candy_tap_sfx.py --all   # generate all 6 in one run
+
+Re-run only if the prompt or output settings change — the .ogg files
+are committed to the repo, not regenerated each build. Requires
+ELEVENLABS_API_KEY in env (or pulled from gcloud secret
 `elevenlabs-api-key` per reference_elevenlabs_vo memory).
 """
+import argparse
 import os
 import subprocess
 import sys
+import time
 from pathlib import Path
 
-PROMPT = (
-    "Short soft candy boop sound, ~300ms, like tapping a hard candy "
-    "through cellophane wrapper, gentle high-pitched chime with a "
-    "subtle crinkle attack."
-)
-OUT_PATH = Path("godot/assets/sfx/candy_tap.ogg")
-DURATION_SECONDS = 0.4
+VARIANTS = {
+    "sun_a_chime": {
+        "prompt": ("Short bright hard candy chime, ~300ms, single clean "
+                   "high-pitched ting like tapping a glass-clear lollipop, "
+                   "gentle decay"),
+        "duration": 0.4,
+    },
+    "sun_b_stick": {
+        "prompt": ("Short woody tap on caramel candy stick, ~300ms, lower "
+                   "pitched with a soft thunk attack, like flicking a "
+                   "sucker stick"),
+        "duration": 0.4,
+    },
+    "sun_c_sparkle": {
+        "prompt": ("Tiny crystalline butterscotch sparkle, ~250ms, very "
+                   "short bright shimmery ting with quick decay, sugar-"
+                   "glass crystal feel"),
+        "duration": 0.3,
+    },
+    "moon_a_squish": {
+        "prompt": ("Soft padded marshmallow squish, ~350ms, low gentle "
+                   "thud with subtle airy puff, like pressing into a "
+                   "marshmallow"),
+        "duration": 0.4,
+    },
+    "moon_b_crunch": {
+        "prompt": ("Short dry cookie crunch, ~300ms, single crisp brittle "
+                   "crack, like biting into a white chocolate cookie"),
+        "duration": 0.4,
+    },
+    "moon_c_tink": {
+        "prompt": ("Gentle white chocolate tink, ~350ms, mellow bell-like "
+                   "tone slightly damped, smooth and creamy"),
+        "duration": 0.4,
+    },
+}
+OUT_DIR = Path("godot/assets/sfx/sky_taps")
 PROMPT_INFLUENCE = 0.5  # 0=more variable, 1=stick close to prompt
 
 
@@ -81,57 +118,78 @@ def fetch_api_key() -> str:
         capture_output=True, text=True, check=True,
     )
     import base64
-    return base64.b64decode(proc.stdout.strip().replace("_", "/").replace("-", "+")).decode()
+    return base64.b64decode(
+        proc.stdout.strip().replace("_", "/").replace("-", "+")
+    ).decode()
 
 
-def main() -> None:
+def generate(variant_name: str, api_key: str) -> None:
     import requests
-    api_key = fetch_api_key()
-    OUT_PATH.parent.mkdir(parents=True, exist_ok=True)
+    spec = VARIANTS[variant_name]
+    out_path = OUT_DIR / f"{variant_name}.ogg"
+    OUT_DIR.mkdir(parents=True, exist_ok=True)
     r = requests.post(
         "https://api.elevenlabs.io/v1/sound-generation",
         headers={"xi-api-key": api_key, "Content-Type": "application/json"},
         json={
-            "text": PROMPT,
-            "duration_seconds": DURATION_SECONDS,
+            "text": spec["prompt"],
+            "duration_seconds": spec["duration"],
             "prompt_influence": PROMPT_INFLUENCE,
-            "output_format": "mp3_22050_32",  # cheapest; convert to ogg below
+            "output_format": "mp3_22050_32",
         },
         timeout=60,
     )
     r.raise_for_status()
-    mp3_path = OUT_PATH.with_suffix(".mp3")
+    mp3_path = out_path.with_suffix(".mp3")
     mp3_path.write_bytes(r.content)
     subprocess.run(
         ["ffmpeg", "-y", "-i", str(mp3_path),
-         "-c:a", "libvorbis", "-q:a", "3", str(OUT_PATH)],
+         "-c:a", "libvorbis", "-q:a", "3", str(out_path)],
         check=True, capture_output=True,
     )
     mp3_path.unlink()
-    size = OUT_PATH.stat().st_size
-    print(f"wrote {OUT_PATH} ({size} bytes)")
+    print(f"wrote {out_path} ({out_path.stat().st_size} bytes)")
+
+
+def main() -> None:
+    ap = argparse.ArgumentParser()
+    ap.add_argument("--variant", choices=list(VARIANTS.keys()))
+    ap.add_argument("--all", action="store_true")
+    args = ap.parse_args()
+    if not args.all and not args.variant:
+        sys.exit("specify --variant <name> or --all")
+    api_key = fetch_api_key()
+    names = list(VARIANTS.keys()) if args.all else [args.variant]
+    for n in names:
+        generate(n, api_key)
+        time.sleep(1.0)  # gentle rate-limit between API calls
 
 
 if __name__ == "__main__":
     main()
 ```
 
-- [ ] **Step 2: Run the generator**
+- [ ] **Step 2: Run the generator for all six variants**
 
 ```bash
 cd /home/projects/Not_This_Again
-python3 scripts/gen_candy_tap_sfx.py
+python3 scripts/gen_candy_tap_sfx.py --all
 ```
 
-Expected output: `wrote godot/assets/sfx/candy_tap.ogg (~5000-15000 bytes)`
+Expected output: 6 lines `wrote godot/assets/sfx/sky_taps/<name>.ogg (~5000-15000 bytes)`.
 
-If ElevenLabs returns a poor sound on first try, re-run (their generation is stochastic). Check by playing locally: `ffplay -autoexit godot/assets/sfx/candy_tap.ogg`. If the sound is wrong (too long, wrong vibe), tune `PROMPT` and re-run.
+If any one variant returns a poor sound (ElevenLabs is stochastic), re-run just that one:
+```bash
+python3 scripts/gen_candy_tap_sfx.py --variant moon_b_crunch
+```
+
+Quick audition each: `ffplay -autoexit godot/assets/sfx/sky_taps/sun_a_chime.ogg` (Ctrl-C between plays).
 
 - [ ] **Step 3: Commit**
 
 ```bash
-git add scripts/gen_candy_tap_sfx.py godot/assets/sfx/candy_tap.ogg
-git commit -m "sfx: generate candy_tap.ogg via ElevenLabs SFX"
+git add scripts/gen_candy_tap_sfx.py godot/assets/sfx/sky_taps/
+git commit -m "sfx: generate 6 candy-tap variants (3 per body) via ElevenLabs"
 ```
 
 ---
@@ -151,6 +209,7 @@ render_mode unshaded, blend_mix, cull_disabled, depth_draw_opaque;
 uniform vec3 swirl_color_a : source_color = vec3(0.96, 0.78, 0.42);  // butterscotch light
 uniform vec3 swirl_color_b : source_color = vec3(0.90, 0.64, 0.23);  // butterscotch deep
 uniform float rotation_speed : hint_range(0.0, 1.0) = 0.087;          // ~5°/sec in rad/s
+uniform float spin_boost : hint_range(1.0, 8.0) = 1.0;                // tap variant B tweens this temporarily
 uniform int swirl_wedges : hint_range(2, 12) = 6;
 
 // Sugar shimmer
@@ -180,7 +239,7 @@ void fragment() {
     }
 
     // --- Swirl ---
-    float ang = atan(uv.y, uv.x) + TIME * rotation_speed;
+    float ang = atan(uv.y, uv.x) + TIME * rotation_speed * spin_boost;
     float wedge_f = ang * float(swirl_wedges) / PI;
     float wedge = step(0.5, fract(wedge_f * 0.5));
     vec3 col = mix(swirl_color_a, swirl_color_b, wedge);
@@ -313,6 +372,7 @@ uniform float face_smile_width : hint_range(0.0, 0.5) = 0.12;
 uniform float face_smile_thickness : hint_range(0.001, 0.05) = 0.010;
 uniform float blink_period_sec : hint_range(1.0, 30.0) = 8.0;
 uniform float blink_duration_sec : hint_range(0.05, 0.5) = 0.15;
+uniform float wink_override : hint_range(0.0, 1.0) = 0.0;   // tap variant B tweens this 0→1→0 (left eye only)
 
 const float DISC_RADIUS = 0.48;
 
@@ -349,8 +409,9 @@ void fragment() {
     float blink_phase = mod(TIME, blink_period_sec) / blink_duration_sec;
     float blink = clamp(abs(blink_phase - 0.5) * 2.0, 0.1, 1.0);
 
-    // Eye left — flat horizontal ellipse
-    vec2 d_left = (UV - face_eye_left_uv) / vec2(face_eye_half_width, face_eye_half_height * blink);
+    // Eye left — flat horizontal ellipse; wink_override forces this eye closed during tap variant B
+    float left_open = mix(blink, 0.05, wink_override);
+    vec2 d_left = (UV - face_eye_left_uv) / vec2(face_eye_half_width, face_eye_half_height * left_open);
     float eye_left = smoothstep(1.05, 0.95, length(d_left));
     // Eye right
     vec2 d_right = (UV - face_eye_right_uv) / vec2(face_eye_half_width, face_eye_half_height * blink);
@@ -506,13 +567,19 @@ Sky                         (Node3D, script: sky_bodies.gd)
 ├── SunDisc                 (Node3D)
 │   ├── DiscMesh            (MeshInstance3D, QuadMesh size 12×12, ShaderMaterial→sun_lollipop.gdshader)
 │   ├── TapArea             (Area3D + CollisionShape3D with SphereShape3D radius 6.0)
-│   └── TapSfx              (AudioStreamPlayer3D, stream=candy_tap.ogg, volume_db=-8)
+│   └── TapSfx              (Node, container)
+│       ├── A               (AudioStreamPlayer3D, stream=sun_a_chime.ogg, volume_db=-8)
+│       ├── B               (AudioStreamPlayer3D, stream=sun_b_stick.ogg, volume_db=-8)
+│       └── C               (AudioStreamPlayer3D, stream=sun_c_sparkle.ogg, volume_db=-8)
 ├── SunStick                (Node3D)
 │   └── StickMesh           (MeshInstance3D, QuadMesh size 0.6×1 placeholder, ShaderMaterial→sun_stick.gdshader)
 └── MoonDisc                (Node3D)
     ├── DiscMesh            (MeshInstance3D, QuadMesh size 9×9, ShaderMaterial→moon_cookie.gdshader)
     ├── TapArea             (Area3D + CollisionShape3D with SphereShape3D radius 4.5)
-    └── TapSfx              (AudioStreamPlayer3D, stream=candy_tap.ogg, volume_db=-8, pitch_scale=1.06)
+    └── TapSfx              (Node, container)
+        ├── A               (AudioStreamPlayer3D, stream=moon_a_squish.ogg, volume_db=-8)
+        ├── B               (AudioStreamPlayer3D, stream=moon_b_crunch.ogg, volume_db=-8)
+        └── C               (AudioStreamPlayer3D, stream=moon_c_tink.ogg, volume_db=-8)
 ```
 
 Set each MeshInstance3D's `cast_shadow = SHADOW_CASTING_SETTING_OFF` (the sky doesn't cast shadows).
@@ -746,42 +813,69 @@ git commit -m "sp1: camera tilt slider (-60° to +20°), removes look_at"
 
 ---
 
-### Task 9: Tap detection + bounce + SFX
+### Task 9: Tap detection + variant-aware bounce + SFX
 
 **Files:**
 - Modify: `godot/scripts/sky_bodies.gd`
 
-- [ ] **Step 1: Add tap handlers and bounce tween to sky_bodies.gd**
+- [ ] **Step 1: Add tap handlers and variant-aware bounce to sky_bodies.gd**
 
 Append to `sky_bodies.gd`:
 
 ```gdscript
+const VARIANTS := ["A", "B", "C"]
+var _last_variant := {"sun": "", "moon": ""}
+
 func _ready() -> void:
-    # Wire each body's TapArea to the bounce handler.
-    var bodies := [sun_disc, moon_disc]
-    for body in bodies:
+    # Wire each body's TapArea to the tap handler.
+    var pairs := [["sun", sun_disc], ["moon", moon_disc]]
+    for pair in pairs:
+        var body_key: String = pair[0]
+        var body: Node3D = pair[1]
         var area: Area3D = body.get_node_or_null("TapArea")
         if area:
-            # input_event(camera, event, position, normal, shape_idx)
-            area.input_event.connect(_on_body_tapped.bind(body))
+            area.input_event.connect(_on_body_tapped.bind(body_key, body))
+
+func _pick_variant(body_key: String) -> String:
+    # Random no-repeat: pick uniformly from variants except the previous one.
+    var pool := VARIANTS.filter(func(v): return v != _last_variant[body_key])
+    var chosen: String = pool[randi() % pool.size()]
+    _last_variant[body_key] = chosen
+    return chosen
 
 func _on_body_tapped(_camera: Node, event: InputEvent, _pos: Vector3,
-                    _normal: Vector3, _shape_idx: int, body: Node3D) -> void:
+                    _normal: Vector3, _shape_idx: int,
+                    body_key: String, body: Node3D) -> void:
     var is_touch := event is InputEventScreenTouch and event.pressed
     var is_click := event is InputEventMouseButton and event.pressed and event.button_index == MOUSE_BUTTON_LEFT
     if not (is_touch or is_click):
         return
-    _bounce(body)
-    var sfx: AudioStreamPlayer3D = body.get_node_or_null("TapSfx")
-    if sfx:
-        sfx.play()
+    var variant := _pick_variant(body_key)
+    # Play matching sound
+    var sfx_player: AudioStreamPlayer3D = body.get_node_or_null("TapSfx/%s" % variant)
+    if sfx_player:
+        sfx_player.play()
+    # Run matching animation
+    if body_key == "sun":
+        match variant:
+            "A": _anim_scale_pulse(body)
+            "B": _anim_sun_spin(body)
+            "C": _anim_z_wobble(body, 0.26, 0.6)
+    else:
+        match variant:
+            "A": _anim_scale_pulse(body)
+            "B": _anim_moon_wink(body)
+            "C": _anim_z_wobble(body, 0.14, 0.5)
 
-func _bounce(body: Node3D) -> void:
-    # Cancel any in-flight tween on this body (multi-tap retriggers).
+func _kill_prev_tween(body: Node3D) -> void:
     if body.has_meta("bounce_tween"):
         var prev: Tween = body.get_meta("bounce_tween")
         if prev and prev.is_valid():
             prev.kill()
+
+# Variant A — scale-pulse. Used by both bodies.
+func _anim_scale_pulse(body: Node3D) -> void:
+    _kill_prev_tween(body)
     body.scale = Vector3.ONE
     var t := create_tween()
     t.set_trans(Tween.TRANS_BACK)
@@ -789,20 +883,60 @@ func _bounce(body: Node3D) -> void:
     t.tween_property(body, "scale", Vector3.ONE * 0.97, 0.14).set_ease(Tween.EASE_IN_OUT)
     t.tween_property(body, "scale", Vector3.ONE, 0.08).set_ease(Tween.EASE_OUT)
     body.set_meta("bounce_tween", t)
+
+# Sun variant B — spin-flourish via shader spin_boost uniform.
+func _anim_sun_spin(body: Node3D) -> void:
+    _kill_prev_tween(body)
+    var mat: ShaderMaterial = body.get_node("DiscMesh").material_override
+    if mat == null:
+        return
+    mat.set_shader_parameter("spin_boost", 1.0)
+    var t := create_tween()
+    t.tween_method(func(v): mat.set_shader_parameter("spin_boost", v), 1.0, 4.0, 0.12)\
+     .set_ease(Tween.EASE_OUT)
+    t.tween_method(func(v): mat.set_shader_parameter("spin_boost", v), 4.0, 1.0, 0.28)\
+     .set_ease(Tween.EASE_IN)
+    body.set_meta("bounce_tween", t)
+
+# Moon variant B — wink via shader wink_override uniform (left eye only).
+func _anim_moon_wink(body: Node3D) -> void:
+    _kill_prev_tween(body)
+    var mat: ShaderMaterial = body.get_node("DiscMesh").material_override
+    if mat == null:
+        return
+    mat.set_shader_parameter("wink_override", 0.0)
+    var t := create_tween()
+    t.tween_method(func(v): mat.set_shader_parameter("wink_override", v), 0.0, 1.0, 0.10)\
+     .set_ease(Tween.EASE_OUT)
+    t.tween_method(func(v): mat.set_shader_parameter("wink_override", v), 1.0, 0.0, 0.15)\
+     .set_ease(Tween.EASE_IN)
+    body.set_meta("bounce_tween", t)
+
+# Variant C — Z-axis wobble (sun: ±15°, moon: ±8°).
+func _anim_z_wobble(body: Node3D, peak_rad: float, total_sec: float) -> void:
+    _kill_prev_tween(body)
+    body.rotation.z = 0.0
+    var t := create_tween()
+    t.tween_property(body, "rotation:z", peak_rad, total_sec * 0.25).set_ease(Tween.EASE_OUT)
+    t.tween_property(body, "rotation:z", -peak_rad, total_sec * 0.30).set_ease(Tween.EASE_IN_OUT)
+    t.tween_property(body, "rotation:z", peak_rad * 0.4, total_sec * 0.22).set_ease(Tween.EASE_IN_OUT)
+    t.tween_property(body, "rotation:z", 0.0, total_sec * 0.23).set_ease(Tween.EASE_IN)
+    body.set_meta("bounce_tween", t)
 ```
 
 - [ ] **Step 2: Sideload-only verification**
 
 This step requires touch input; the headless screenshot pipeline can't simulate taps. After Task 11's APK build, manually verify on-device:
-- Tap the sun → it bounces, candy boop plays
-- Tap the moon (under moonlight preset) → bounces, slightly higher pitch boop plays
-- Rapid-tap the sun → each tap retriggers the bounce (no missed taps)
+- Tap the sun under daylight/sunset/overcast — each tap plays one of three sounds and one of three animations (scale-pulse / spin-flourish / wobble)
+- Tap the moon under moonlight — each tap plays one of three sounds and one of three animations (scale-pulse / wink / tilt)
+- Rapid-tap the sun 6 times — the same variant should never repeat back-to-back; all three should appear at least once across the run
+- Wink: confirm only the LEFT eye closes (not both, not the right)
 
 - [ ] **Step 3: Commit**
 
 ```bash
 git add godot/scripts/sky_bodies.gd
-git commit -m "sky: tap → bounce tween + SFX playback on sun/moon"
+git commit -m "sky: tap → variant-aware bounce (3) + SFX (3) per body, no-repeat"
 ```
 
 ---

@@ -56,10 +56,47 @@ This spec adds a pair of in-world candy-themed sky bodies — a **lollipop sun**
 
 ### Tap interaction (both bodies)
 
-- A tap (or mouse click) on either body triggers a **bounce animation**: the disc scales rapidly from 1.0 → 1.15× over 80 ms, then springs back to 1.0× over 220 ms via `ease-out-back` (overshoots 0.97× momentarily). Total duration ~300 ms. This matches the Candy Crush level-selector feel — a satisfying "you touched candy" tactile reaction.
-- A simultaneous **tap sound** plays: a soft candy "boop" (short pitched chime with a wrapper-crinkle attack). Same sound for sun and moon, pitched up a semitone for the moon to differentiate. Source: generated via the ElevenLabs SFX pipeline (`reference_elevenlabs_vo` — paid tier active 2026-05-21), saved as `godot/assets/sfx/candy_tap.ogg`.
-- Tap detection: each body has an invisible Area3D child with a CollisionShape3D sized to match the disc's visible bounds. Touch input is routed via Godot's standard `_input_event` signal on the Area3D (the Camera3D physics pick mode is enabled). Multi-touch friendly — taps don't queue, each one independently retriggers the bounce from start.
-- The bounce animation does NOT interrupt the swirl rotation, shimmer, or breath cycles — those continue in the shader independently. Bounce is a pure Node3D scale animation in GDScript.
+Each body has **three animation variants and three sound variants**. On each tap, one variant pair (A, B, or C) is chosen via "random no-repeat" — pick uniformly at random from variants other than the one used on the previous tap. This makes rapid-tap sequences feel intentional rather than robotic.
+
+**Sun variants:**
+
+| Variant | Animation | Sound |
+|---------|-----------|-------|
+| A — gentle | Scale-pulse 1.0 → 1.15 → 0.97 → 1.0 over 300 ms (chained Tween, ease-out-back) | Hard-candy chime — bright high "ting" |
+| B — energetic | Spin-flourish: shader uniform `spin_boost` tweens 1.0 → 4.0 → 1.0 over 400 ms (rotation accelerates briefly then decays) | Caramel-stick tap — lower pitch with a slight woody attack |
+| C — playful | Wobble: Node3D `rotation.z` tweens 0 → +0.26 rad → -0.26 rad → 0 (damped sine, 600 ms total, ±15°) | Butterscotch sparkle — short crystalline "ting" with very quick decay |
+
+**Moon variants:**
+
+| Variant | Animation | Sound |
+|---------|-----------|-------|
+| A — gentle | Scale-pulse (same shape as sun A) | Marshmallow squish — soft padded thud |
+| B — sleepy | Wink: shader uniform `wink_override` tweens 0 → 1 → 0 over 250 ms, forcing the left eye fully closed during the peak | Cookie crunch — dry crispy short crunch |
+| C — playful | Tilt: head-shake — `rotation.z` tweens 0 → +0.14 rad → -0.14 rad → 0 over 500 ms (±8°) | White-chocolate tink — gentle smooth bell-like tone, slightly damped |
+
+**Implementation notes:**
+
+- All three animations on a body can interrupt each other (a new tap kills any in-flight Tween and starts the new variant from neutral). This avoids accumulating tweens on rapid taps.
+- The bounce animations do NOT interrupt the swirl rotation, shimmer, breath cycles, or natural blink — those continue in shader TIME-driven code independently.
+- Shader additions: `sun_lollipop.gdshader` adds a `spin_boost` uniform (default 1.0) multiplied into `rotation_speed`. `moon_cookie.gdshader` adds a `wink_override` uniform (default 0.0) that, when > 0, forces the left eye to be closed (overriding the natural blink cycle for that eye).
+- Sound files: six `.ogg` files in `godot/assets/sfx/sky_taps/`:
+  - `sun_a_chime.ogg`, `sun_b_stick.ogg`, `sun_c_sparkle.ogg`
+  - `moon_a_squish.ogg`, `moon_b_crunch.ogg`, `moon_c_tink.ogg`
+- Each body has three `AudioStreamPlayer3D` child nodes preloaded with its three streams; `_on_body_tapped` picks variant by index and plays the matching one.
+- Tap detection: each body has an invisible Area3D child with a CollisionShape3D sized to match the disc's visible bounds. Touch input is routed via Godot's standard `_input_event` signal on the Area3D. Multi-touch friendly — each tap independently selects + plays a variant.
+
+**Variant selection:**
+
+```gdscript
+const VARIANTS := ["a", "b", "c"]
+var _last_variant := {"sun": "", "moon": ""}
+
+func _pick_variant(body_key: String) -> String:
+    var pool := VARIANTS.filter(func(v): return v != _last_variant[body_key])
+    var chosen: String = pool[randi() % pool.size()]
+    _last_variant[body_key] = chosen
+    return chosen
+```
 
 ## Architecture
 
@@ -223,14 +260,18 @@ When tilted up (+20°), most of the visible frame becomes sky and the sun/moon a
 
 ### Audio
 
-A single tap sound `godot/assets/sfx/candy_tap.ogg`:
+Six tap sounds in `godot/assets/sfx/sky_taps/`, generated once via ElevenLabs SFX (see [[reference_elevenlabs_vo]] — paid tier active 2026-05-21). All 22050 Hz mono ogg-vorbis, ~10 KB each, total ~60 KB. Volume -8 dB in-game.
 
-- Generated via the ElevenLabs SFX API (see [[reference_elevenlabs_vo]] — paid tier active 2026-05-21).
-- Prompt: "Short soft candy boop sound, ~300ms, like tapping a hard candy through cellophane wrapper, gentle high-pitched chime with a subtle crinkle attack."
-- 22050 Hz mono, ogg-vorbis, ~10KB.
-- Both bodies share the same file; the moon's `TapSfx` sets `pitch_scale = 1.06` (one semitone up) so sun and moon are distinguishable.
-- Volume: -8 dB (subtle; the player should feel rewarded but not jarred).
-- Generated once, committed to repo. The script `scripts/gen_candy_tap_sfx.py` (new) handles regeneration if the prompt changes.
+| File | Prompt |
+|------|--------|
+| `sun_a_chime.ogg` | "Short bright hard candy chime, ~300ms, single clean high-pitched ting like tapping a glass-clear lollipop, gentle decay" |
+| `sun_b_stick.ogg` | "Short woody tap on caramel candy stick, ~300ms, lower pitched with a soft thunk attack, like flicking a sucker stick" |
+| `sun_c_sparkle.ogg` | "Tiny crystalline butterscotch sparkle, ~250ms, very short bright shimmery ting with quick decay, sugar-glass crystal feel" |
+| `moon_a_squish.ogg` | "Soft padded marshmallow squish, ~350ms, low gentle thud with subtle airy puff, like pressing into a marshmallow" |
+| `moon_b_crunch.ogg` | "Short dry cookie crunch, ~300ms, single crisp brittle crack, like biting into a white chocolate cookie" |
+| `moon_c_tink.ogg` | "Gentle white chocolate tink, ~350ms, mellow bell-like tone slightly damped, smooth and creamy" |
+
+A single regenerator script `scripts/gen_candy_tap_sfx.py` takes a `--variant` argument and writes the corresponding file. It is invoked six times during initial setup; re-run individually if a prompt is later tuned.
 
 ### Disc orientation (face the camera, not the world)
 
@@ -298,8 +339,13 @@ New files:
 - `godot/shaders/sun_stick.gdshader` — vertical caramel-glass stick
 - `godot/shaders/moon_cookie.gdshader` — disc + speckle + bite + face + breath
 - `godot/scripts/sky_bodies.gd` — Sky node controller (preset, parallax, look_at, bounce)
-- `godot/assets/sfx/candy_tap.ogg` — generated tap sound
-- `scripts/gen_candy_tap_sfx.py` — ElevenLabs SFX generator (offline tool)
+- `godot/assets/sfx/sky_taps/sun_a_chime.ogg`
+- `godot/assets/sfx/sky_taps/sun_b_stick.ogg`
+- `godot/assets/sfx/sky_taps/sun_c_sparkle.ogg`
+- `godot/assets/sfx/sky_taps/moon_a_squish.ogg`
+- `godot/assets/sfx/sky_taps/moon_b_crunch.ogg`
+- `godot/assets/sfx/sky_taps/moon_c_tink.ogg`
+- `scripts/gen_candy_tap_sfx.py` — ElevenLabs SFX generator (variant-aware)
 
 Modified files:
 - `godot/scenes/sp1_crowd_viewer.tscn` — add Sky node + bodies + Area3D + AudioStreamPlayer3D; add "Camera tilt" slider
