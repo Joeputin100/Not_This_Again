@@ -36,15 +36,17 @@ from PIL import Image
 # Allow the big atlas writes (the source-resolution sheets are >89MP).
 Image.MAX_IMAGE_PIXELS = None
 
-GREEN = (0, 177, 64)        # Veo chroma-green; tune if a clip differs
-# Chroma test: require G near 177 AND R/B both below their thresholds.
-# Previous version used Manhattan distance to GREEN with tolerance 210,
-# which incidentally also keyed mid-grey shadow pixels (e.g. (50,50,50)
-# has Manhattan-diff 191) — that punched holes through Pete's red shirt
-# wherever he had a dark fold/shadow. The "true green" check below
-# requires the pixel to actually look green, not just have a Manhattan
-# distance that happens to round into range.
-GREEN_G_TOLERANCE = 50      # how far G can drift from 177
+# Chroma test: pixel must look GREEN (G high, R+B low). Replaces the old
+# Manhattan-distance-to-(0,177,64) test which over-matched dark grey/shadow
+# pixels (punched holes through Pete's red shirt). The first attempt of
+# this revision used |G - 177| < 50, which excluded pure (0, 255, 0) —
+# Veo's chroma in many clips IS pure green, so most of the figure surround
+# survived. Final version: G must be above GREEN_G_MIN AND R+B must each
+# be below their thresholds. Covers both (0, 177, 64) chroma and (0, 255, 0)
+# chroma without catching greys/shadows (G is always low for shadows).
+GREEN_G_MIN = 110           # G must be at least this — captures both chroma
+                            # green shades Veo emits without catching dark
+                            # figure pixels (G < ~90 for typical shadows).
 GREEN_R_MAX = 90            # R must be below this
 GREEN_B_MAX = 110           # B must be below this
 LETTERBOX_ROW_THRESHOLD = 0.80  # fraction of near-black pixels needed to call a row letterbox
@@ -117,7 +119,7 @@ def key_frame(img: Image.Image) -> Image.Image:
     g_ch = rgb_i[..., 1]
     b_ch = rgb_i[..., 2]
     chroma_mask = (
-        (np.abs(g_ch - GREEN[1]) < GREEN_G_TOLERANCE)
+        (g_ch > GREEN_G_MIN)
         & (r_ch < GREEN_R_MAX)
         & (b_ch < GREEN_B_MAX)
     )
