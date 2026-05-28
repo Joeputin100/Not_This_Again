@@ -68,3 +68,4 @@ logs/
 # Python bytecode from the sprite-slicing scripts
 __pycache__/
 *.pyc
+*.uid
