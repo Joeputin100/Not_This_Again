@@ -224,20 +224,23 @@ var _move := Vector3.ZERO
 @onready var camera_3d: Camera3D = $ViewportContainer/Viewport3D/Camera3D
 @onready var key_light: DirectionalLight3D = $ViewportContainer/Viewport3D/KeyLight
 @onready var world_env: WorldEnvironment = $ViewportContainer/Viewport3D/WorldEnvironment
-@onready var slider: HSlider = $UI/Panel/VBox/CountSlider
-@onready var count_label: Label = $UI/Panel/VBox/CountLabel
-@onready var char_select: OptionButton = $UI/Panel/VBox/CharSelect
-@onready var light_select: OptionButton = $UI/Panel/VBox/LightSelect
-@onready var size_slider: HSlider = $UI/Panel/VBox/SizeSlider
-@onready var size_label: Label = $UI/Panel/VBox/SizeLabel
-@onready var tilt_slider: HSlider = $UI/Panel/VBox/TiltSlider
-@onready var tilt_label: Label = $UI/Panel/VBox/TiltLabel
+@onready var slider: HSlider = $UI/Panel/Root/Body/ColLeft/CountSlider
+@onready var count_label: Label = $UI/Panel/Root/Body/ColLeft/CountLabel
+@onready var char_select: OptionButton = $UI/Panel/Root/Body/ColLeft/CharSelect
+@onready var light_select: OptionButton = $UI/Panel/Root/Body/ColLeft/LightSelect
+@onready var size_slider: HSlider = $UI/Panel/Root/Body/ColLeft/SizeSlider
+@onready var size_label: Label = $UI/Panel/Root/Body/ColLeft/SizeLabel
+@onready var tilt_slider: HSlider = $UI/Panel/Root/Body/ColLeft/TiltSlider
+@onready var tilt_label: Label = $UI/Panel/Root/Body/ColLeft/TiltLabel
 @onready var perf: Label = $UI/Perf
 @onready var back_button: Button = $UI/BackButton
-@onready var dpad_up: Button = $UI/Panel/VBox/DPad/Up
-@onready var dpad_down: Button = $UI/Panel/VBox/DPad/Down
-@onready var dpad_left: Button = $UI/Panel/VBox/DPad/Left
-@onready var dpad_right: Button = $UI/Panel/VBox/DPad/Right
+@onready var dpad_up: Button = $UI/Panel/Root/Body/ColRight/DPad/Up
+@onready var dpad_down: Button = $UI/Panel/Root/Body/ColRight/DPad/Down
+@onready var dpad_left: Button = $UI/Panel/Root/Body/ColRight/DPad/Left
+@onready var dpad_right: Button = $UI/Panel/Root/Body/ColRight/DPad/Right
+@onready var ui_panel: PanelContainer = $UI/Panel
+@onready var drag_handle: Panel = $UI/Panel/Root/DragHandle
+var _dragging := false
 
 func _ready() -> void:
 	DebugLog.add("sp1_crowd_viewer: _ready start")
@@ -255,6 +258,8 @@ func _ready() -> void:
 		sky.bind_camera(camera_3d)
 	if back_button:
 		back_button.pressed.connect(_on_back_pressed)
+	if drag_handle:
+		drag_handle.gui_input.connect(_on_drag_handle_input)
 	if char_select == null or slider == null:
 		DebugLog.add("sp1_crowd_viewer: WARN UI missing — char_select=%s slider=%s" % [
 			char_select, slider])
@@ -356,6 +361,20 @@ func _on_tilt_changed(degrees: float) -> void:
 	camera_3d.rotation.x = pitch_rad
 	if tilt_label:
 		tilt_label.text = "Camera tilt: %d°" % int(degrees)
+
+func _on_drag_handle_input(event: InputEvent) -> void:
+	# Drag the whole control panel by its handle. The panel is anchored to
+	# the bottom-left corner, so we shift all four offsets by the drag delta.
+	if event is InputEventScreenTouch or event is InputEventMouseButton:
+		_dragging = event.pressed
+	elif event is InputEventScreenDrag or (event is InputEventMouseMotion and _dragging):
+		if ui_panel == null:
+			return
+		var d: Vector2 = event.relative
+		ui_panel.offset_left += d.x
+		ui_panel.offset_right += d.x
+		ui_panel.offset_top += d.y
+		ui_panel.offset_bottom += d.y
 
 func _on_size_changed(val: float) -> void:
 	# Scaling the whole crowd Node3D is the cheapest way to upsize every

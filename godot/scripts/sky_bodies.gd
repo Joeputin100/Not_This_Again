@@ -33,9 +33,15 @@ func apply_preset(preset: Dictionary, shadow_offset: Vector3) -> void:
 	if sun_visible:
 		var sun_h: float = preset["sun_height"]
 		sun_disc.position = Vector3(horiz.x, sun_h, horiz.y)
+		# Stick runs from the disc bottom DOWN past the horizon line. At
+		# SKY_DISTANCE (50m) the terrain plane has ended, so y=0 there is the
+		# visible horizon; extending the stick well below 0 makes it plunge
+		# convincingly toward/behind the horizon instead of stopping mid-air.
+		var stick_bottom := -40.0
+		var stick_height: float = sun_h - stick_bottom
 		var stick_mesh: QuadMesh = sun_stick.get_node("StickMesh").mesh
-		stick_mesh.size = Vector2(0.6, sun_h)
-		sun_stick.position = Vector3(horiz.x, sun_h * 0.5, horiz.y)
+		stick_mesh.size = Vector2(0.6, stick_height)
+		sun_stick.position = Vector3(horiz.x, (sun_h + stick_bottom) * 0.5, horiz.y)
 		_push_sun_uniforms(preset)
 
 	var moon_visible: bool = preset.get("moon_visible", false)

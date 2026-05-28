@@ -97,7 +97,7 @@ mouse_filter = 2
 offset_right = 1080.0
 offset_bottom = 1920.0
 stretch = true
-mouse_filter = 2
+mouse_filter = 1
 
 [node name="Viewport3D" type="SubViewport" parent="ViewportContainer"]
 own_world_3d = true
@@ -105,6 +105,8 @@ transparent_bg = false
 handle_input_locally = false
 size = Vector2i(1080, 1920)
 render_target_update_mode = 4
+physics_object_picking = true
+physics_object_picking_sort = true
 
 [node name="WorldEnvironment" type="WorldEnvironment" parent="ViewportContainer/Viewport3D"]
 environment = SubResource("Env_daylight")
@@ -205,113 +207,136 @@ anchor_left = 0.0
 anchor_top = 1.0
 anchor_right = 0.0
 anchor_bottom = 1.0
-offset_left = 30.0
-offset_top = -900.0
-offset_right = 540.0
-offset_bottom = -30.0
+offset_left = 20.0
+offset_top = -600.0
+offset_right = 1020.0
+offset_bottom = -20.0
 theme = ExtResource("2_theme")
 
-[node name="VBox" type="VBoxContainer" parent="UI/Panel"]
-theme_override_constants/separation = 12
+[node name="Root" type="VBoxContainer" parent="UI/Panel"]
+theme_override_constants/separation = 8
 
-[node name="CharLabel" type="Label" parent="UI/Panel/VBox"]
+[node name="DragHandle" type="Panel" parent="UI/Panel/Root"]
+custom_minimum_size = Vector2(0, 44)
+
+[node name="DragLabel" type="Label" parent="UI/Panel/Root/DragHandle"]
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+text = "⠿   drag to move   ⠿"
+horizontal_alignment = 1
+vertical_alignment = 1
+theme_override_font_sizes/font_size = 24
+theme_override_colors/font_color = Color(0.95, 0.78, 0.35, 1)
+
+[node name="Body" type="HBoxContainer" parent="UI/Panel/Root"]
+theme_override_constants/separation = 28
+
+[node name="ColLeft" type="VBoxContainer" parent="UI/Panel/Root/Body"]
+size_flags_horizontal = 3
+theme_override_constants/separation = 6
+
+[node name="CharLabel" type="Label" parent="UI/Panel/Root/Body/ColLeft"]
 text = "Character"
-theme_override_font_sizes/font_size = 28
+theme_override_font_sizes/font_size = 26
 theme_override_colors/font_color = Color(0.95, 0.78, 0.35, 1)
 
-[node name="CharSelect" type="OptionButton" parent="UI/Panel/VBox"]
-custom_minimum_size = Vector2(0, 72)
-theme_override_font_sizes/font_size = 30
+[node name="CharSelect" type="OptionButton" parent="UI/Panel/Root/Body/ColLeft"]
+custom_minimum_size = Vector2(0, 64)
+theme_override_font_sizes/font_size = 28
 
-[node name="LightLabel" type="Label" parent="UI/Panel/VBox"]
+[node name="LightLabel" type="Label" parent="UI/Panel/Root/Body/ColLeft"]
 text = "Lighting"
-theme_override_font_sizes/font_size = 28
+theme_override_font_sizes/font_size = 26
 theme_override_colors/font_color = Color(0.95, 0.78, 0.35, 1)
 
-[node name="LightSelect" type="OptionButton" parent="UI/Panel/VBox"]
-custom_minimum_size = Vector2(0, 72)
-theme_override_font_sizes/font_size = 30
+[node name="LightSelect" type="OptionButton" parent="UI/Panel/Root/Body/ColLeft"]
+custom_minimum_size = Vector2(0, 64)
+theme_override_font_sizes/font_size = 28
 
-[node name="CountLabel" type="Label" parent="UI/Panel/VBox"]
+[node name="CountLabel" type="Label" parent="UI/Panel/Root/Body/ColLeft"]
 text = "Crowd size: 20"
-theme_override_font_sizes/font_size = 28
+theme_override_font_sizes/font_size = 26
 theme_override_colors/font_color = Color(0.95, 0.78, 0.35, 1)
 
-[node name="CountSlider" type="HSlider" parent="UI/Panel/VBox"]
-custom_minimum_size = Vector2(0, 60)
+[node name="CountSlider" type="HSlider" parent="UI/Panel/Root/Body/ColLeft"]
+custom_minimum_size = Vector2(0, 54)
 min_value = 1.0
 max_value = 200.0
 value = 20.0
 step = 1.0
 
-[node name="SizeLabel" type="Label" parent="UI/Panel/VBox"]
+[node name="SizeLabel" type="Label" parent="UI/Panel/Root/Body/ColLeft"]
 text = "Character size: 1.0×"
-theme_override_font_sizes/font_size = 28
+theme_override_font_sizes/font_size = 26
 theme_override_colors/font_color = Color(0.95, 0.78, 0.35, 1)
 
-[node name="SizeSlider" type="HSlider" parent="UI/Panel/VBox"]
-custom_minimum_size = Vector2(0, 60)
+[node name="SizeSlider" type="HSlider" parent="UI/Panel/Root/Body/ColLeft"]
+custom_minimum_size = Vector2(0, 54)
 min_value = 0.5
 max_value = 5.0
 value = 1.0
 step = 0.1
 
-[node name="TiltLabel" type="Label" parent="UI/Panel/VBox"]
+[node name="TiltLabel" type="Label" parent="UI/Panel/Root/Body/ColLeft"]
 text = "Camera tilt: -20°"
-theme_override_font_sizes/font_size = 28
+theme_override_font_sizes/font_size = 26
 theme_override_colors/font_color = Color(0.95, 0.78, 0.35, 1)
 
-[node name="TiltSlider" type="HSlider" parent="UI/Panel/VBox"]
-custom_minimum_size = Vector2(0, 60)
+[node name="TiltSlider" type="HSlider" parent="UI/Panel/Root/Body/ColLeft"]
+custom_minimum_size = Vector2(0, 54)
 min_value = -60.0
 max_value = 20.0
 value = -20.0
 step = 1.0
 
-[node name="DPadLabel" type="Label" parent="UI/Panel/VBox"]
+[node name="ColRight" type="VBoxContainer" parent="UI/Panel/Root/Body"]
+theme_override_constants/separation = 6
+
+[node name="DPadLabel" type="Label" parent="UI/Panel/Root/Body/ColRight"]
 text = "Move crowd"
-theme_override_font_sizes/font_size = 28
+theme_override_font_sizes/font_size = 26
 theme_override_colors/font_color = Color(0.95, 0.78, 0.35, 1)
 
-[node name="DPad" type="GridContainer" parent="UI/Panel/VBox"]
+[node name="DPad" type="GridContainer" parent="UI/Panel/Root/Body/ColRight"]
 columns = 3
 theme_override_constants/h_separation = 8
 theme_override_constants/v_separation = 8
 
-[node name="dp_blank_tl" type="Control" parent="UI/Panel/VBox/DPad"]
-custom_minimum_size = Vector2(120, 120)
+[node name="dp_blank_tl" type="Control" parent="UI/Panel/Root/Body/ColRight/DPad"]
+custom_minimum_size = Vector2(96, 96)
 
-[node name="Up" type="Button" parent="UI/Panel/VBox/DPad"]
-custom_minimum_size = Vector2(120, 120)
+[node name="Up" type="Button" parent="UI/Panel/Root/Body/ColRight/DPad"]
+custom_minimum_size = Vector2(96, 96)
 text = "↑"
-theme_override_font_sizes/font_size = 48
+theme_override_font_sizes/font_size = 44
 
-[node name="dp_blank_tr" type="Control" parent="UI/Panel/VBox/DPad"]
-custom_minimum_size = Vector2(120, 120)
+[node name="dp_blank_tr" type="Control" parent="UI/Panel/Root/Body/ColRight/DPad"]
+custom_minimum_size = Vector2(96, 96)
 
-[node name="Left" type="Button" parent="UI/Panel/VBox/DPad"]
-custom_minimum_size = Vector2(120, 120)
+[node name="Left" type="Button" parent="UI/Panel/Root/Body/ColRight/DPad"]
+custom_minimum_size = Vector2(96, 96)
 text = "←"
-theme_override_font_sizes/font_size = 48
+theme_override_font_sizes/font_size = 44
 
-[node name="dp_blank_mid" type="Control" parent="UI/Panel/VBox/DPad"]
-custom_minimum_size = Vector2(120, 120)
+[node name="dp_blank_mid" type="Control" parent="UI/Panel/Root/Body/ColRight/DPad"]
+custom_minimum_size = Vector2(96, 96)
 
-[node name="Right" type="Button" parent="UI/Panel/VBox/DPad"]
-custom_minimum_size = Vector2(120, 120)
+[node name="Right" type="Button" parent="UI/Panel/Root/Body/ColRight/DPad"]
+custom_minimum_size = Vector2(96, 96)
 text = "→"
-theme_override_font_sizes/font_size = 48
+theme_override_font_sizes/font_size = 44
 
-[node name="dp_blank_bl" type="Control" parent="UI/Panel/VBox/DPad"]
-custom_minimum_size = Vector2(120, 120)
+[node name="dp_blank_bl" type="Control" parent="UI/Panel/Root/Body/ColRight/DPad"]
+custom_minimum_size = Vector2(96, 96)
 
-[node name="Down" type="Button" parent="UI/Panel/VBox/DPad"]
-custom_minimum_size = Vector2(120, 120)
+[node name="Down" type="Button" parent="UI/Panel/Root/Body/ColRight/DPad"]
+custom_minimum_size = Vector2(96, 96)
 text = "↓"
-theme_override_font_sizes/font_size = 48
+theme_override_font_sizes/font_size = 44
 
-[node name="dp_blank_br" type="Control" parent="UI/Panel/VBox/DPad"]
-custom_minimum_size = Vector2(120, 120)
+[node name="dp_blank_br" type="Control" parent="UI/Panel/Root/Body/ColRight/DPad"]
+custom_minimum_size = Vector2(96, 96)
 
 [node name="Perf" type="Label" parent="UI"]
 anchors_preset = -1
