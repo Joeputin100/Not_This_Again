@@ -3,6 +3,13 @@ class_name SkyBodies
 
 const SKY_DISTANCE := 50.0
 const PARALLAX_FACTOR := 0.15
+const SUN_TEXTURES := {
+	"daylight": preload("res://assets/sprites/sky/sun_daylight.png"),
+	"sunset":   preload("res://assets/sprites/sky/sun_sunset.png"),
+	"overcast": preload("res://assets/sprites/sky/sun_overcast.png"),
+}
+const MOON_TEX_NORMAL := preload("res://assets/sprites/sky/moon_normal.png")
+const MOON_TEX_WINK := preload("res://assets/sprites/sky/moon_wink.png")
 
 @onready var sun_disc: Node3D = $SunDisc
 @onready var sun_stick: Node3D = $SunStick
@@ -14,16 +21,12 @@ func bind_camera(camera: Camera3D) -> void:
 	_camera = camera
 
 func apply_preset(preset: Dictionary, shadow_offset: Vector3) -> void:
-	# Light source direction: opposite the shadow, projected into XZ. The
-	# lateral angle is clamped to ±15° so the body stays inside the camera's
-	# horizontal FOV (~28° for our 9:16 viewport at FOV=50°). Without the
-	# clamp, shadow offsets with significant X make the sun fall outside
-	# the visible frame.
 	var raw_angle: float = 0.0
 	if absf(shadow_offset.x) + absf(shadow_offset.z) > 0.0001:
 		raw_angle = atan2(-shadow_offset.x, -shadow_offset.z)
 	var lat_angle: float = clampf(raw_angle, -PI / 36.0, PI / 36.0)
 	var horiz := Vector2(sin(lat_angle), -cos(lat_angle)) * SKY_DISTANCE
+
 	var sun_visible: bool = preset.get("sun_visible", true)
 	sun_disc.visible = sun_visible
 	sun_stick.visible = sun_visible
@@ -34,6 +37,7 @@ func apply_preset(preset: Dictionary, shadow_offset: Vector3) -> void:
 		stick_mesh.size = Vector2(0.6, sun_h)
 		sun_stick.position = Vector3(horiz.x, sun_h * 0.5, horiz.y)
 		_push_sun_uniforms(preset)
+
 	var moon_visible: bool = preset.get("moon_visible", false)
 	moon_disc.visible = moon_visible
 	if moon_visible:
@@ -45,17 +49,28 @@ func _push_sun_uniforms(preset: Dictionary) -> void:
 	var mat: ShaderMaterial = sun_disc.get_node("DiscMesh").material_override
 	if mat == null:
 		return
-	if preset.has("sun_swirl_a"):
-		mat.set_shader_parameter("swirl_color_a", preset["sun_swirl_a"])
-	if preset.has("sun_swirl_b"):
-		mat.set_shader_parameter("swirl_color_b", preset["sun_swirl_b"])
+	var tex_key: String = preset.get("sun_tex", "daylight")
+	if SUN_TEXTURES.has(tex_key):
+		mat.set_shader_parameter("albedo_tex", SUN_TEXTURES[tex_key])
+	if preset.has("sun_tint"):
+		mat.set_shader_parameter("tint", preset["sun_tint"])
+	if preset.has("sun_corona_color"):
+		mat.set_shader_parameter("corona_color", preset["sun_corona_color"])
+	if preset.has("sun_corona_strength"):
+		mat.set_shader_parameter("corona_strength", preset["sun_corona_strength"])
 
 func _push_moon_uniforms(preset: Dictionary) -> void:
 	var mat: ShaderMaterial = moon_disc.get_node("DiscMesh").material_override
 	if mat == null:
 		return
-	if preset.has("moon_bite_depth"):
-		mat.set_shader_parameter("bite_depth", preset["moon_bite_depth"])
+	mat.set_shader_parameter("albedo_tex", MOON_TEX_NORMAL)
+	mat.set_shader_parameter("wink_tex", MOON_TEX_WINK)
+	if preset.has("moon_tint"):
+		mat.set_shader_parameter("tint", preset["moon_tint"])
+	if preset.has("moon_corona_color"):
+		mat.set_shader_parameter("corona_color", preset["moon_corona_color"])
+	if preset.has("moon_corona_strength"):
+		mat.set_shader_parameter("corona_strength", preset["moon_corona_strength"])
 
 func _process(_dt: float) -> void:
 	if _camera == null:
@@ -101,7 +116,7 @@ func _on_body_tapped(_camera: Node, event: InputEvent, _pos: Vector3,
 	if body_key == "sun":
 		match variant:
 			"A": _anim_scale_pulse(body)
-			"B": _anim_sun_spin(body)
+			"B": _anim_sun_corona_burst(body)
 			"C": _anim_z_wobble(body, 0.26, 0.6)
 	else:
 		match variant:
@@ -125,16 +140,16 @@ func _anim_scale_pulse(body: Node3D) -> void:
 	t.tween_property(body, "scale", Vector3.ONE, 0.08).set_ease(Tween.EASE_OUT)
 	body.set_meta("bounce_tween", t)
 
-func _anim_sun_spin(body: Node3D) -> void:
+func _anim_sun_corona_burst(body: Node3D) -> void:
 	_kill_prev_tween(body)
 	var mat: ShaderMaterial = body.get_node("DiscMesh").material_override
 	if mat == null:
 		return
-	mat.set_shader_parameter("spin_boost", 1.0)
+	mat.set_shader_parameter("corona_burst", 0.0)
 	var t := create_tween()
-	t.tween_method(func(v): mat.set_shader_parameter("spin_boost", v), 1.0, 4.0, 0.12)\
+	t.tween_method(func(v): mat.set_shader_parameter("corona_burst", v), 0.0, 1.5, 0.10)\
 	 .set_ease(Tween.EASE_OUT)
-	t.tween_method(func(v): mat.set_shader_parameter("spin_boost", v), 4.0, 1.0, 0.28)\
+	t.tween_method(func(v): mat.set_shader_parameter("corona_burst", v), 1.5, 0.0, 0.40)\
 	 .set_ease(Tween.EASE_IN)
 	body.set_meta("bounce_tween", t)
 
@@ -143,11 +158,12 @@ func _anim_moon_wink(body: Node3D) -> void:
 	var mat: ShaderMaterial = body.get_node("DiscMesh").material_override
 	if mat == null:
 		return
-	mat.set_shader_parameter("wink_override", 0.0)
+	mat.set_shader_parameter("wink_progress", 0.0)
 	var t := create_tween()
-	t.tween_method(func(v): mat.set_shader_parameter("wink_override", v), 0.0, 1.0, 0.10)\
+	t.tween_method(func(v): mat.set_shader_parameter("wink_progress", v), 0.0, 1.0, 0.08)\
 	 .set_ease(Tween.EASE_OUT)
-	t.tween_method(func(v): mat.set_shader_parameter("wink_override", v), 1.0, 0.0, 0.15)\
+	t.tween_interval(0.15)
+	t.tween_method(func(v): mat.set_shader_parameter("wink_progress", v), 1.0, 0.0, 0.12)\
 	 .set_ease(Tween.EASE_IN)
 	body.set_meta("bounce_tween", t)
 
