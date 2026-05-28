@@ -1,4 +1,4 @@
-[gd_scene load_steps=28 format=3 uid="uid://b0nttg_sp1_crowd_001"]
+[gd_scene load_steps=31 format=3 uid="uid://b0nttg_sp1_crowd_001"]
 
 ; SP1 debug crowd viewer — 3D crowd preview wired through a SubViewport
 ; so it renders correctly under the project's mobile / canvas_items
@@ -15,6 +15,7 @@
 [ext_resource type="Shader" path="res://shaders/sun_stick.gdshader" id="5_sun_stick"]
 [ext_resource type="Shader" path="res://shaders/moon_cookie.gdshader" id="6_moon_cookie"]
 [ext_resource type="Shader" path="res://shaders/sun_corona_star.gdshader" id="13_sun_corona"]
+[ext_resource type="Shader" path="res://shaders/sky_clouds.gdshader" id="14_clouds"]
 [ext_resource type="AudioStream" path="res://assets/sfx/sky_taps/sun_a_chime.ogg" id="7_sun_a"]
 [ext_resource type="AudioStream" path="res://assets/sfx/sky_taps/sun_b_stick.ogg" id="8_sun_b"]
 [ext_resource type="AudioStream" path="res://assets/sfx/sky_taps/sun_c_sparkle.ogg" id="9_sun_c"]
@@ -92,6 +93,13 @@ shader = ExtResource("6_moon_cookie")
 [sub_resource type="SphereShape3D" id="SphereShape_moon"]
 radius = 4.5
 
+[sub_resource type="QuadMesh" id="QuadMesh_clouds"]
+size = Vector2(48, 48)
+
+[sub_resource type="ShaderMaterial" id="ShaderMat_clouds"]
+render_priority = -30
+shader = ExtResource("14_clouds")
+
 [node name="SP1CrowdViewer" type="Node2D"]
 script = ExtResource("1_script")
 
@@ -124,6 +132,15 @@ transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 8, 8)
 current = true
 fov = 50.0
 attributes = SubResource("CamAttr_daylight")
+
+; Procedural cloud sky backdrop (drift's "2D Clouds", cleared for use).
+; Child of the camera so it always fills the FOV as the tilt slider moves;
+; render_priority -30 + depth_test off keeps it behind sun/moon/terrain.
+[node name="CloudBackdrop" type="MeshInstance3D" parent="ViewportContainer/Viewport3D/Camera3D"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, -12)
+cast_shadow = 0
+mesh = SubResource("QuadMesh_clouds")
+material_override = SubResource("ShaderMat_clouds")
 
 ; Sun-style light pitched ~30° down from horizontal. Shadows disabled here
 ; because the flipbook + grass_field shaders are `unshaded` (can't cast
