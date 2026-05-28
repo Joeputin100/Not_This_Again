@@ -22,8 +22,24 @@ const POSSE_DAMAGE: int = 1
 # Velocity vector — overridden by the shooter to aim at the cowboy.
 var velocity: Vector2 = Vector2(0, SPEED)
 
+const SOUR_TEX := "res://assets/sprites/candy/candy_sour.png"
+const SOUR_PX := 38.0
+
 func _ready() -> void:
 	add_to_group("outlaw_bullets")
+	# Reskin: enemy shots are sour candy (distinct acid-green so incoming
+	# danger reads clearly). PROTOTYPE art — see project_candy_shader_licensing.
+	var tex: Texture2D = load(SOUR_TEX)
+	if tex:
+		for n in ["Body", "Glow"]:
+			var rect: ColorRect = get_node_or_null(n) as ColorRect
+			if rect:
+				rect.visible = false
+		var spr := Sprite2D.new()
+		spr.texture = tex
+		var s: float = SOUR_PX / float(maxi(tex.get_width(), 1))
+		spr.scale = Vector2(s, s)
+		add_child(spr)
 
 func _process(delta: float) -> void:
 	position += velocity * delta
