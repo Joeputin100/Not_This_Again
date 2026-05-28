@@ -24,6 +24,7 @@ static func build_liquorice_whip() -> Resource:
 	# "swing slow" feel.
 	var g: Resource = GunScript.new()
 	g.display_name = "Liquorice Whip"
+	g.candy_set = "liquorice"
 	g.range_px = 400.0
 	g.fire_interval = 0.55
 	g.caliber = 2
@@ -36,6 +37,7 @@ static func build_cotton_candy_rifle() -> Resource:
 	# Long range, pinpoint, slow.
 	var g: Resource = GunScript.new()
 	g.display_name = "Cotton Candy Rifle"
+	g.candy_set = "cotton"
 	g.range_px = 1100.0
 	g.fire_interval = 0.50
 	g.caliber = 2
@@ -58,6 +60,7 @@ static func build_fudgicle_frostbite() -> Resource:
 	# Slow enemies 50% for 4s on hit.
 	var g: Resource = GunScript.new()
 	g.display_name = "Fudgicle Frostbite Pistol"
+	g.candy_set = "frostbite"
 	g.range_px = 500.0
 	g.fire_interval = 0.20
 	g.caliber = 1
@@ -72,6 +75,7 @@ static func build_jawbreaker_grenades() -> Resource:
 	# AOE splash on impact, slow throw, 3 in pouch.
 	var g: Resource = GunScript.new()
 	g.display_name = "Jawbreaker Grenades"
+	g.candy_set = "jawbreaker"
 	g.range_px = 700.0
 	g.fire_interval = 0.85
 	g.caliber = 3
@@ -84,6 +88,7 @@ static func build_screaming_tnt() -> Resource:
 	# Long-range, very slow, huge AOE.
 	var g: Resource = GunScript.new()
 	g.display_name = "Screaming Red-Hot TNT"
+	g.candy_set = "tnt"
 	g.range_px = 950.0
 	g.fire_interval = 1.40
 	g.caliber = 5
@@ -98,6 +103,7 @@ static func build_marshmallow_cannon() -> Resource:
 	# Marshmallow Sheriff's unique weapon. Huge AOE, slow reload.
 	var g: Resource = GunScript.new()
 	g.display_name = "Marshmallow Cannon"
+	g.candy_set = "marshmallow"
 	g.range_px = 700.0
 	g.fire_interval = 1.10
 	g.caliber = 4

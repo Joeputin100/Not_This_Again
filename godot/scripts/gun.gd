@@ -62,3 +62,8 @@ extends Resource
 
 # Spread angle (radians) for multi-bullet weapons. 0 = perfectly aligned.
 @export var spread_radians: float = 0.0
+
+# Candy-sprite set name for this weapon's bullets. bullet.gd maps the name
+# to a list of candy textures and picks one per shot. "" / "gummy" = the
+# default jelly-bean gummies. See bullet.gd CANDY_SETS.
+@export var candy_set: String = "gummy"

@@ -62,15 +62,50 @@ const CANDY_COLORS: Array[Color] = [
 	Color(0.95, 0.55, 0.78, 1),  # bubblegum
 ]
 
+# Candy sprite sets (baked from Shadertoy — PROTOTYPE art, see memory
+# project_candy_shader_licensing). A weapon's gun.candy_set names a set;
+# the bullet picks one texture at random per shot. "gummy" is the default.
+const _C := "res://assets/sprites/candy/"
+const CANDY_SETS := {
+	"gummy": [_C + "candy_red.png", _C + "candy_green.png", _C + "candy_blue.png", _C + "candy_amber.png"],
+	"frenzy": [_C + "candy_red.png", _C + "candy_green.png", _C + "candy_blue.png", _C + "candy_amber.png",
+		_C + "candy_choc_swirl.png", _C + "candy_choc_stripe.png", _C + "candy_cotton.png",
+		_C + "candy_bomb.png", _C + "candy_fireball.png"],
+	"cotton": [_C + "candy_cotton.png"],
+	"frostbite": [_C + "candy_blue.png"],
+	"liquorice": [_C + "candy_choc_stripe.png"],
+	"jawbreaker": [_C + "candy_bomb.png"],
+	"tnt": [_C + "candy_fireball.png"],
+	"marshmallow": [_C + "candy_choc_swirl.png"],
+}
+# On-screen candy diameter in px (sprites are 512² with transparent margins).
+const CANDY_PX := 40.0
+
+# Set by level.gd from the firing gun. "" = legacy jelly-bean polygons.
+var candy_set: String = ""
+
 func _ready() -> void:
 	add_to_group("bullets")
 	_spawn_y = position.y
-	# Randomize the bean color so successive bullets read as different
-	# candies. Body is the @child Polygon2D in the scene; Highlight
-	# stays its fixed white catch-light.
-	var body: Polygon2D = get_node_or_null("Body") as Polygon2D
-	if body:
-		body.color = CANDY_COLORS[randi() % CANDY_COLORS.size()]
+	var paths: Array = CANDY_SETS.get(candy_set, [])
+	if paths.is_empty():
+		# Legacy jelly-bean: randomize the Body polygon colour per shot.
+		var body: Polygon2D = get_node_or_null("Body") as Polygon2D
+		if body:
+			body.color = CANDY_COLORS[randi() % CANDY_COLORS.size()]
+	else:
+		# Candy sprite: hide the bean polygons, show a scaled candy Sprite2D.
+		for n in ["Body", "Highlight"]:
+			var poly: Polygon2D = get_node_or_null(n) as Polygon2D
+			if poly:
+				poly.visible = false
+		var tex: Texture2D = load(paths[randi() % paths.size()])
+		if tex:
+			var spr := Sprite2D.new()
+			spr.texture = tex
+			var s: float = CANDY_PX / float(maxi(tex.get_width(), 1))
+			spr.scale = Vector2(s, s)
+			add_child(spr)
 
 func _process(delta: float) -> void:
 	position.y -= SPEED * velocity_mult * delta

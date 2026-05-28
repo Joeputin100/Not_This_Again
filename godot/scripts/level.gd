@@ -458,6 +458,7 @@ func _spawn_bullet() -> void:
 			bullet.aoe_radius = _gun.aoe_radius
 			bullet.freeze_duration_s = _gun.freeze_duration_s
 			bullet.slow_duration_s = _gun.slow_duration_s
+			bullet.candy_set = _gun.candy_set
 			add_child(bullet)
 			_bullets_fired += 1
 
@@ -483,6 +484,8 @@ func _spawn_frenzy_fan() -> void:
 		var off: int = i - center
 		var angle_rad: float = deg_to_rad(FRENZY_FAN_ANGLE_DEG) * float(off)
 		bullet.lateral_drift = bullet_lateral_drift + tan(angle_rad) * BulletScript.SPEED
+		# Frenzy bullets pull from the full candy set for max spectacle.
+		bullet.candy_set = "frenzy"
 		add_child(bullet)
 		_bullets_fired += 1
 
