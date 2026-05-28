@@ -177,7 +177,7 @@ const LIGHTING_PRESETS := {
 		"moon_height":   16.0,
 		"moon_tint":     Color(0.88, 0.92, 1.05, 1),
 		"moon_corona_color": Color(0.74, 0.84, 1.00, 1),
-		"moon_corona_strength": 0.50,
+		"moon_corona_strength": 0.85,
 	},
 	"overcast": {
 		"light_color":   Color(0.92, 0.94, 0.95, 1),
