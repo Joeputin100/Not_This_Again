@@ -25,6 +25,7 @@ extends RefCounted
 const TYPE_DUST_STORM: String = "DUST_STORM"
 const TYPE_RAIN: String = "RAIN"
 const TYPE_WIND_STORM: String = "WIND_STORM"
+const TYPE_SNOW: String = "SNOW"
 
 # Centralized param table. Each entry contains every knob WeatherManager
 # may need. Anything that's "no effect" stays at the identity value:
@@ -63,6 +64,14 @@ const _PARAMS: Dictionary = {
 		"bullet_velocity_mult": 1.0,
 		"bullet_drift": 40.0,         # bullets curve right ~40px/sec
 		"cowboy_drift_x": 25.0,       # cowboy drifts right ~25px/sec
+	},
+	"SNOW": {
+		"scene_path": "res://scenes/weather/snow.tscn",
+		"range_mult": 0.85,           # falling snow trims sight range -15%
+		"steering_mult": 0.9,         # cold/slippery footing, -10% steering
+		"bullet_velocity_mult": 0.95,
+		"bullet_drift": 0.0,
+		"cowboy_drift_x": 0.0,
 	},
 }
 
