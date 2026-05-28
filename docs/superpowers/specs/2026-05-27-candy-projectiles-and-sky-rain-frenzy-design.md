@@ -83,6 +83,7 @@ NOTE: bullets are currently drawn as solid-color rounded shapes; `bullet.gd` ran
 HAVE (6, baked from fizzer "Unlimited Confectionery"): red/green/blue/amber gummies, white-choc swirl, striped sweet. → cover the jelly-bean weapons (default + frenzy) + liquorice-ish.
 
 HAVE (7th, baked from Nrx "Cotton candy Pac-Man"): `candy_cotton.png` — fluffy pastel pink→blue volumetric floss → Cotton Candy Rifle. DONE.
+HAVE (8th, baked from bradjamesgrant "fractal pyramid"): `candy_bomb.png` — round glowing magenta/cyan crystalline orb → candidate for Jawbreaker Grenades or Screaming TNT (bomb/explosive). DONE.
 
 STILL WANT (distinct materials — user is raiding Shadertoy; do NOT gummy-fy everything):
 - Marshmallow (soft matte subsurface white) → Marshmallow Cannon
