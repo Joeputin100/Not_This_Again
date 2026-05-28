@@ -94,25 +94,24 @@ const FALL_DESPAWN_Y: float = 2080.0
 func _ready() -> void:
 	add_to_group("bullets")
 	_spawn_y = position.y
+	# Always use candy sprites. Empty/unknown candy_set falls back to the
+	# gummy set rather than the deprecated bean polygons, so gameplay never
+	# shows the old polygon look regardless of how the gun was created.
 	var paths: Array = CANDY_SETS.get(candy_set, [])
 	if paths.is_empty():
-		# Legacy jelly-bean: randomize the Body polygon colour per shot.
-		var body: Polygon2D = get_node_or_null("Body") as Polygon2D
-		if body:
-			body.color = CANDY_COLORS[randi() % CANDY_COLORS.size()]
-	else:
-		# Candy sprite: hide the bean polygons, show a scaled candy Sprite2D.
-		for n in ["Body", "Highlight"]:
-			var poly: Polygon2D = get_node_or_null(n) as Polygon2D
-			if poly:
-				poly.visible = false
-		var tex: Texture2D = load(paths[randi() % paths.size()])
-		if tex:
-			var spr := Sprite2D.new()
-			spr.texture = tex
-			var s: float = CANDY_PX / float(maxi(tex.get_width(), 1))
-			spr.scale = Vector2(s, s)
-			add_child(spr)
+		paths = CANDY_SETS["gummy"]
+	# Hide the legacy bean polygons, show a scaled candy Sprite2D.
+	for n in ["Body", "Highlight"]:
+		var poly: Polygon2D = get_node_or_null(n) as Polygon2D
+		if poly:
+			poly.visible = false
+	var tex: Texture2D = load(paths[randi() % paths.size()])
+	if tex:
+		var spr := Sprite2D.new()
+		spr.texture = tex
+		var s: float = CANDY_PX / float(maxi(tex.get_width(), 1))
+		spr.scale = Vector2(s, s)
+		add_child(spr)
 
 func _process(delta: float) -> void:
 	if fall_speed > 0.0:
