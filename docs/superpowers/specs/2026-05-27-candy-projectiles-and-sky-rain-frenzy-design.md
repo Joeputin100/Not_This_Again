@@ -86,7 +86,11 @@ HAVE (7th, baked from Nrx "Cotton candy Pac-Man"): `candy_cotton.png` — fluffy
 HAVE (8th, baked from bradjamesgrant "fractal pyramid"): `candy_bomb.png` — round glowing magenta/cyan crystalline orb → candidate for Jawbreaker Grenades or Screaming TNT (bomb/explosive). DONE.
 HAVE (9th, baked from simonsdev "Kaleidoscopix 3", fire-tinted): `candy_fireball.png` — glowing red/orange crackling fireball orb → candidate for Screaming Red-Hot TNT or a fire projectile. DONE.
 
-Bake method note: animated shaders (bomb, fireball) need a chosen `bake_time` frame — compare a few and pick the densest/most-centered. Additive-glow shaders → alpha-from-luminance + radial containment.
+HAVE (10th + 11th, baked from Dave_Hoskins "Warp Speed 2"): `candy_jawbreaker.png` (warp recoloured multicolour by fragment angle + speckles → Jawbreaker Grenades) and `candy_freezeray.png` (warp tinted electric blue + lightning streaks → Fudgicle Frostbite). DONE.
+
+Bake method note: animated shaders (bomb, fireball, jawbreaker, freezeray) need a chosen `bake_time` frame — compare a few and pick the densest/most-centered, avoiding white-blowout frames. Additive-glow shaders → alpha-from-luminance + radial containment; recolour a shader's native palette (e.g. blue warp → multicolour jawbreaker / electric-blue freeze ray) to repurpose one source into several candies.
+
+IMPLEMENTED (gameplay): bullet reskin via gun.candy_set + bullet.gd CANDY_SETS (commit 8f01de9); sky-rain frenzy + sustained camera shake (commit d0f7cdb). Frostbite→freezeray, jawbreaker→jawbreaker wired (398289f).
 
 STILL WANT (distinct materials — user is raiding Shadertoy; do NOT gummy-fy everything):
 - Marshmallow (soft matte subsurface white) → Marshmallow Cannon
