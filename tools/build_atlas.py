@@ -128,7 +128,50 @@ def key_frame(img: Image.Image) -> Image.Image:
     return Image.fromarray(arr)
 
 
-def build(frames: list[Path], fps: float, out: Path, scale: float = 1.0) -> None:
+def _normalize_figures(imgs: list[Image.Image], fraction: float) -> list[Image.Image]:
+    """Scale every frame so the clip's figure fills `fraction` of the cell
+    height, with feet anchored near the bottom and centred horizontally.
+
+    Uses ONE transform (from the union bbox of non-transparent pixels across
+    all frames) applied to every frame, so the figure's animation motion is
+    preserved — only the overall size/placement is normalised. This is what
+    makes e.g. the pusher clips (which Veo rendered at inconsistent sizes)
+    match each other so a single blob-shadow size fits them all.
+    """
+    fw, fh = imgs[0].size
+    union = None
+    for im in imgs:
+        a = np.array(im)
+        ys, xs = np.where(a[..., 3] > 16)
+        if len(ys) == 0:
+            continue
+        bb = [int(xs.min()), int(ys.min()), int(xs.max()), int(ys.max())]
+        if union is None:
+            union = bb
+        else:
+            union = [min(union[0], bb[0]), min(union[1], bb[1]),
+                     max(union[2], bb[2]), max(union[3], bb[3])]
+    if union is None:
+        return imgs
+    fig_h = max(1, union[3] - union[1])
+    s = (fraction * fh) / float(fig_h)
+    union_cx = (union[0] + union[2]) * 0.5
+    feet_y = float(union[3])
+    target_feet_y = 0.94 * fh
+    out: list[Image.Image] = []
+    for im in imgs:
+        scaled = im.resize((max(1, int(round(fw * s))), max(1, int(round(fh * s)))),
+                           Image.Resampling.LANCZOS)
+        canvas = Image.new("RGBA", (fw, fh), (0, 0, 0, 0))
+        ox = int(round(fw * 0.5 - union_cx * s))
+        oy = int(round(target_feet_y - feet_y * s))
+        canvas.alpha_composite(scaled, (ox, oy))
+        out.append(canvas)
+    return out
+
+
+def build(frames: list[Path], fps: float, out: Path, scale: float = 1.0,
+          normalize: float = 0.0) -> None:
     imgs: list[Image.Image] = []
     for f in sorted(frames):
         img = Image.open(f)
@@ -137,6 +180,8 @@ def build(frames: list[Path], fps: float, out: Path, scale: float = 1.0) -> None
                         max(1, int(round(img.height * scale))))
             img = img.resize(new_size, Image.Resampling.LANCZOS)
         imgs.append(key_frame(img))
+    if normalize > 0.0:
+        imgs = _normalize_figures(imgs, normalize)
     n = len(imgs)
     cols = math.ceil(math.sqrt(n))
     rows = math.ceil(n / cols)
@@ -158,15 +203,21 @@ def main() -> None:
     ap.add_argument("--fps", type=float, default=24.0)
     ap.add_argument("--scale", type=float, default=1.0,
                     help="resize each frame by this factor (LANCZOS) before composition")
+    ap.add_argument("--normalize", type=float, default=0.0,
+                    help="scale the figure to this fraction of cell height "
+                         "(0=off); feet-anchored + centred. Use to match clip "
+                         "sizes, e.g. --normalize 0.7 for the pusher set.")
     ap.add_argument("--out", required=True)
     a = ap.parse_args()
     out = Path(a.out)
     if a.clip:
         with tempfile.TemporaryDirectory() as td:
             fps = extract_frames(Path(a.clip), Path(td))
-            build(sorted(Path(td).glob("f_*.png")), fps, out, scale=a.scale)
+            build(sorted(Path(td).glob("f_*.png")), fps, out, scale=a.scale,
+                  normalize=a.normalize)
     elif a.frames:
-        build(sorted(Path(a.frames).glob("*.png")), a.fps, out, scale=a.scale)
+        build(sorted(Path(a.frames).glob("*.png")), a.fps, out, scale=a.scale,
+              normalize=a.normalize)
     else:
         sys.exit("need --clip or --frames")
 
