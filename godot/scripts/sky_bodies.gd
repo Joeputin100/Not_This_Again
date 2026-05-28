@@ -139,11 +139,18 @@ func _pick_variant(body_key: String) -> String:
 
 func _on_body_tapped(_camera: Node, event: InputEvent, _pos: Vector3,
 					_normal: Vector3, _shape_idx: int,
-					body_key: String, body: Node3D) -> void:
+					body_key: String, _body: Node3D) -> void:
 	var is_touch: bool = event is InputEventScreenTouch and event.pressed
 	var is_click: bool = event is InputEventMouseButton and event.pressed and event.button_index == MOUSE_BUTTON_LEFT
 	if not (is_touch or is_click):
 		return
+	trigger_tap(body_key)
+
+# Public: play a random no-repeat tap reaction (sound + animation) for the
+# given body ("sun"/"moon"). Called both by the Area3D physics-pick path and
+# by the SP1 viewer's screen-space hit test (more reliable on touch).
+func trigger_tap(body_key: String) -> void:
+	var body: Node3D = sun_disc if body_key == "sun" else moon_disc
 	var variant := _pick_variant(body_key)
 	var sfx_player: AudioStreamPlayer3D = body.get_node_or_null("TapSfx/%s" % variant)
 	if sfx_player:

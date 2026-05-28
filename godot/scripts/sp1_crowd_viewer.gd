@@ -373,6 +373,43 @@ func _on_slider_changed(val: float) -> void:
 	_update_count_label()
 	_set_count(_target_count)
 
+# Screen-space sun/moon tap. Physics picking inside the SubViewport is
+# unreliable on touch (depends on touch→mouse emulation + container routing),
+# so we project each body's world position to the viewport and hit-test the
+# raw tap directly. Maps the window-space tap into SubViewport space via the
+# container rect so it's resolution-independent.
+const SKY_TAP_RADIUS_PX := 200.0
+
+func _input(event: InputEvent) -> void:
+	var press_pos: Vector2
+	if event is InputEventScreenTouch and event.pressed:
+		press_pos = event.position
+	elif event is InputEventMouseButton and event.pressed and event.button_index == MOUSE_BUTTON_LEFT:
+		press_pos = event.position
+	else:
+		return
+	if camera_3d == null:
+		return
+	var sky := $ViewportContainer/Viewport3D/Sky
+	if sky == null or not sky.has_method("trigger_tap"):
+		return
+	var container := $ViewportContainer as Control
+	var local := press_pos - container.global_position
+	if container.size.x <= 0.0 or container.size.y <= 0.0:
+		return
+	var vp_pos := local / container.size * Vector2(viewport_3d.size)
+	for pair in [["sun", sky.sun_disc], ["moon", sky.moon_disc]]:
+		var body: Node3D = pair[1]
+		if body == null or not body.visible:
+			continue
+		if camera_3d.is_position_behind(body.global_position):
+			continue
+		var sp := camera_3d.unproject_position(body.global_position)
+		if vp_pos.distance_to(sp) < SKY_TAP_RADIUS_PX:
+			sky.trigger_tap(pair[0])
+			get_viewport().set_input_as_handled()
+			return
+
 func _on_tilt_changed(degrees: float) -> void:
 	if camera_3d == null:
 		return

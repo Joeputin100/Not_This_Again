@@ -1581,28 +1581,15 @@ func _play_sugar_rush_3d() -> void:
 		var color: Color = RAINBOW[i % RAINBOW.size()]
 		var x: float = _rng.randf_range(-3.0, 3.0)
 		var z: float = _rng.randf_range(-12.0, 1.0)
-		var bean := CSGSphere3D.new()
-		bean.radius = 0.18
-		bean.radial_segments = 8
-		bean.rings = 6
-		# Stretch into a jelly-bean shape
-		bean.scale = Vector3(1.0, 0.7, 1.5)
-		bean.rotation_degrees = Vector3(
-			_rng.randf_range(0, 360),
-			_rng.randf_range(0, 360),
-			_rng.randf_range(0, 360))
-		var bm := StandardMaterial3D.new()
-		bm.albedo_color = color
-		bm.emission_enabled = true
-		bm.emission = color * 1.3
-		bean.material = bm
+		# iter 330: candy billboard (was a CSGSphere "polygon"). Uses the same
+		# FRENZY candy art set as the fire-mode bullets so the cascade matches.
+		var bean: Sprite3D = _make_candy_billboard(
+			CANDY_BULLET_TEX[FireMode.FRENZY], 0.55)
 		bean.position = Vector3(x, 9.0 + _rng.randf_range(0, 3.0), z)
 		popups_root.add_child(bean)
-		var bean_tw := create_tween().set_parallel(true)
+		var bean_tw := create_tween()
 		bean_tw.tween_property(bean, "position:y", 0.2, 0.45) \
 			.set_trans(Tween.TRANS_CUBIC).set_ease(Tween.EASE_IN)
-		bean_tw.tween_property(bean, "rotation",
-			bean.rotation + Vector3(TAU, TAU * 0.5, TAU * 0.7), 0.45)
 		var finish_tw := create_tween()
 		finish_tw.tween_interval(0.45)
 		finish_tw.tween_callback(_burst_at.bind(Vector3(x, 0.3, z),
@@ -2851,7 +2838,11 @@ func _pete_spawn_taunt(pete: Node3D) -> void:
 	# Pete's head (y+4 = off-screen at top) to chest level so the user
 	# actually sees the banter.
 	_set_pete_anim(pete, PETE_SHOUT_STREAM, 1.5)
-	if get_node_or_null("/root/AudioBus") and AudioBus.has_method("play_character_line"):
+	# Only speak if no other Pete line is mid-playback, so taunts and hit
+	# reactions don't talk over each other (iter 330).
+	if get_node_or_null("/root/AudioBus") and AudioBus.has_method("play_character_line") \
+			and not (AudioBus.has_method("any_character_line_playing") \
+				and AudioBus.any_character_line_playing()):
 		AudioBus.play_character_line("pete_taunt_%d" % ti)
 	var bubble := Label3D.new()
 	bubble.text = line
@@ -4849,18 +4840,25 @@ func _spawn_bullet_at(world_x: float, world_z: float) -> void:
 	var size_mult: float = 1.4 if _fire_mode == FireMode.RIFLE else (
 		1.1 if _fire_mode == FireMode.FROSTBITE else 1.0)
 	var paths: Array = CANDY_BULLET_TEX.get(_fire_mode, CANDY_BULLET_TEX[FireMode.CANDY])
-	var tex: Texture2D = load(_CANDY_DIR + str(paths[_rng.randi() % paths.size()]))
-	var bullet := Sprite3D.new()
-	if tex:
-		bullet.texture = tex
-		bullet.billboard = BaseMaterial3D.BILLBOARD_ENABLED
-		bullet.shaded = false
-		# World diameter ≈ 2 × the old sphere radius; pixel_size maps the
-		# 512² sprite onto that.
-		var world_diam: float = BULLET_PIXEL_SIZE * 2.0 * size_mult * 2.4
-		bullet.pixel_size = world_diam / float(maxi(tex.get_width(), 1))
+	# Match the old CSG sphere's visible size: sphere diameter was
+	# 2×BULLET_PIXEL_SIZE; the candy art only fills ~70% of its 512² cell
+	# so a small 1.2 bump keeps the visible candy ≈ the old bullet size.
+	var world_diam: float = BULLET_PIXEL_SIZE * 2.0 * size_mult * 1.2
+	var bullet: Sprite3D = _make_candy_billboard(paths, world_diam)
 	bullet.position = Vector3(world_x, BULLET_SPAWN_Y, world_z - 0.5)
 	bullets_root.add_child(bullet)
+
+# Shared candy-sprite factory: a camera-facing Sprite3D sized to world_diam,
+# picking a random texture from `paths` (filenames under _CANDY_DIR).
+func _make_candy_billboard(paths: Array, world_diam: float) -> Sprite3D:
+	var tex: Texture2D = load(_CANDY_DIR + str(paths[_rng.randi() % paths.size()]))
+	var spr := Sprite3D.new()
+	if tex:
+		spr.texture = tex
+		spr.billboard = BaseMaterial3D.BILLBOARD_ENABLED
+		spr.shaded = false
+		spr.pixel_size = world_diam / float(maxi(tex.get_width(), 1))
+	return spr
 
 func _on_back_pressed() -> void:
 	AudioBus.play_tap()

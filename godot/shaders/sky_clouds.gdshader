@@ -42,7 +42,10 @@ float noise(vec2 p) {
 float fbm(vec2 n) {
 	float total = 0.0;
 	float amplitude = 0.1;
-	for (int i = 0; i < 7; i++) {
+	// 4 octaves (was 7): a drifting cloud background hides the missing
+	// high-frequency detail, and the per-pixel noise() cost dominates the
+	// mobile frame budget (iter 330 perf fix).
+	for (int i = 0; i < 4; i++) {
 		total += noise(n) * amplitude;
 		n = m * n;
 		amplitude *= 0.4;
@@ -62,11 +65,14 @@ void sky() {
 	float time = TIME * cloud_speed;
 	float q = fbm(uv * cloudscale * 0.5);
 
+	// Octave counts cut (8→4, 8→4, 7→3) and the 4th detail layer (c1)
+	// dropped entirely — these are the dominant per-pixel cost and the lost
+	// detail is invisible on a slow-moving cloud background (iter 330).
 	float r = 0.0;
 	uv *= cloudscale;
 	uv -= q - time;
 	float weight = 0.8;
-	for (int i = 0; i < 8; i++) {
+	for (int i = 0; i < 4; i++) {
 		r += abs(weight * noise(uv));
 		uv = m * uv + time;
 		weight *= 0.7;
@@ -76,7 +82,7 @@ void sky() {
 	uv = p * cloudscale;
 	uv -= q - time;
 	weight = 0.7;
-	for (int i = 0; i < 8; i++) {
+	for (int i = 0; i < 4; i++) {
 		f += weight * noise(uv);
 		uv = m * uv + time;
 		weight *= 0.6;
@@ -88,23 +94,11 @@ void sky() {
 	uv = p * cloudscale * 2.0;
 	uv -= q - time;
 	weight = 0.4;
-	for (int i = 0; i < 7; i++) {
+	for (int i = 0; i < 3; i++) {
 		c += weight * noise(uv);
 		uv = m * uv + time;
 		weight *= 0.6;
 	}
-
-	float c1 = 0.0;
-	time = TIME * cloud_speed * 3.0;
-	uv = p * cloudscale * 3.0;
-	uv -= q - time;
-	weight = 0.4;
-	for (int i = 0; i < 7; i++) {
-		c1 += abs(weight * noise(uv));
-		uv = m * uv + time;
-		weight *= 0.6;
-	}
-	c += c1;
 
 	vec3 skycolour = mix(sky_color_bot, sky_color_top, hy);
 	vec3 cloudcolour = cloud_color * clamp((clouddark + cloudlight * c), 0.0, 1.0);
