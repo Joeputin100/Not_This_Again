@@ -76,7 +76,7 @@ const CANDY_SETS := {
 	"liquorice": [_C + "candy_choc_stripe.png"],
 	"jawbreaker": [_C + "candy_jawbreaker.png"],
 	"tnt": [_C + "candy_fireball.png"],
-	"marshmallow": [_C + "candy_choc_swirl.png"],
+	"marshmallow": [_C + "candy_marshmallow.png"],
 }
 # On-screen candy diameter in px (sprites are 512² with transparent margins).
 const CANDY_PX := 40.0
