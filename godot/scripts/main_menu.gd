@@ -30,7 +30,7 @@ const BuildInfo = preload("res://scripts/build_info.gd")
 @onready var pete_rect: TextureRect = $UI/Pete
 @onready var rustler_tap: Control = $UI/RustlerTap
 const PETE_REACTS: int = 3      # pete_react_0..2
-const RUSTLER_TAUNTS: int = 4   # candy_rustler_taunt_0..3
+const RUSTLER_REACTS: int = 3   # candy_rustler_react_0..2 (short grunts, NOT the full boss taunts)
 var _last_pete: int = -1
 var _last_rustler: int = -1
 const HUMBUG_MENU_LINES: int = 6
@@ -307,11 +307,11 @@ func _on_pete_tap(event: InputEvent) -> void:
 func _on_rustler_tap(event: InputEvent) -> void:
 	if not _is_tap_press(event) or _react_blocked():
 		return
-	var i := randi() % RUSTLER_TAUNTS
-	while i == _last_rustler and RUSTLER_TAUNTS > 1:
-		i = randi() % RUSTLER_TAUNTS
+	var i := randi() % RUSTLER_REACTS
+	while i == _last_rustler and RUSTLER_REACTS > 1:
+		i = randi() % RUSTLER_REACTS
 	_last_rustler = i
-	AudioBus.play_character_line("candy_rustler_taunt_%d" % i)
+	AudioBus.play_character_line("candy_rustler_react_%d" % i)
 	var rig := get_node_or_null("RustlerRig")
 	if rig:
 		var t := create_tween()

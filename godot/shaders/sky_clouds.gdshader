@@ -1,19 +1,18 @@
-shader_type spatial;
-render_mode unshaded, cull_disabled;
+shader_type sky;
 
-// Procedural 2D cloud backdrop. Ported from drift's Shadertoy "2D Clouds"
-// (https://www.shadertoy.com/view/4tdSWr). LICENSE NOTE: the author granted
-// blanket permission in the shader comments ("I give my permission to use it
-// in any way that you choose") — so unlike the candy prototypes this one is
-// CLEARED for commercial use. Credit: drift. Drawn on a big quad behind the
-// sun/moon (render_priority -30) so clouds fill the sky.
+// Procedural 2D cloud sky. Ported from drift's Shadertoy "2D Clouds"
+// (https://www.shadertoy.com/view/4tdSWr). LICENSE: the author granted
+// blanket permission in the shader comments ("use it in any way you
+// choose") — CLEARED for commercial use (credit: drift), unlike the candy
+// prototypes. Implemented as a real sky shader so it sits behind ALL
+// geometry: the terrain/horizon and the sun/moon render over it with no
+// depth fighting. Mapped onto the view direction (EYEDIR).
 
 uniform vec3 sky_color_top : source_color = vec3(0.2, 0.4, 0.6);
 uniform vec3 sky_color_bot : source_color = vec3(0.4, 0.7, 1.0);
 uniform vec3 cloud_color : source_color = vec3(1.1, 1.1, 0.9);
 uniform float cloudcover : hint_range(0.0, 1.0) = 0.2;
 uniform float cloud_speed : hint_range(0.0, 0.2) = 0.006;
-uniform float aspect = 1.0;
 
 const float cloudscale = 1.1;
 const float clouddark = 0.5;
@@ -51,9 +50,15 @@ float fbm(vec2 n) {
 	return total;
 }
 
-void fragment() {
-	vec2 p = UV;
-	vec2 uv = p * vec2(aspect, 1.0);
+void sky() {
+	// Height factor: 0 at the horizon, 1 straight up.
+	float hy = clamp(EYEDIR.y, 0.0, 1.0);
+	// Cloud-plane UV: project the view direction onto a plane overhead so
+	// clouds recede toward the horizon. Bias y so the horizon band isn't
+	// singular.
+	vec2 uv = EYEDIR.xz / max(EYEDIR.y * 0.8 + 0.25, 0.18);
+	uv *= 0.35;
+	vec2 p = uv;
 	float time = TIME * cloud_speed;
 	float q = fbm(uv * cloudscale * 0.5);
 
@@ -68,8 +73,7 @@ void fragment() {
 	}
 
 	float f = 0.0;
-	uv = p * vec2(aspect, 1.0);
-	uv *= cloudscale;
+	uv = p * cloudscale;
 	uv -= q - time;
 	weight = 0.7;
 	for (int i = 0; i < 8; i++) {
@@ -81,8 +85,7 @@ void fragment() {
 
 	float c = 0.0;
 	time = TIME * cloud_speed * 2.0;
-	uv = p * vec2(aspect, 1.0);
-	uv *= cloudscale * 2.0;
+	uv = p * cloudscale * 2.0;
 	uv -= q - time;
 	weight = 0.4;
 	for (int i = 0; i < 7; i++) {
@@ -93,8 +96,7 @@ void fragment() {
 
 	float c1 = 0.0;
 	time = TIME * cloud_speed * 3.0;
-	uv = p * vec2(aspect, 1.0);
-	uv *= cloudscale * 3.0;
+	uv = p * cloudscale * 3.0;
 	uv -= q - time;
 	weight = 0.4;
 	for (int i = 0; i < 7; i++) {
@@ -104,11 +106,12 @@ void fragment() {
 	}
 	c += c1;
 
-	vec3 skycolour = mix(sky_color_bot, sky_color_top, p.y);
+	vec3 skycolour = mix(sky_color_bot, sky_color_top, hy);
 	vec3 cloudcolour = cloud_color * clamp((clouddark + cloudlight * c), 0.0, 1.0);
-	f = cloudcover + cloudalpha * f * r;
-	vec3 result = mix(skycolour, clamp(skytint * skycolour + cloudcolour, 0.0, 1.0), clamp(f + c, 0.0, 1.0));
+	// Fade clouds toward the horizon so they don't smear into a singularity.
+	float horizon_fade = smoothstep(0.0, 0.25, EYEDIR.y);
+	f = (cloudcover + cloudalpha * f * r) * horizon_fade;
+	vec3 result = mix(skycolour, clamp(skytint * skycolour + cloudcolour, 0.0, 1.0), clamp(f + c * horizon_fade, 0.0, 1.0));
 
-	ALBEDO = result;
-	ALPHA = 1.0;
+	COLOR = result;
 }

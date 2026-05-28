@@ -48,9 +48,15 @@ uv1_scale = Vector3(12, 12, 1)
 ; Environment provides ambient fill so areas not directly hit by the key
 ; light still read clearly. The horizon/ambient color is a warm grey-blue,
 ; tunable later per "level lighting preset" (daylight / sunset / moonlight).
+[sub_resource type="ShaderMaterial" id="ShaderMat_clouds"]
+shader = ExtResource("14_clouds")
+
+[sub_resource type="Sky" id="Sky_clouds"]
+sky_material = SubResource("ShaderMat_clouds")
+
 [sub_resource type="Environment" id="Env_daylight"]
-background_mode = 1
-background_color = Color(0.42, 0.62, 0.85, 1)
+background_mode = 2
+sky = SubResource("Sky_clouds")
 ambient_light_source = 2
 ambient_light_color = Color(0.78, 0.82, 0.92, 1)
 ambient_light_energy = 0.3
@@ -93,12 +99,6 @@ shader = ExtResource("6_moon_cookie")
 [sub_resource type="SphereShape3D" id="SphereShape_moon"]
 radius = 10.0
 
-[sub_resource type="QuadMesh" id="QuadMesh_clouds"]
-size = Vector2(110, 110)
-
-[sub_resource type="ShaderMaterial" id="ShaderMat_clouds"]
-shader = ExtResource("14_clouds")
-
 [node name="SP1CrowdViewer" type="Node2D"]
 script = ExtResource("1_script")
 
@@ -132,14 +132,6 @@ current = true
 fov = 50.0
 attributes = SubResource("CamAttr_daylight")
 
-; Procedural cloud sky backdrop (drift's "2D Clouds", cleared for use).
-; Child of the camera so it always fills the FOV as the tilt slider moves;
-; render_priority -30 + depth_test off keeps it behind sun/moon/terrain.
-[node name="CloudBackdrop" type="MeshInstance3D" parent="ViewportContainer/Viewport3D/Camera3D"]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, -75)
-cast_shadow = 0
-mesh = SubResource("QuadMesh_clouds")
-material_override = SubResource("ShaderMat_clouds")
 
 ; Sun-style light pitched ~30° down from horizontal. Shadows disabled here
 ; because the flipbook + grass_field shaders are `unshaded` (can't cast

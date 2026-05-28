@@ -4817,6 +4817,18 @@ const CANDY_BULLET_COLORS: Array[Color] = [
 	Color(0.95, 0.55, 0.78, 1),
 ]
 
+# Candy projectile sprites (baked — PROTOTYPE art, see memory
+# project_candy_shader_licensing). Bullets are billboarded Sprite3Ds using
+# these per fire mode instead of plain CSG spheres.
+const _CANDY_DIR := "res://assets/sprites/candy/"
+const CANDY_BULLET_TEX := {
+	FireMode.CANDY: ["candy_red.png", "candy_green.png", "candy_blue.png", "candy_amber.png"],
+	FireMode.RIFLE: ["candy_choc_stripe.png"],
+	FireMode.FROSTBITE: ["candy_freezeray.png"],
+	FireMode.FRENZY: ["candy_red.png", "candy_green.png", "candy_blue.png", "candy_amber.png",
+		"candy_cotton.png", "candy_bomb.png", "candy_fireball.png", "candy_jawbreaker.png"],
+}
+
 func _spawn_bullet() -> void:
 	# Iter 73: gunfire SFX. Single call so multi-dude firing doesn't
 	# stack 5 layered samples per shot.
@@ -4833,29 +4845,20 @@ func _spawn_bullet() -> void:
 # Iter 73/88: per-position bullet spawner — bullet visual + size now
 # depends on _fire_mode set by iter 88 bonus pickups.
 func _spawn_bullet_at(world_x: float, world_z: float) -> void:
-	var bullet := CSGSphere3D.new()
-	var mat := StandardMaterial3D.new()
-	match _fire_mode:
-		FireMode.RIFLE:
-			# Bigger, faster, brown rifle round
-			bullet.radius = BULLET_PIXEL_SIZE * 1.4
-			mat.albedo_color = Color(0.75, 0.55, 0.25, 1)
-		FireMode.FROSTBITE:
-			# Cyan icy bullet
-			bullet.radius = BULLET_PIXEL_SIZE * 1.1
-			mat.albedo_color = Color(0.55, 0.85, 1.00, 1)
-		FireMode.FRENZY:
-			# Bright pink frenzy
-			bullet.radius = BULLET_PIXEL_SIZE
-			mat.albedo_color = Color(1.00, 0.45, 0.85, 1)
-		_:  # CANDY (default)
-			bullet.radius = BULLET_PIXEL_SIZE
-			mat.albedo_color = CANDY_BULLET_COLORS[_rng.randi() % CANDY_BULLET_COLORS.size()]
-	bullet.radial_segments = 12
-	bullet.rings = 8
-	mat.emission_enabled = true
-	mat.emission = mat.albedo_color * 0.5
-	bullet.material = mat
+	# Billboarded candy sprite (per fire mode) instead of a plain CSG sphere.
+	var size_mult: float = 1.4 if _fire_mode == FireMode.RIFLE else (
+		1.1 if _fire_mode == FireMode.FROSTBITE else 1.0)
+	var paths: Array = CANDY_BULLET_TEX.get(_fire_mode, CANDY_BULLET_TEX[FireMode.CANDY])
+	var tex: Texture2D = load(_CANDY_DIR + str(paths[_rng.randi() % paths.size()]))
+	var bullet := Sprite3D.new()
+	if tex:
+		bullet.texture = tex
+		bullet.billboard = BaseMaterial3D.BILLBOARD_ENABLED
+		bullet.shaded = false
+		# World diameter ≈ 2 × the old sphere radius; pixel_size maps the
+		# 512² sprite onto that.
+		var world_diam: float = BULLET_PIXEL_SIZE * 2.0 * size_mult * 2.4
+		bullet.pixel_size = world_diam / float(maxi(tex.get_width(), 1))
 	bullet.position = Vector3(world_x, BULLET_SPAWN_Y, world_z - 0.5)
 	bullets_root.add_child(bullet)
 

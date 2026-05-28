@@ -57,12 +57,11 @@ func apply_preset(preset: Dictionary, shadow_offset: Vector3) -> void:
 	_push_cloud_uniforms(preset)
 
 func _push_cloud_uniforms(preset: Dictionary) -> void:
-	if _camera == null:
+	# Clouds are the WorldEnvironment sky shader (sibling under Viewport3D).
+	var we: Node = get_parent().get_node_or_null("WorldEnvironment")
+	if we == null or we.environment == null or we.environment.sky == null:
 		return
-	var cb: Node = _camera.get_node_or_null("CloudBackdrop")
-	if cb == null:
-		return
-	var cm: ShaderMaterial = cb.material_override
+	var cm: ShaderMaterial = we.environment.sky.sky_material
 	if cm == null:
 		return
 	if preset.has("sky_top"):
