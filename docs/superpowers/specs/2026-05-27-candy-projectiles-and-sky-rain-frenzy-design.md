@@ -84,6 +84,9 @@ HAVE (6, baked from fizzer "Unlimited Confectionery"): red/green/blue/amber gumm
 
 HAVE (7th, baked from Nrx "Cotton candy Pac-Man"): `candy_cotton.png` — fluffy pastel pink→blue volumetric floss → Cotton Candy Rifle. DONE.
 HAVE (8th, baked from bradjamesgrant "fractal pyramid"): `candy_bomb.png` — round glowing magenta/cyan crystalline orb → candidate for Jawbreaker Grenades or Screaming TNT (bomb/explosive). DONE.
+HAVE (9th, baked from simonsdev "Kaleidoscopix 3", fire-tinted): `candy_fireball.png` — glowing red/orange crackling fireball orb → candidate for Screaming Red-Hot TNT or a fire projectile. DONE.
+
+Bake method note: animated shaders (bomb, fireball) need a chosen `bake_time` frame — compare a few and pick the densest/most-centered. Additive-glow shaders → alpha-from-luminance + radial containment.
 
 STILL WANT (distinct materials — user is raiding Shadertoy; do NOT gummy-fy everything):
 - Marshmallow (soft matte subsurface white) → Marshmallow Cannon
