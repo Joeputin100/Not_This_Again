@@ -84,6 +84,13 @@ const CANDY_PX := 40.0
 # Set by level.gd from the firing gun. "" = legacy jelly-bean polygons.
 var candy_set: String = ""
 
+# Sky-rain mode (Jelly Bean Frenzy). When > 0 the bullet falls DOWNWARD at
+# this px/sec instead of flying up, and despawns past the bottom edge. Still
+# in the "bullets" group, so the normal bullet→outlaw collision damages and
+# consumes it on contact (candy "explodes" on the outlaw).
+var fall_speed: float = 0.0
+const FALL_DESPAWN_Y: float = 2080.0
+
 func _ready() -> void:
 	add_to_group("bullets")
 	_spawn_y = position.y
@@ -108,6 +115,12 @@ func _ready() -> void:
 			add_child(spr)
 
 func _process(delta: float) -> void:
+	if fall_speed > 0.0:
+		position.y += fall_speed * velocity_mult * delta
+		position.x += lateral_drift * delta
+		if position.y > FALL_DESPAWN_Y:
+			queue_free()
+		return
 	position.y -= SPEED * velocity_mult * delta
 	position.x += lateral_drift * delta
 	if max_range > 0.0 and (_spawn_y - position.y) >= max_range:

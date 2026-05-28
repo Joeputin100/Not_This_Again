@@ -104,6 +104,16 @@ var _frenzy_timer: float = 0.0
 const FRENZY_DURATION: float = 5.0
 const FRENZY_FAN_ANGLE_DEG: float = 15.0
 const FRENZY_FAN_SHOTS: int = 3
+# Sky-rain augment: while frenzy runs, candies also rain from the top and
+# damage outlaws on contact (the gun keeps firing normally underneath). Plus
+# a sustained low camera rumble for the whole frenzy.
+const FRENZY_RAIN_INTERVAL: float = 0.08   # seconds between rain drops
+const FRENZY_RAIN_FALL_SPEED: float = 700.0
+const FRENZY_RAIN_X_MIN: float = 60.0
+const FRENZY_RAIN_X_MAX: float = 1020.0
+const FRENZY_RAIN_SPAWN_Y: float = -60.0
+const FRENZY_SHAKE_PER_SEC: float = 0.6    # trauma/sec to maintain the rumble
+var _frenzy_rain_accum: float = 0.0
 
 # Iter 41: kill-streak tracking for JUICY (3 kills in 2s) and RAMPAGE
 # (5 in 5s). Banner emission is rate-limited so successive streaks
@@ -315,8 +325,17 @@ func _process(delta: float) -> void:
 	# expiry — the visible end-of-fan stream is its own readable signal.
 	if _frenzy_active:
 		_frenzy_timer -= delta
+		# Sustained camera rumble for the whole frenzy (trauma decays, so we
+		# top it up each frame). The gun fan keeps firing in _spawn_bullet.
+		shake.add_trauma(FRENZY_SHAKE_PER_SEC * delta)
+		# Sky-rain: drop candies from the top at FRENZY_RAIN_INTERVAL.
+		_frenzy_rain_accum += delta
+		while _frenzy_rain_accum >= FRENZY_RAIN_INTERVAL:
+			_frenzy_rain_accum -= FRENZY_RAIN_INTERVAL
+			_spawn_frenzy_raindrop()
 		if _frenzy_timer <= 0.0:
 			_frenzy_active = false
+			_frenzy_rain_accum = 0.0
 			DebugLog.add("jelly frenzy ended")
 	# Iter 64: perspective-scale fakery REMOVED. The user chose a full
 	# 3D refactor over fake-it-in-2D — entities will be rebuilt as 3D
@@ -488,6 +507,20 @@ func _spawn_frenzy_fan() -> void:
 		bullet.candy_set = "frenzy"
 		add_child(bullet)
 		_bullets_fired += 1
+
+# Augment: one candy falling from the top during frenzy. It's a normal
+# bullet (in the "bullets" group) but in fall mode, so the standard
+# bullet→outlaw collision damages + consumes it on contact.
+func _spawn_frenzy_raindrop() -> void:
+	if not _shooting_active:
+		return
+	var bullet := BulletScene.instantiate()
+	bullet.position = Vector2(randf_range(FRENZY_RAIN_X_MIN, FRENZY_RAIN_X_MAX), FRENZY_RAIN_SPAWN_Y)
+	bullet.fall_speed = FRENZY_RAIN_FALL_SPEED
+	bullet.damage = maxi(_gun.caliber, 1)
+	bullet.velocity_mult = bullet_velocity_mult
+	bullet.candy_set = "frenzy"
+	add_child(bullet)
 
 # Iter 41: invoked from each entity's `destroyed` signal (connected in
 # _ready). Maintains _kill_timestamps + checks streak thresholds for
