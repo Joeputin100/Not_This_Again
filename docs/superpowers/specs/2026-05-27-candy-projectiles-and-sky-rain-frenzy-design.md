@@ -90,7 +90,13 @@ HAVE (10th + 11th, baked from Dave_Hoskins "Warp Speed 2"): `candy_jawbreaker.pn
 
 Bake method note: animated shaders (bomb, fireball, jawbreaker, freezeray) need a chosen `bake_time` frame — compare a few and pick the densest/most-centered, avoiding white-blowout frames. Additive-glow shaders → alpha-from-luminance + radial containment; recolour a shader's native palette (e.g. blue warp → multicolour jawbreaker / electric-blue freeze ray) to repurpose one source into several candies.
 
-IMPLEMENTED (gameplay): bullet reskin via gun.candy_set + bullet.gd CANDY_SETS (commit 8f01de9); sky-rain frenzy + sustained camera shake (commit d0f7cdb). Frostbite→freezeray, jawbreaker→jawbreaker wired (398289f).
+HAVE (12th, baked from guil "Playing marble"): `candy_sour.png` — acid-green marble ovoid + sugar dust → outlaw (enemy) bullets. DONE.
+
+SKY: `sky_clouds.gdshader` — drift's "2D Clouds" (COMMERCIALLY CLEARED, author granted permission) wired as a cloud backdrop behind the sun/moon in the SP1 sky.
+
+STILL MISSING (real, not placeholder): marshmallow (white-choc swirl stands in; make from scratch/Imagen — iq Clouds was forbidden) and optionally a dedicated gumdrop (gummy stands in). Everything else is covered.
+
+IMPLEMENTED (gameplay): bullet reskin via gun.candy_set + bullet.gd CANDY_SETS (8f01de9); sky-rain frenzy + sustained camera shake (d0f7cdb); frostbite→freezeray, jawbreaker→jawbreaker (398289f); outlaw bullets→sour candy (7189a6c); cloud sky backdrop.
 
 STILL WANT (distinct materials — user is raiding Shadertoy; do NOT gummy-fy everything):
 - Marshmallow (soft matte subsurface white) → Marshmallow Cannon
