@@ -1,4 +1,4 @@
-[gd_scene load_steps=25 format=3 uid="uid://b0nttg_sp1_crowd_001"]
+[gd_scene load_steps=28 format=3 uid="uid://b0nttg_sp1_crowd_001"]
 
 ; SP1 debug crowd viewer — 3D crowd preview wired through a SubViewport
 ; so it renders correctly under the project's mobile / canvas_items
@@ -14,6 +14,7 @@
 [ext_resource type="Shader" path="res://shaders/sun_lollipop.gdshader" id="4_sun_lollipop"]
 [ext_resource type="Shader" path="res://shaders/sun_stick.gdshader" id="5_sun_stick"]
 [ext_resource type="Shader" path="res://shaders/moon_cookie.gdshader" id="6_moon_cookie"]
+[ext_resource type="Shader" path="res://shaders/sun_corona_star.gdshader" id="13_sun_corona"]
 [ext_resource type="AudioStream" path="res://assets/sfx/sky_taps/sun_a_chime.ogg" id="7_sun_a"]
 [ext_resource type="AudioStream" path="res://assets/sfx/sky_taps/sun_b_stick.ogg" id="8_sun_b"]
 [ext_resource type="AudioStream" path="res://assets/sfx/sky_taps/sun_c_sparkle.ogg" id="9_sun_c"]
@@ -64,6 +65,13 @@ size = Vector2(12, 12)
 render_priority = -20
 shader = ExtResource("4_sun_lollipop")
 
+[sub_resource type="QuadMesh" id="QuadMesh_sun_corona"]
+size = Vector2(30, 30)
+
+[sub_resource type="ShaderMaterial" id="ShaderMat_sun_corona"]
+render_priority = -25
+shader = ExtResource("13_sun_corona")
+
 [sub_resource type="SphereShape3D" id="SphereShape_sun"]
 radius = 6.0
 
@@ -71,7 +79,7 @@ radius = 6.0
 size = Vector2(0.6, 1)
 
 [sub_resource type="ShaderMaterial" id="ShaderMat_sun_stick"]
-render_priority = -20
+render_priority = -23
 shader = ExtResource("5_sun_stick")
 
 [sub_resource type="QuadMesh" id="QuadMesh_moon_disc"]
@@ -142,6 +150,11 @@ script = ExtResource("3_sky_script")
 
 [node name="SunDisc" type="Node3D" parent="ViewportContainer/Viewport3D/Sky"]
 
+[node name="Corona" type="MeshInstance3D" parent="ViewportContainer/Viewport3D/Sky/SunDisc"]
+cast_shadow = 0
+mesh = SubResource("QuadMesh_sun_corona")
+material_override = SubResource("ShaderMat_sun_corona")
+
 [node name="DiscMesh" type="MeshInstance3D" parent="ViewportContainer/Viewport3D/Sky/SunDisc"]
 cast_shadow = 0
 mesh = SubResource("QuadMesh_sun_disc")
@@ -154,15 +167,15 @@ shape = SubResource("SphereShape_sun")
 
 [node name="TapSfx" type="Node" parent="ViewportContainer/Viewport3D/Sky/SunDisc"]
 
-[node name="A" type="AudioStreamPlayer3D" parent="ViewportContainer/Viewport3D/Sky/SunDisc/TapSfx"]
+[node name="A" type="AudioStreamPlayer" parent="ViewportContainer/Viewport3D/Sky/SunDisc/TapSfx"]
 stream = ExtResource("7_sun_a")
 volume_db = -8.0
 
-[node name="B" type="AudioStreamPlayer3D" parent="ViewportContainer/Viewport3D/Sky/SunDisc/TapSfx"]
+[node name="B" type="AudioStreamPlayer" parent="ViewportContainer/Viewport3D/Sky/SunDisc/TapSfx"]
 stream = ExtResource("8_sun_b")
 volume_db = -8.0
 
-[node name="C" type="AudioStreamPlayer3D" parent="ViewportContainer/Viewport3D/Sky/SunDisc/TapSfx"]
+[node name="C" type="AudioStreamPlayer" parent="ViewportContainer/Viewport3D/Sky/SunDisc/TapSfx"]
 stream = ExtResource("9_sun_c")
 volume_db = -8.0
 
@@ -187,15 +200,15 @@ shape = SubResource("SphereShape_moon")
 
 [node name="TapSfx" type="Node" parent="ViewportContainer/Viewport3D/Sky/MoonDisc"]
 
-[node name="A" type="AudioStreamPlayer3D" parent="ViewportContainer/Viewport3D/Sky/MoonDisc/TapSfx"]
+[node name="A" type="AudioStreamPlayer" parent="ViewportContainer/Viewport3D/Sky/MoonDisc/TapSfx"]
 stream = ExtResource("10_moon_a")
 volume_db = -8.0
 
-[node name="B" type="AudioStreamPlayer3D" parent="ViewportContainer/Viewport3D/Sky/MoonDisc/TapSfx"]
+[node name="B" type="AudioStreamPlayer" parent="ViewportContainer/Viewport3D/Sky/MoonDisc/TapSfx"]
 stream = ExtResource("11_moon_b")
 volume_db = -8.0
 
-[node name="C" type="AudioStreamPlayer3D" parent="ViewportContainer/Viewport3D/Sky/MoonDisc/TapSfx"]
+[node name="C" type="AudioStreamPlayer" parent="ViewportContainer/Viewport3D/Sky/MoonDisc/TapSfx"]
 stream = ExtResource("12_moon_c")
 volume_db = -8.0
 

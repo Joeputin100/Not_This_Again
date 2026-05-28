@@ -53,17 +53,22 @@ func apply_preset(preset: Dictionary, shadow_offset: Vector3) -> void:
 
 func _push_sun_uniforms(preset: Dictionary) -> void:
 	var mat: ShaderMaterial = sun_disc.get_node("DiscMesh").material_override
-	if mat == null:
-		return
-	var tex_key: String = preset.get("sun_tex", "daylight")
-	if SUN_TEXTURES.has(tex_key):
-		mat.set_shader_parameter("albedo_tex", SUN_TEXTURES[tex_key])
-	if preset.has("sun_tint"):
-		mat.set_shader_parameter("tint", preset["sun_tint"])
-	if preset.has("sun_corona_color"):
-		mat.set_shader_parameter("corona_color", preset["sun_corona_color"])
-	if preset.has("sun_corona_strength"):
-		mat.set_shader_parameter("corona_strength", preset["sun_corona_strength"])
+	if mat:
+		var tex_key: String = preset.get("sun_tex", "daylight")
+		if SUN_TEXTURES.has(tex_key):
+			mat.set_shader_parameter("albedo_tex", SUN_TEXTURES[tex_key])
+		if preset.has("sun_tint"):
+			mat.set_shader_parameter("tint", preset["sun_tint"])
+	# Animated star corona behind the disc.
+	var corona: ShaderMaterial = sun_disc.get_node("Corona").material_override
+	if corona:
+		corona.set_shader_parameter("burst", 0.0)
+		if preset.has("sun_corona_intensity"):
+			corona.set_shader_parameter("intensity", preset["sun_corona_intensity"])
+		if preset.has("sun_corona_body"):
+			corona.set_shader_parameter("body_color", preset["sun_corona_body"])
+		if preset.has("sun_corona_ray"):
+			corona.set_shader_parameter("ray_color", preset["sun_corona_ray"])
 
 func _push_moon_uniforms(preset: Dictionary) -> void:
 	var mat: ShaderMaterial = moon_disc.get_node("DiscMesh").material_override
@@ -148,14 +153,14 @@ func _anim_scale_pulse(body: Node3D) -> void:
 
 func _anim_sun_corona_burst(body: Node3D) -> void:
 	_kill_prev_tween(body)
-	var mat: ShaderMaterial = body.get_node("DiscMesh").material_override
+	var mat: ShaderMaterial = body.get_node("Corona").material_override
 	if mat == null:
 		return
-	mat.set_shader_parameter("corona_burst", 0.0)
+	mat.set_shader_parameter("burst", 0.0)
 	var t := create_tween()
-	t.tween_method(func(v): mat.set_shader_parameter("corona_burst", v), 0.0, 1.5, 0.10)\
+	t.tween_method(func(v): mat.set_shader_parameter("burst", v), 0.0, 1.5, 0.10)\
 	 .set_ease(Tween.EASE_OUT)
-	t.tween_method(func(v): mat.set_shader_parameter("corona_burst", v), 1.5, 0.0, 0.40)\
+	t.tween_method(func(v): mat.set_shader_parameter("burst", v), 1.5, 0.0, 0.40)\
 	 .set_ease(Tween.EASE_IN)
 	body.set_meta("bounce_tween", t)
 
