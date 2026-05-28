@@ -33,15 +33,18 @@ func apply_preset(preset: Dictionary, shadow_offset: Vector3) -> void:
 	if sun_visible:
 		var sun_h: float = preset["sun_height"]
 		sun_disc.position = Vector3(horiz.x, sun_h, horiz.y)
-		# Stick runs from the disc bottom DOWN past the horizon line. At
+		# Stick runs from the disc DOWN past the horizon line. At
 		# SKY_DISTANCE (50m) the terrain plane has ended, so y=0 there is the
 		# visible horizon; extending the stick well below 0 makes it plunge
-		# convincingly toward/behind the horizon instead of stopping mid-air.
+		# convincingly toward/behind the horizon. center_offset hangs the quad
+		# DOWN from the node origin so the node sits at the disc and the stick
+		# can lean from that top anchor (see _process: rotation.z = 15°).
 		var stick_bottom := -40.0
 		var stick_height: float = sun_h - stick_bottom
 		var stick_mesh: QuadMesh = sun_stick.get_node("StickMesh").mesh
-		stick_mesh.size = Vector2(0.6, stick_height)
-		sun_stick.position = Vector3(horiz.x, (sun_h + stick_bottom) * 0.5, horiz.y)
+		stick_mesh.size = Vector2(1.2, stick_height)
+		stick_mesh.center_offset = Vector3(0.0, -stick_height * 0.5, 0.0)
+		sun_stick.position = Vector3(horiz.x, sun_h, horiz.y)
 		_push_sun_uniforms(preset)
 
 	var moon_visible: bool = preset.get("moon_visible", false)
@@ -92,8 +95,10 @@ func _process(_dt: float) -> void:
 	if moon_disc.visible:
 		moon_disc.look_at(_camera.global_position, Vector3.UP, true)
 	if sun_stick.visible:
+		# Billboard around Y to face the camera, plus a 15° lean so the stick
+		# meets the horizon at 75° instead of straight up.
 		var to_cam := _camera.global_position - sun_stick.global_position
-		sun_stick.rotation.y = atan2(to_cam.x, to_cam.z)
+		sun_stick.rotation = Vector3(0.0, atan2(to_cam.x, to_cam.z), deg_to_rad(15.0))
 
 const VARIANTS := ["A", "B", "C"]
 var _last_variant := {"sun": "", "moon": ""}

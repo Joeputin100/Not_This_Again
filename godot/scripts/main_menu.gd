@@ -31,6 +31,17 @@ const HUMBUG_MENU_LINES: int = 6
 const CANARD_QUACKS: int = 3
 var _humbug_banter_at: float = 0.0
 
+# Candy-Crush-style short reactions: a single tap gets a one-syllable
+# non-verbal reaction (no-repeat); rapid spam (ANNOYED_TAPS within
+# ANNOYED_WINDOW) escalates to a full verbal humbug_menu banter line.
+const HUMBUG_REACTS := ["harumph", "snort", "hmm", "huff", "tut"]
+const CANARD_REACTS := ["quack", "giggle", "squeak", "honk", "chitter"]
+const ANNOYED_TAPS: int = 5
+const ANNOYED_WINDOW: float = 2.0
+var _tap_times: Array[float] = []
+var _last_humbug_react: String = ""
+var _last_canard_react: String = ""
+
 # Captured after initial layout so idle_ended can restore exact positions.
 var _subtitle_base_y: float = 0.0
 
@@ -176,30 +187,74 @@ func _on_humbug_tap(event: InputEvent) -> void:
 	if not is_press:
 		return
 	var now: float = Time.get_unix_time_from_system()
-	if now - _humbug_banter_at < 1.0:
-		return
-	# Iter 153: don't start a new line while Humbug (or Canard) is still
-	# talking — the 1s debounce didn't cover the 3-5s clip length, so rapid
-	# taps stacked voices. Let him finish his thought first.
-	if get_node_or_null("/root/AudioBus") and AudioBus.has_method("any_character_line_playing"):
-		if AudioBus.any_character_line_playing():
+	# Roll the tap window forward, then record this tap.
+	_tap_times = _tap_times.filter(func(t): return now - t < ANNOYED_WINDOW)
+	_tap_times.append(now)
+	var has_bus := get_node_or_null("/root/AudioBus") != null
+
+	# Rapid spam → the full verbal banter line ("annoyed" response). Keep the
+	# old debounce so the 3-5s clip isn't interrupted by continued tapping.
+	if _tap_times.size() >= ANNOYED_TAPS:
+		_tap_times.clear()
+		if now - _humbug_banter_at < 1.0:
 			return
-	_humbug_banter_at = now
-	DebugLog.add("menu: Humbug tapped → banter")
-	if get_node_or_null("/root/AudioBus") and AudioBus.has_method("play_character_line"):
-		AudioBus.play_character_line("humbug_menu_%d" % (randi() % HUMBUG_MENU_LINES))
-	# Little squish so the tap feels acknowledged.
-	if humbug_rect:
-		var squish := create_tween()
-		squish.tween_property(humbug_rect, "scale", Vector2(0.95, 1.05), 0.10)
-		squish.tween_property(humbug_rect, "scale", Vector2.ONE, 0.22) \
-			.set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
-	# Canard quacks a beat after Humbug's line.
-	if randf() < 0.6:
-		var quack_timer: SceneTreeTimer = get_tree().create_timer(2.4)
-		quack_timer.timeout.connect(func() -> void:
+		if has_bus and AudioBus.has_method("any_character_line_playing") \
+				and AudioBus.any_character_line_playing():
+			return
+		_humbug_banter_at = now
+		DebugLog.add("menu: Humbug spam → banter")
+		if has_bus and AudioBus.has_method("play_character_line"):
+			AudioBus.play_character_line("humbug_menu_%d" % (randi() % HUMBUG_MENU_LINES))
+		_humbug_anim("huff")
+		return
+
+	# Single tap → short non-verbal reaction + matching animation.
+	var react := _pick_no_repeat(HUMBUG_REACTS, "_last_humbug_react")
+	DebugLog.add("menu: Humbug tapped → react %s" % react)
+	if has_bus and AudioBus.has_method("play_character_line"):
+		AudioBus.play_character_line("humbug_react_%s" % react)
+	_humbug_anim(react)
+	# Canard chimes ~50% with its own short reaction a beat later.
+	if randf() < 0.5:
+		var c := _pick_no_repeat(CANARD_REACTS, "_last_canard_react")
+		var t: SceneTreeTimer = get_tree().create_timer(0.45)
+		t.timeout.connect(func() -> void:
 			if get_node_or_null("/root/AudioBus"):
-				AudioBus.play_character_line("canard_quack_%d" % (randi() % CANARD_QUACKS)))
+				AudioBus.play_character_line("canard_react_%s" % c))
+
+func _pick_no_repeat(pool: Array, last_var: String) -> String:
+	var choices := pool.filter(func(v): return v != get(last_var))
+	var chosen: String = choices[randi() % choices.size()]
+	set(last_var, chosen)
+	return chosen
+
+# Per-reaction tween on the static Humbug sprite — the menu has no video
+# rig, so each reaction gets a distinct scale/rotation "tell".
+func _humbug_anim(react: String) -> void:
+	if humbug_rect == null:
+		return
+	var t := create_tween()
+	match react:
+		"harumph":  # gruff downward squash
+			t.tween_property(humbug_rect, "scale", Vector2(1.08, 0.9), 0.08)
+			t.tween_property(humbug_rect, "scale", Vector2.ONE, 0.22).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
+		"snort":  # fast double-bob
+			t.tween_property(humbug_rect, "scale", Vector2(0.96, 1.04), 0.06)
+			t.tween_property(humbug_rect, "scale", Vector2(1.02, 0.98), 0.06)
+			t.tween_property(humbug_rect, "scale", Vector2.ONE, 0.12)
+		"hmm":  # slow thoughtful tilt
+			t.tween_property(humbug_rect, "rotation", deg_to_rad(6.0), 0.18)
+			t.tween_property(humbug_rect, "rotation", 0.0, 0.30).set_trans(Tween.TRANS_SINE)
+		"huff":  # shoulder-rise puff
+			t.tween_property(humbug_rect, "scale", Vector2(1.06, 1.06), 0.12)
+			t.tween_property(humbug_rect, "scale", Vector2.ONE, 0.26).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
+		"tut":  # side-to-side wiggle
+			t.tween_property(humbug_rect, "rotation", deg_to_rad(-5.0), 0.07)
+			t.tween_property(humbug_rect, "rotation", deg_to_rad(5.0), 0.10)
+			t.tween_property(humbug_rect, "rotation", 0.0, 0.10)
+		_:
+			t.tween_property(humbug_rect, "scale", Vector2(0.95, 1.05), 0.10)
+			t.tween_property(humbug_rect, "scale", Vector2.ONE, 0.22).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
 
 func _exit_tree() -> void:
 	_kill_idle_tweens()

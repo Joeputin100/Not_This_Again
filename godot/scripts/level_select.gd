@@ -78,11 +78,28 @@ const HUMBUG_EGG_WINDOW: float = 60.0
 const CANARD_EGG_TAPS: int = 14        # taps → explosion + a fresh duck-head
 const POOF_SFX := preload("res://assets/sfx/poof.wav")
 const CANARD_HEAD_REGION := Rect2(241.0, 410.0, 100.0, 105.0)  # duck-head in the Humbug PNG (iter 163: tracked the CanardZone nudge)
+# Candy-Crush-style short reactions: single tap → one-syllable non-verbal
+# (no-repeat); rapid spam (ANNOYED_TAPS / ANNOYED_WINDOW) escalates to the
+# full verbal tip/thought. The 6-tap/60s joke + 14-tap canard explosion
+# easter eggs are unchanged.
 var CANARD_QUACK_STREAMS: Array = [
-	preload("res://assets/audio/characters/canard_quack_0.mp3"),
-	preload("res://assets/audio/characters/canard_quack_1.mp3"),
-	preload("res://assets/audio/characters/canard_quack_2.mp3"),
+	preload("res://assets/audio/characters/canard_react_quack.mp3"),
+	preload("res://assets/audio/characters/canard_react_giggle.mp3"),
+	preload("res://assets/audio/characters/canard_react_squeak.mp3"),
+	preload("res://assets/audio/characters/canard_react_honk.mp3"),
+	preload("res://assets/audio/characters/canard_react_chitter.mp3"),
 ]
+const HUMBUG_REACTS := ["harumph", "snort", "hmm", "huff", "tut"]
+const REACT_FLOURISH := {
+	"harumph": "tip", "huff": "tip", "hmm": "thought",
+	"snort": "thought", "tut": "canard",
+}
+const ANNOYED_TAPS: int = 5
+const ANNOYED_WINDOW: float = 2.0
+const REACT_DEBOUNCE: float = 0.2
+var _react_tap_times: Array[float] = []
+var _humbug_last_react_at: float = 0.0
+var _last_humbug_react: String = ""
 
 var _humbug_base_pos: Vector2
 var _humbug_tapped_at: float = 0.0
@@ -202,18 +219,49 @@ func _setup_humbug() -> void:
 # Tap Humbug → a flourish + mostly a tip (speech bubble), now and then a
 # thought (thought bubble + harp). Canard chimes in with a quack.
 func _on_humbug_pressed() -> void:
-	if not _humbug_tap_accepted():
+	var now: float = Time.get_unix_time_from_system()
+	# Snappy debounce for reactions (the verbal path keeps its own 1s guard).
+	if now - _humbug_last_react_at < REACT_DEBOUNCE:
 		return
-	# Iter 160: pestered HUMBUG_EGG_TAPS times inside the window → he
-	# cracks and snips a (cycling) joke line instead of offering a tip.
+	_humbug_last_react_at = now
+	# Long-window joke easter egg bookkeeping (unchanged behaviour).
+	_humbug_tap_times.append(now)
+	var cutoff: float = now - HUMBUG_EGG_WINDOW
+	while not _humbug_tap_times.is_empty() and _humbug_tap_times[0] < cutoff:
+		_humbug_tap_times.remove_at(0)
 	if _humbug_tap_times.size() >= HUMBUG_EGG_TAPS:
+		_react_tap_times.clear()
 		_humbug_joke()
+		return
+	# Rolling 2s window for the annoyed escalation.
+	_react_tap_times = _react_tap_times.filter(func(t): return now - t < ANNOYED_WINDOW)
+	_react_tap_times.append(now)
+	if _react_tap_times.size() >= ANNOYED_TAPS:
+		_react_tap_times.clear()
+		_humbug_verbal()
+		return
+	# Single tap → short reaction + a flourish video as the matching motion.
+	var react := _pick_no_repeat(HUMBUG_REACTS, "_last_humbug_react")
+	if get_node_or_null("/root/AudioBus") and AudioBus.has_method("play_character_line"):
+		AudioBus.play_character_line("humbug_react_%s" % react)
+	var vid: String = REACT_FLOURISH.get(react, "tip")
+	if not _play_flourish(vid):
+		_humbug_tip_flourish()
+
+func _pick_no_repeat(pool: Array, last_var: String) -> String:
+	var choices := pool.filter(func(v): return v != get(last_var))
+	var chosen: String = choices[randi() % choices.size()]
+	set(last_var, chosen)
+	return chosen
+
+# The original tip/thought verbal behaviour — now the "annoyed" response
+# when the player spams taps. Respects the 1s talk-over guard.
+func _humbug_verbal() -> void:
+	if not _humbug_tap_accepted():
 		return
 	if randf() < HUMBUG_THOUGHT_CHANCE:
 		if not _play_flourish("thought"):
 			_humbug_thought_flourish()
-		# Iter 176: pick a line by index so the bubble text and the
-		# matched VO clip (humbug_thought_N) are the same line.
 		var ti: int = randi() % HUMBUG_THOUGHT_LINES
 		_show_humbug_bubble(Text.lookup("humbug.thoughts.%d" % ti), true)
 		_speak_humbug("humbug_thought_%d" % ti)
@@ -225,7 +273,6 @@ func _on_humbug_pressed() -> void:
 		var pi: int = randi() % HUMBUG_TIP_LINES
 		_show_humbug_bubble(Text.lookup("humbug.tips.%d" % pi), false)
 		_speak_humbug("humbug_tip_%d" % pi)
-	# Iter 176: Canard chimes a beat after Humbug's (matched) voice line.
 	_canard_chime()
 
 # Debounce (1s) + don't let him talk over himself. Records the accepted
@@ -238,10 +285,8 @@ func _humbug_tap_accepted() -> bool:
 		if AudioBus.any_character_line_playing():
 			return false
 	_humbug_tapped_at = now
-	_humbug_tap_times.append(now)
-	var cutoff: float = now - HUMBUG_EGG_WINDOW
-	while not _humbug_tap_times.is_empty() and _humbug_tap_times[0] < cutoff:
-		_humbug_tap_times.remove_at(0)
+	# Note: _humbug_tap_times (joke-egg window) is now maintained in
+	# _on_humbug_pressed so every tap counts, not just verbal ones.
 	return true
 
 # Tap Canard (the duck-head cane handle) → a quack + a quick wiggle.
