@@ -82,8 +82,9 @@ NOTE: bullets are currently drawn as solid-color rounded shapes; `bullet.gd` ran
 
 HAVE (6, baked from fizzer "Unlimited Confectionery"): red/green/blue/amber gummies, white-choc swirl, striped sweet. → cover the jelly-bean weapons (default + frenzy) + liquorice-ish.
 
+HAVE (7th, baked from Nrx "Cotton candy Pac-Man"): `candy_cotton.png` — fluffy pastel pink→blue volumetric floss → Cotton Candy Rifle. DONE.
+
 STILL WANT (distinct materials — user is raiding Shadertoy; do NOT gummy-fy everything):
-- Cotton candy (translucent fibrous floss) → Cotton Candy Rifle
 - Marshmallow (soft matte subsurface white) → Marshmallow Cannon
 - Jawbreaker / hard candy (glossy concentric layers) → Jawbreaker Grenades
 - Icy / frosted → Fudgicle Frostbite
@@ -97,6 +98,12 @@ STILL WANT (distinct materials — user is raiding Shadertoy; do NOT gummy-fy ev
 - **fizzer "Unlimited Confectionery"** — DONE (gummy + chocolate → 6 sprites). Had a clean separable `gummy()` material; easy extract.
 - **dr2 "Cookies" (2019)** — hex-tiled raymarched cookie field w/ arm-swirl SDF. Heavy (2.9 fps). NOT a separable material; bake by porting a SINGLE-object raymarch (fix hex cell, fixed cam, strip mutable globals → inout/struct, render one cookie to PNG offline). Source partially captured in chat.
 - **dr2 "Cupcakes" (2019)** — same structure (cupcake SDF w/ frosting swirl). Heavy (1.6 fps). Same single-object bake approach. Chat paste was missing tail helpers (PrCylAnDf, HsvToRgb) — re-grab full source.
+
+- **Nrx "Cotton candy Pac-Man" (MlfGR4)** — DONE (`candy_cotton.png`). Volumetric fbm cloud; no mutable globals, only iChannel0 noise-texture (swapped for procedural). Tier 1.5: self-contained volumetric march → sphere.
+
+Bake-to-PNG alpha methods (which to use):
+- **Hard-surface candy** (gummy/choc sphere, crisp silhouette) → circular alpha mask in post.
+- **Soft/volumetric candy** (cotton candy, marshmallow, anything with fuzzy/translucent edges) → render over white + over black, recover true alpha with `scripts/diff_matte.py`. The capture framebuffer is opaque, so per-pixel shader alpha is otherwise lost.
 
 Extraction difficulty tiers:
 1. **Easy** — shader has a separable material fn on a primitive (fizzer gummy). Drop on a sphere, bake.
