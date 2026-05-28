@@ -208,19 +208,26 @@ func _on_humbug_tap(event: InputEvent) -> void:
 		_humbug_anim("huff")
 		return
 
-	# Single tap → short non-verbal reaction + matching animation.
-	var react := _pick_no_repeat(HUMBUG_REACTS, "_last_humbug_react")
-	DebugLog.add("menu: Humbug tapped → react %s" % react)
-	if has_bus and AudioBus.has_method("play_character_line"):
-		AudioBus.play_character_line("humbug_react_%s" % react)
-	_humbug_anim(react)
-	# Canard chimes ~50% with its own short reaction a beat later.
-	if randf() < 0.5:
+	# Single tap → ONE short reaction. Skip if a line is still playing so
+	# rapid taps (and Humbug + Canard) never stack into overlapping audio —
+	# the tap still counts toward the spam→banter escalation above.
+	if has_bus and AudioBus.has_method("any_character_line_playing") \
+			and AudioBus.any_character_line_playing():
+		return
+	if not has_bus or not AudioBus.has_method("play_character_line"):
+		return
+	# 1-in-4 taps, Monsieur Canard pipes up INSTEAD of Humbug (never both at
+	# once); the rest are Humbug's own grumbles.
+	if randf() < 0.25:
 		var c := _pick_no_repeat(CANARD_REACTS, "_last_canard_react")
-		var t: SceneTreeTimer = get_tree().create_timer(0.45)
-		t.timeout.connect(func() -> void:
-			if get_node_or_null("/root/AudioBus"):
-				AudioBus.play_character_line("canard_react_%s" % c))
+		DebugLog.add("menu: tapped → canard %s" % c)
+		AudioBus.play_character_line("canard_react_%s" % c)
+		_humbug_anim("snort")
+	else:
+		var react := _pick_no_repeat(HUMBUG_REACTS, "_last_humbug_react")
+		DebugLog.add("menu: tapped → react %s" % react)
+		AudioBus.play_character_line("humbug_react_%s" % react)
+		_humbug_anim(react)
 
 func _pick_no_repeat(pool: Array, last_var: String) -> String:
 	var choices := pool.filter(func(v): return v != get(last_var))

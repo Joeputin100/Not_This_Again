@@ -144,6 +144,10 @@ const LIGHTING_PRESETS := {
 		"sun_corona_body": Color(1.00, 0.95, 0.30, 1),
 		"sun_corona_ray": Color(1.00, 0.65, 0.15, 1),
 		"moon_visible":  false,
+		"sky_top":       Color(0.20, 0.40, 0.60, 1),
+		"sky_bot":       Color(0.45, 0.72, 1.00, 1),
+		"cloud_tint":    Color(1.10, 1.10, 0.95, 1),
+		"cloud_cover":   0.20,
 	},
 	"sunset": {
 		"light_color":   Color(1.00, 0.55, 0.30, 1),
@@ -162,6 +166,10 @@ const LIGHTING_PRESETS := {
 		"sun_corona_body": Color(1.00, 0.70, 0.15, 1),
 		"sun_corona_ray": Color(1.00, 0.35, 0.10, 1),
 		"moon_visible":  false,
+		"sky_top":       Color(0.45, 0.28, 0.42, 1),
+		"sky_bot":       Color(1.00, 0.58, 0.30, 1),
+		"cloud_tint":    Color(1.10, 0.78, 0.62, 1),
+		"cloud_cover":   0.28,
 	},
 	"moonlight": {
 		"light_color":   Color(0.60, 0.72, 1.00, 1),
@@ -178,6 +186,10 @@ const LIGHTING_PRESETS := {
 		"moon_tint":     Color(0.88, 0.92, 1.05, 1),
 		"moon_corona_color": Color(0.74, 0.84, 1.00, 1),
 		"moon_corona_strength": 0.85,
+		"sky_top":       Color(0.03, 0.05, 0.13, 1),
+		"sky_bot":       Color(0.10, 0.14, 0.30, 1),
+		"cloud_tint":    Color(0.42, 0.48, 0.66, 1),
+		"cloud_cover":   0.32,
 	},
 	"overcast": {
 		"light_color":   Color(0.92, 0.94, 0.95, 1),
@@ -196,6 +208,10 @@ const LIGHTING_PRESETS := {
 		"sun_corona_body": Color(0.92, 0.90, 0.80, 1),
 		"sun_corona_ray": Color(0.85, 0.85, 0.88, 1),
 		"moon_visible":  false,
+		"sky_top":       Color(0.58, 0.60, 0.64, 1),
+		"sky_bot":       Color(0.80, 0.82, 0.86, 1),
+		"cloud_tint":    Color(0.92, 0.92, 0.94, 1),
+		"cloud_cover":   0.50,
 	},
 }
 

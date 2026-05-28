@@ -74,7 +74,7 @@ render_priority = -25
 shader = ExtResource("13_sun_corona")
 
 [sub_resource type="SphereShape3D" id="SphereShape_sun"]
-radius = 6.0
+radius = 14.0
 
 [sub_resource type="QuadMesh" id="QuadMesh_sun_stick"]
 size = Vector2(0.6, 1)
@@ -91,13 +91,12 @@ render_priority = -20
 shader = ExtResource("6_moon_cookie")
 
 [sub_resource type="SphereShape3D" id="SphereShape_moon"]
-radius = 4.5
+radius = 10.0
 
 [sub_resource type="QuadMesh" id="QuadMesh_clouds"]
-size = Vector2(48, 48)
+size = Vector2(110, 110)
 
 [sub_resource type="ShaderMaterial" id="ShaderMat_clouds"]
-render_priority = -30
 shader = ExtResource("14_clouds")
 
 [node name="SP1CrowdViewer" type="Node2D"]
@@ -137,7 +136,7 @@ attributes = SubResource("CamAttr_daylight")
 ; Child of the camera so it always fills the FOV as the tilt slider moves;
 ; render_priority -30 + depth_test off keeps it behind sun/moon/terrain.
 [node name="CloudBackdrop" type="MeshInstance3D" parent="ViewportContainer/Viewport3D/Camera3D"]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, -12)
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, -75)
 cast_shadow = 0
 mesh = SubResource("QuadMesh_clouds")
 material_override = SubResource("ShaderMat_clouds")

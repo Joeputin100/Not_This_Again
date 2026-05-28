@@ -1,5 +1,5 @@
 shader_type spatial;
-render_mode unshaded, cull_disabled, depth_draw_never, depth_test_disabled;
+render_mode unshaded, cull_disabled;
 
 // Procedural 2D cloud backdrop. Ported from drift's Shadertoy "2D Clouds"
 // (https://www.shadertoy.com/view/4tdSWr). LICENSE NOTE: the author granted
@@ -12,7 +12,7 @@ uniform vec3 sky_color_top : source_color = vec3(0.2, 0.4, 0.6);
 uniform vec3 sky_color_bot : source_color = vec3(0.4, 0.7, 1.0);
 uniform vec3 cloud_color : source_color = vec3(1.1, 1.1, 0.9);
 uniform float cloudcover : hint_range(0.0, 1.0) = 0.2;
-uniform float cloud_speed : hint_range(0.0, 0.2) = 0.03;
+uniform float cloud_speed : hint_range(0.0, 0.2) = 0.006;
 uniform float aspect = 1.0;
 
 const float cloudscale = 1.1;

@@ -54,6 +54,26 @@ func apply_preset(preset: Dictionary, shadow_offset: Vector3) -> void:
 		moon_disc.position = Vector3(horiz.x, moon_h, horiz.y)
 		_push_moon_uniforms(preset)
 
+	_push_cloud_uniforms(preset)
+
+func _push_cloud_uniforms(preset: Dictionary) -> void:
+	if _camera == null:
+		return
+	var cb: Node = _camera.get_node_or_null("CloudBackdrop")
+	if cb == null:
+		return
+	var cm: ShaderMaterial = cb.material_override
+	if cm == null:
+		return
+	if preset.has("sky_top"):
+		cm.set_shader_parameter("sky_color_top", preset["sky_top"])
+	if preset.has("sky_bot"):
+		cm.set_shader_parameter("sky_color_bot", preset["sky_bot"])
+	if preset.has("cloud_tint"):
+		cm.set_shader_parameter("cloud_color", preset["cloud_tint"])
+	if preset.has("cloud_cover"):
+		cm.set_shader_parameter("cloudcover", preset["cloud_cover"])
+
 func _push_sun_uniforms(preset: Dictionary) -> void:
 	var mat: ShaderMaterial = sun_disc.get_node("DiscMesh").material_override
 	if mat:
