@@ -1,9 +1,11 @@
-[gd_scene load_steps=6 format=3 uid="uid://b0nttg0sccfg0"]
+[gd_scene load_steps=8 format=3 uid="uid://b0nttg0sccfg0"]
 
 [ext_resource type="Script" path="res://scripts/main_menu.gd" id="1_main"]
 [ext_resource type="Theme" path="res://assets/theme.tres" id="2_theme"]
 [ext_resource type="Texture2D" path="res://assets/copy_icon.svg" id="3_copy_icon"]
 [ext_resource type="Texture2D" path="res://assets/sprites/professor_humbug.png" id="4_humbug"]
+[ext_resource type="Texture2D" path="res://assets/sprites/slippery_pete.png" id="5_pete"]
+[ext_resource type="Script" path="res://scripts/candy_rustler_rig.gd" id="6_rustler_rig"]
 
 [node name="MainMenu" type="Node2D"]
 script = ExtResource("1_main")
@@ -14,7 +16,39 @@ offset_bottom = 1920.0
 color = Color(0.226, 0.157, 0.078, 1)
 mouse_filter = 2
 
+; Iter 327: background villains — Slippery Pete + the Candy Rustler rig
+; lurk behind the menu. The Rustler is the jointed-puppet rig (self-builds
+; + idle-sways via candy_rustler_rig.gd); positioned lower-right, scaled
+; down and dimmed so it reads as a background lurker. Tap zones live in the
+; UI layer (PeteTap / RustlerTap) so they're tappable without eating the
+; PLAY button.
+[node name="RustlerRig" type="Node2D" parent="."]
+position = Vector2(800, 1180)
+scale = Vector2(0.24, 0.24)
+modulate = Color(0.8, 0.8, 0.85, 0.8)
+script = ExtResource("6_rustler_rig")
+
 [node name="UI" type="CanvasLayer" parent="."]
+
+[node name="Pete" type="TextureRect" parent="UI"]
+anchors_preset = -1
+offset_left = 20.0
+offset_top = 1180.0
+offset_right = 300.0
+offset_bottom = 1560.0
+mouse_filter = 0
+modulate = Color(0.82, 0.82, 0.86, 0.85)
+texture = ExtResource("5_pete")
+expand_mode = 1
+stretch_mode = 5
+
+[node name="RustlerTap" type="Control" parent="UI"]
+anchors_preset = -1
+offset_left = 760.0
+offset_top = 1120.0
+offset_right = 1040.0
+offset_bottom = 1500.0
+mouse_filter = 0
 
 ; Iter 152: Professor Humbug (tutorial-guide character) greeting from the
 ; menu — placed "for now" in the empty band between the subtitle and the

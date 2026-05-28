@@ -27,6 +27,12 @@ const BuildInfo = preload("res://scripts/build_info.gd")
 # Iter 152: Professor Humbug greeting the player from the menu. Tap him
 # for a banter line; Monsieur Canard (the duck) chimes in with a quack.
 @onready var humbug_rect: TextureRect = $UI/Humbug
+@onready var pete_rect: TextureRect = $UI/Pete
+@onready var rustler_tap: Control = $UI/RustlerTap
+const PETE_REACTS: int = 3      # pete_react_0..2
+const RUSTLER_TAUNTS: int = 4   # candy_rustler_taunt_0..3
+var _last_pete: int = -1
+var _last_rustler: int = -1
 const HUMBUG_MENU_LINES: int = 6
 const CANARD_QUACKS: int = 3
 var _humbug_banter_at: float = 0.0
@@ -117,6 +123,11 @@ func _ready() -> void:
 		humbug_rect.mouse_filter = Control.MOUSE_FILTER_STOP
 		if not humbug_rect.gui_input.is_connected(_on_humbug_tap):
 			humbug_rect.gui_input.connect(_on_humbug_tap)
+	# Iter 327: background villains tap → short in-character barks.
+	if pete_rect and not pete_rect.gui_input.is_connected(_on_pete_tap):
+		pete_rect.gui_input.connect(_on_pete_tap)
+	if rustler_tap and not rustler_tap.gui_input.is_connected(_on_rustler_tap):
+		rustler_tap.gui_input.connect(_on_rustler_tap)
 	DebugLog.add("_ready: complete")
 	# Defer pivot capture so Godot's layout pass has run and sizes are real.
 	call_deferred("_finalize_setup")
@@ -173,6 +184,8 @@ func _finalize_setup() -> void:
 	_subtitle_base_y = subtitle_label.position.y
 	if humbug_rect:
 		humbug_rect.pivot_offset = humbug_rect.size / 2.0
+	if pete_rect:
+		pete_rect.pivot_offset = pete_rect.size / 2.0
 
 # Iter 152: tap Professor Humbug → a banter line, and Monsieur Canard
 # (the duck-cane handle) chimes in with a quack ~60% of the time, a beat
@@ -262,6 +275,48 @@ func _humbug_anim(react: String) -> void:
 		_:
 			t.tween_property(humbug_rect, "scale", Vector2(0.95, 1.05), 0.10)
 			t.tween_property(humbug_rect, "scale", Vector2.ONE, 0.22).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
+
+func _is_tap_press(event: InputEvent) -> bool:
+	if event is InputEventScreenTouch:
+		return (event as InputEventScreenTouch).pressed
+	if event is InputEventMouseButton:
+		var mb := event as InputEventMouseButton
+		return mb.button_index == MOUSE_BUTTON_LEFT and mb.pressed
+	return false
+
+func _react_blocked() -> bool:
+	if get_node_or_null("/root/AudioBus") == null or not AudioBus.has_method("play_character_line"):
+		return true
+	return AudioBus.has_method("any_character_line_playing") and AudioBus.any_character_line_playing()
+
+# Tap Slippery Pete → a short angry bark + a gruff squish.
+func _on_pete_tap(event: InputEvent) -> void:
+	if not _is_tap_press(event) or _react_blocked():
+		return
+	var i := randi() % PETE_REACTS
+	while i == _last_pete and PETE_REACTS > 1:
+		i = randi() % PETE_REACTS
+	_last_pete = i
+	AudioBus.play_character_line("pete_react_%d" % i)
+	if pete_rect:
+		var t := create_tween()
+		t.tween_property(pete_rect, "scale", Vector2(1.06, 0.92), 0.08)
+		t.tween_property(pete_rect, "scale", Vector2.ONE, 0.22).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
+
+# Tap the Candy Rustler → an in-character taunt + a wrapper-shake pulse.
+func _on_rustler_tap(event: InputEvent) -> void:
+	if not _is_tap_press(event) or _react_blocked():
+		return
+	var i := randi() % RUSTLER_TAUNTS
+	while i == _last_rustler and RUSTLER_TAUNTS > 1:
+		i = randi() % RUSTLER_TAUNTS
+	_last_rustler = i
+	AudioBus.play_character_line("candy_rustler_taunt_%d" % i)
+	var rig := get_node_or_null("RustlerRig")
+	if rig:
+		var t := create_tween()
+		t.tween_property(rig, "scale", Vector2(0.27, 0.27), 0.08)
+		t.tween_property(rig, "scale", Vector2(0.24, 0.24), 0.24).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
 
 func _exit_tree() -> void:
 	_kill_idle_tweens()

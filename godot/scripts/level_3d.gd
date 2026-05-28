@@ -2841,15 +2841,18 @@ func _pete_fire() -> void:
 func _pete_spawn_taunt(pete: Node3D) -> void:
 	if get_node_or_null("/root/Text") == null:
 		return
-	var line: String = Text.random("boss.slippery_pete_dialog_taunts")
-	if line == "" or line == "boss.slippery_pete_dialog_taunts":
+	# Pick a taunt by INDEX so the spoken clip (pete_taunt_N) matches the
+	# bubble text. Per-line angry VO now exists (gen_pete_vo.py).
+	var ti: int = randi() % 4
+	var line: String = Text.lookup("boss.slippery_pete_dialog_taunts.%d" % ti)
+	if line == "" or line.begins_with("boss."):
 		return
 	# Iter 146: SHOUT animation flash + voice line. Bubble lowered from
 	# Pete's head (y+4 = off-screen at top) to chest level so the user
 	# actually sees the banter.
 	_set_pete_anim(pete, PETE_SHOUT_STREAM, 1.5)
 	if get_node_or_null("/root/AudioBus") and AudioBus.has_method("play_character_line"):
-		AudioBus.play_character_line("pete_intro")  # reuse intro until per-taunt clips exist
+		AudioBus.play_character_line("pete_taunt_%d" % ti)
 	var bubble := Label3D.new()
 	bubble.text = line
 	bubble.font_size = 56
@@ -4651,10 +4654,21 @@ func _process(delta: float) -> void:
 					_hits += 1
 					_refresh_hud()
 					_refresh_pete_hp(pete)
+					var has_bus := get_node_or_null("/root/AudioBus") != null \
+						and AudioBus.has_method("play_character_line")
 					if hp <= 0:
+						# Dying line before the win screen.
+						if has_bus:
+							AudioBus.play_character_line("pete_dying_%d" % (randi() % 4))
 						pete.queue_free()
 						_show_win()
 						break
+					# Occasional angry "ow" so he reacts without spamming on
+					# every hit (and never over an in-flight line).
+					elif has_bus and randf() < 0.25 \
+							and not (AudioBus.has_method("any_character_line_playing") \
+								and AudioBus.any_character_line_playing()):
+						AudioBus.play_character_line("pete_hit_%d" % (randi() % 4))
 	# Iter 157: the Candy Rustler runs a separate process branch — he is a
 	# stationary jointed puppet, not Pete's video-anim/melee actor. The
 	# Pete block above is skipped for him via the boss_kind guard on its
