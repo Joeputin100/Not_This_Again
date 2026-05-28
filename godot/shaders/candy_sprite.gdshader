@@ -8,7 +8,9 @@ shader_type canvas_item;
 // as the jellybean-frenzy projectiles.
 
 uniform float candy_colour : hint_range(0.0, 3.0) = 0.0;  // 0 red, 1 green, 2 blue, 3 amber
+uniform int candy_type : hint_range(0, 2) = 0;           // 0 gummy, 1 choc swirl, 2 choc stripe
 uniform vec2 tc = vec2(0.0);
+const vec3 LDIR = vec3(0.316, 0.949, 0.0);  // normalize(vec3(10,30,0))
 
 float hash(float n) { return fract(sin(n) * 43758.5453123); }
 
@@ -24,6 +26,40 @@ float noise(vec3 x) {
 }
 
 float smN2(vec2 p) { return noise(vec3(p, 0.0)); }
+
+float fbm3(vec3 p) {
+	float f = 0.0;
+	float x;
+	for (int i = 1; i <= 9; ++i) {
+		x = exp2(float(i));
+		f += (noise(p * x) - 0.5) / x;
+	}
+	return f;
+}
+float fbm2(vec2 g) { return fbm3(vec3(g, 0.0)); }
+
+// Chocolate material adapted from fizzer's trace() is_choc branch. surf is
+// the candy's surface coord (sphere xy), n the normal, v the view dir.
+vec3 chocolate(vec3 n, vec3 v, vec2 surf, int style) {
+	vec3 h = normalize(LDIR - v);
+	vec3 chocolour;
+	if (style == 1) {
+		float r = pow(length(surf) * 0.6, 2.0);
+		chocolour = mix(vec3(2.0, 2.0, 1.3) * 2.0, vec3(1.3, 0.6, 0.2) * 0.6,
+			smoothstep(0.5 + r, 0.6 + r, 0.4 + fbm2(surf * 10.0)));
+	} else {
+		chocolour = mix(vec3(1.3, 0.6, 0.2), vec3(2.0, 2.0, 1.3) * 2.0,
+			smoothstep(0.7, 0.9, 0.5 + 0.5 * cos(surf.x * 10.0 + sin(surf.y * 5.0))));
+	}
+	// Brighter ambient than the original scene (0.5..1.0 wrap) so a single
+	// camera-facing candy reads as chocolate rather than near-black — the
+	// shader's scene had floor bounce + icing fill we don't get on a sprite.
+	float diff = 0.55 + 0.45 * dot(n, LDIR);
+	vec3 col = (0.22 * chocolour * vec3(diff)
+		+ 0.10 * vec3(1.0, 1.0, 0.5) * vec3(pow(clamp(0.5 + 0.5 * dot(h, n), 0.0, 1.0), 20.0)))
+		* (1.0 + 0.6 * pow(dot(n, -v), 2.0));
+	return col * 5.0;
+}
 
 vec3 gumColour(float i) {
 	if (i < 1.0) return vec3(0.11, 0.0, 0.002);
@@ -96,7 +132,12 @@ void fragment() {
 	} else {
 		vec3 no = vec3(d.x, -d.y, sqrt(1.0 - r2));
 		vec3 v = vec3(0.0, 0.0, -1.0);
-		vec3 col = gummy(no, no, v) * 5.0;
+		vec3 col;
+		if (candy_type == 0) {
+			col = gummy(no, no, v) * 5.0;
+		} else {
+			col = chocolate(no, v, vec2(d.x, -d.y), candy_type);
+		}
 		col = sqrt(max(col, vec3(0.0)) * 1.4);
 		// Soft 1px edge so the candy silhouette isn't aliased.
 		float a = smoothstep(1.0, 0.97, r2);
