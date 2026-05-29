@@ -75,7 +75,7 @@ const BUBBLE_SIZE := Vector2(720.0, 340.0)  # iter 172: enlarged so tip text fit
 # Iter 160: easter eggs.
 const HUMBUG_EGG_TAPS: int = 6         # accepted taps inside the window → jokes
 const HUMBUG_EGG_WINDOW: float = 60.0
-const CANARD_EGG_TAPS: int = 14        # taps → explosion + a fresh duck-head
+const CANARD_EGG_TAPS: int = 8         # iter338: 14 → 8 (more reachable; explosion wasn't triggering)
 const POOF_SFX := preload("res://assets/sfx/poof.wav")
 const CANARD_HEAD_REGION := Rect2(241.0, 410.0, 100.0, 105.0)  # duck-head in the Humbug PNG (iter 163: tracked the CanardZone nudge)
 # Candy-Crush-style short reactions: single tap → one-syllable non-verbal
@@ -321,6 +321,7 @@ func _on_canard_tap(event: InputEvent) -> void:
 		return
 	canard_zone.accept_event()
 	_canard_tap_count += 1
+	DebugLog.add("canard tap %d/%d" % [_canard_tap_count, CANARD_EGG_TAPS])  # iter338 diag
 	# Iter 160: the CANARD_EGG_TAPS-th tap is the last straw — Canard
 	# bursts, then a fresh duck-head springs from the cane.
 	if _canard_tap_count >= CANARD_EGG_TAPS:
@@ -534,6 +535,8 @@ func _humbug_annoyed_flourish() -> void:
 # The CANARD_EGG_TAPS-th tap: a poof, a candy-shrapnel burst, and a fresh
 # duck-head that springs out of the licorice cane a beat later.
 func _canard_explode() -> void:
+	DebugLog.add("canard EXPLODE triggered")  # iter338 diag — if this logs but
+	# nothing shows on screen, the FX is the bug, not the count threshold.
 	var origin: Vector2 = _humbug_base_pos + canard_zone.position + canard_zone.size * 0.5
 	if _canard_player != null:
 		_canard_player.stream = POOF_SFX
