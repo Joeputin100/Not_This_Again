@@ -20,7 +20,9 @@ const BuildInfo = preload("res://scripts/build_info.gd")
 @onready var copy_toast: Label = $UI/CopyToast
 # Iter 40c: hearts row — 5 slots, each ♥ when full, faded for spent.
 # Subscribes to GameState.hearts_changed in _ready and re-renders.
-@onready var hearts_label: Label = $UI/Hearts
+# iter 333: now a vector-drawn HeartRow (the Rye theme font has no ♥ glyph,
+# so the old Label rendered a missing-glyph dot on the Android export).
+@onready var hearts_label: HeartRow = $UI/Hearts
 # Iter 45: DEBUG button — visible only in debug builds. _ready toggles
 # its visibility from OS.has_feature("debug").
 @onready var debug_button: Button = $UI/DebugButton
@@ -343,11 +345,7 @@ func _on_back_requested_signal() -> void:
 func _refresh_hearts(current_hearts: int) -> void:
 	if hearts_label == null:
 		return
-	var max_h: int = GameState.MAX_HEARTS
-	var parts: PackedStringArray = []
-	for i in range(max_h):
-		parts.append("♥" if i < current_hearts else "·")
-	hearts_label.text = " ".join(parts)
+	hearts_label.set_hearts(current_hearts, GameState.MAX_HEARTS)
 	# Lock PLAY when out of hearts. Standard Candy Crush behavior: dim
 	# the primary CTA + change the label to make the gate obvious. (Heart
 	# regen is deferred to a separate iter; cold app launches reset to

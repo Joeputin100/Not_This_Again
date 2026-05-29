@@ -1,4 +1,4 @@
-[gd_scene load_steps=8 format=3 uid="uid://b0nttg0sccfg0"]
+[gd_scene load_steps=9 format=3 uid="uid://b0nttg0sccfg0"]
 
 [ext_resource type="Script" path="res://scripts/main_menu.gd" id="1_main"]
 [ext_resource type="Theme" path="res://assets/theme.tres" id="2_theme"]
@@ -6,6 +6,7 @@
 [ext_resource type="Texture2D" path="res://assets/sprites/professor_humbug.png" id="4_humbug"]
 [ext_resource type="Texture2D" path="res://assets/sprites/slippery_pete.png" id="5_pete"]
 [ext_resource type="Script" path="res://scripts/candy_rustler_rig.gd" id="6_rustler_rig"]
+[ext_resource type="Script" path="res://scripts/heart_row.gd" id="7_hearts"]
 
 [node name="MainMenu" type="Node2D"]
 script = ExtResource("1_main")
@@ -56,12 +57,12 @@ mouse_filter = 0
 ; PLAY button. mouse_filter=2 so he never eats a tap.
 [node name="Humbug" type="TextureRect" parent="UI"]
 anchors_preset = -1
-anchor_left = 0.5
-anchor_right = 0.5
-offset_left = -150.0
-offset_top = 1010.0
-offset_right = 150.0
-offset_bottom = 1370.0
+anchor_left = 1.0
+anchor_right = 1.0
+offset_left = -470.0
+offset_top = 70.0
+offset_right = -20.0
+offset_bottom = 610.0
 mouse_filter = 0
 texture = ExtResource("4_humbug")
 expand_mode = 1
@@ -82,22 +83,15 @@ AGAIN"
 horizontal_alignment = 1
 mouse_filter = 2
 
-[node name="Hearts" type="Label" parent="UI"]
+[node name="Hearts" type="Control" parent="UI"]
 anchors_preset = -1
 anchor_right = 1.0
 offset_left = 60.0
 offset_top = 630.0
 offset_right = -60.0
-offset_bottom = 870.0
-theme = ExtResource("2_theme")
-theme_override_colors/font_color = Color(1, 0.45, 0.4, 1)
-theme_override_colors/font_outline_color = Color(0.18, 0.05, 0.05, 1)
-theme_override_constants/outline_size = 10
-theme_override_font_sizes/font_size = 150
-text = "♥ ♥ ♥ ♥ ♥"
-horizontal_alignment = 1
-vertical_alignment = 1
+offset_bottom = 810.0
 mouse_filter = 2
+script = ExtResource("7_hearts")
 
 [node name="Subtitle" type="Label" parent="UI"]
 anchors_preset = -1
