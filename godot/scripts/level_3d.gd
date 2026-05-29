@@ -3376,25 +3376,32 @@ func _spawn_captive_hero(container_slug: String, hero_slug: String,
 		captive.add_child(hero_sprite)
 		captive.set_meta("hero_sprite", hero_sprite)
 
-	# HP label overhead
+	# HP label overhead — BIG number (iter 334, Evony-style). Wagons/barrels are
+	# the player's key targets, so the HP reads at a glance like the math-gate
+	# numbers: a large, heavily-outlined current-HP figure that draws on top of
+	# everything (no_depth_test) so the wagon/pushers never occlude it.
 	var hp_label := Label3D.new()
-	hp_label.text = "%d / %d" % [hp, hp]
-	hp_label.font_size = 48
-	hp_label.outline_size = 8
-	hp_label.modulate = Color(1.0, 0.55, 0.55, 1.0)
+	hp_label.text = str(hp)
+	hp_label.font_size = 110
+	hp_label.outline_size = 18
+	hp_label.modulate = Color(1.0, 0.96, 0.55, 1.0)
+	hp_label.outline_modulate = Color(0.20, 0.05, 0.04, 1.0)
 	hp_label.billboard = 1
-	hp_label.position = Vector3(0, c_data.h + 0.6, 0)
+	hp_label.no_depth_test = true
+	hp_label.render_priority = 10
+	hp_label.position = Vector3(0, c_data.h + 0.8, 0)
 	captive.add_child(hp_label)
 	captive.set_meta("hp_label", hp_label)
 
-	# Trapped! label
+	# Trapped! label — sits above the big HP number.
 	var trapped_label := Label3D.new()
 	trapped_label.text = "TRAPPED!"
 	trapped_label.font_size = 56
 	trapped_label.outline_size = 10
 	trapped_label.modulate = Color(1.0, 0.85, 0.30, 1.0)
 	trapped_label.billboard = 1
-	trapped_label.position = Vector3(0, c_data.h + 1.1, 0)
+	trapped_label.no_depth_test = true
+	trapped_label.position = Vector3(0, c_data.h + 2.0, 0)
 	captive.add_child(trapped_label)
 	captive.set_meta("trapped_label", trapped_label)
 
@@ -3431,7 +3438,11 @@ func _captive_take_damage(captive: Node3D, bullet_pos: Vector3) -> void:
 	# Update HP label
 	var hp_label: Label3D = captive.get_meta("hp_label", null)
 	if hp_label != null and is_instance_valid(hp_label):
-		hp_label.text = "%d / %d" % [maxi(hp, 0), max_hp]
+		hp_label.text = str(maxi(hp, 0))
+		# Pulse the number on each hit so the damage reads (Evony-ish punch).
+		hp_label.scale = Vector3.ONE * 1.25
+		hp_label.create_tween().tween_property(hp_label, "scale", Vector3.ONE, 0.12) \
+			.set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
 	# Damage popup
 	_spawn_popup_3d(bullet_pos + Vector3(0, 0.5, 0),
 		"-1", Color(1.0, 0.55, 0.40, 1), 36)
