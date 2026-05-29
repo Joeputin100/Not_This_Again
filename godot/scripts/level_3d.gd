@@ -503,13 +503,12 @@ func _build_3d_content() -> void:
 	subviewport.add_child(cowboy_3d)
 	_cowboy_anim_stream = COWBOY_RUN_FWD_STREAM
 	DebugLog.add("level_3d: cowboy_3d video billboard added")
-	# 3) 4 mountain MeshInstance3D silhouettes.
-	_spawn_mountains_lvl3d()
-	DebugLog.add("level_3d: mountains added")
-	# 4) Sky — sun/moon + clouds (iter 335). Self-building SkyBodies in the
-	# subviewport; the dynamic camera (calm → -35° reveals it) tilts to show it.
+	# 3) Sky — sun/moon + clouds + candy mountains (iter 335). The mountains are
+	# baked into the cloud sky shader's horizon (not separate meshes/sprites — a
+	# transparent sprite over the sky erases it; see memory). Replaces the old
+	# purple CSG box mountains. The dynamic camera (calm → -25°) reveals it.
 	_build_sky_3d()
-	DebugLog.add("level_3d: sky added")
+	DebugLog.add("level_3d: sky + candy mountains added")
 
 func _make_lvl3d_container(node_name: String) -> Node3D:
 	var n := Node3D.new()
@@ -517,28 +516,6 @@ func _make_lvl3d_container(node_name: String) -> Node3D:
 	subviewport.add_child(n)
 	return n
 
-func _spawn_mountains_lvl3d() -> void:
-	var box_mesh := BoxMesh.new()
-	box_mesh.size = Vector3(1, 1, 1)
-	var mat_a := StandardMaterial3D.new()
-	mat_a.albedo_color = Color(0.35, 0.22, 0.32, 1)
-	mat_a.roughness = 1.0
-	var mat_b := StandardMaterial3D.new()
-	mat_b.albedo_color = Color(0.42, 0.28, 0.36, 1)
-	mat_b.roughness = 1.0
-	var configs: Array = [
-		{"pos": Vector3(-16, 3.0, -32), "scl": Vector3(12, 7, 1),  "mat": mat_a},
-		{"pos": Vector3(-6,  4.0, -33), "scl": Vector3(10, 9, 1),  "mat": mat_b},
-		{"pos": Vector3(4,   3.5, -32), "scl": Vector3(11, 8, 1),  "mat": mat_a},
-		{"pos": Vector3(14,  4.5, -33), "scl": Vector3(10, 10, 1), "mat": mat_b},
-	]
-	for c in configs:
-		var m := MeshInstance3D.new()
-		m.mesh = box_mesh
-		m.material_override = c["mat"]
-		m.position = c["pos"]
-		m.scale = c["scl"]
-		subviewport.add_child(m)
 
 # Iter 335: dynamic action camera. Pitch eases between CALM (more sky / the
 # sun-moon visible, when little is happening — e.g. level start) and BUSY

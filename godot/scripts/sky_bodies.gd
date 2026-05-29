@@ -10,6 +10,8 @@ const SUN_TEXTURES := {
 }
 const MOON_TEX_NORMAL := preload("res://assets/sprites/sky/moon_normal.png")
 const MOON_TEX_WINK := preload("res://assets/sprites/sky/moon_wink.png")
+# Candy mountain range baked into the sky shader's horizon (iter 335).
+const MOUNTAINS_TEX := preload("res://assets/sprites/props/candy_mountains.png")
 
 # Shaders for the procedural build path (gameplay / level-select). The SP1
 # scene supplies these via its own .tscn sub-resources; here we build the same
@@ -88,6 +90,13 @@ func _push_cloud_uniforms(preset: Dictionary) -> void:
 		cm.set_shader_parameter("cloudcover", preset["cloud_cover"])
 	if preset.has("cloud_speed"):
 		cm.set_shader_parameter("cloud_speed", preset["cloud_speed"])
+	# Candy mountains baked into the horizon (iter 335). Opt-in per preset so a
+	# scene can leave them off; on by default for gameplay/level-select.
+	if preset.get("mountains", true):
+		cm.set_shader_parameter("mountains_tex", MOUNTAINS_TEX)
+		cm.set_shader_parameter("mountains_on", true)
+	else:
+		cm.set_shader_parameter("mountains_on", false)
 
 func _push_sun_uniforms(preset: Dictionary) -> void:
 	var mat: ShaderMaterial = sun_disc.get_node("DiscMesh").material_override

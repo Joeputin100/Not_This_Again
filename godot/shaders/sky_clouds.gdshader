@@ -23,6 +23,16 @@ uniform float cloudcover : hint_range(0.0, 1.0) = 0.4;
 uniform float cloud_speed : hint_range(0.0, 0.2) = 0.006;
 uniform sampler2D noise_tex : repeat_enable, filter_linear_mipmap;
 
+// Iter 335: horizon mountains BAKED INTO THE SKY (not a separate sprite — a
+// transparent sprite over the sky erases it in the SubViewport; see memory).
+// The matted candy-mountain texture is composited at the forward horizon band.
+uniform sampler2D mountains_tex : source_color, filter_linear;
+uniform bool mountains_on = false;
+uniform float mtn_az_half = 0.62;   // half azimuth span (rad) the range covers
+uniform float mtn_base = -0.26;     // bottom of band (below true horizon, ≈ the
+                                    // terrain far-edge elevation, so bases sit on it)
+uniform float mtn_top = 0.12;       // top elevation (rad) of the mountain band (peaks)
+
 void sky() {
 	// Height factor: 0 at the horizon, 1 straight up.
 	float hy = clamp(EYEDIR.y, 0.0, 1.0);
@@ -57,5 +67,19 @@ void sky() {
 	// dark cloud_color + high cover (stormy preset) this reads as heavy,
 	// menacing cloud; with a bright tint + low cover it's fair-weather puffs.
 	vec3 lit = cloud_color * (0.80 + 0.38 * core);
-	COLOR = mix(skycolour, lit, clamp(density, 0.0, 1.0));
+	vec3 result = mix(skycolour, lit, clamp(density, 0.0, 1.0));
+
+	// Horizon mountains: forward-facing band from the horizon (EYEDIR.y≈0) up to
+	// mtn_top, spanning ±mtn_az_half in azimuth. Texture V runs bottom (base, at
+	// the horizon) → top (peaks/transparent), so the matted silhouette's alpha
+	// draws the candy ridge directly into the opaque sky.
+	if (mountains_on && -EYEDIR.z > 0.0 && EYEDIR.y > mtn_base && EYEDIR.y < mtn_top) {
+		float az = atan(EYEDIR.x, -EYEDIR.z);
+		if (abs(az) < mtn_az_half) {
+			float v = (mtn_top - EYEDIR.y) / (mtn_top - mtn_base);
+			vec4 m = texture(mountains_tex, vec2(0.5 + az / (2.0 * mtn_az_half), v));
+			result = mix(result, m.rgb, m.a);
+		}
+	}
+	COLOR = result;
 }
