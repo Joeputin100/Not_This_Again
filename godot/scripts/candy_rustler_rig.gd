@@ -60,6 +60,11 @@ var _t: float = 0.0
 var _rustle_player: AudioStreamPlayer
 var _rustle_timer: float = 0.9
 
+# When true, suppress the idle wrapper-rustle SFX. Set on the main-menu splash
+# instance: his lurch animation is fine there, but the rustling loop is not
+# (it belongs in the boss fight). The visual rig is unaffected.
+@export var silent: bool = false
+
 func _ready() -> void:
 	for piece_name in BUILD_ORDER:
 		var d: Dictionary = PIECES[piece_name]
@@ -106,6 +111,8 @@ func _process(delta: float) -> void:
 			_play_rustle()
 
 func _play_rustle() -> void:
+	if silent:
+		return
 	if _rustle_player == null:
 		return
 	_rustle_player.stream = RUSTLE_STREAMS[randi() % RUSTLE_STREAMS.size()]

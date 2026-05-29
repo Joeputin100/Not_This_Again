@@ -122,6 +122,11 @@ func _process(_dt: float) -> void:
 const VARIANTS := ["A", "B", "C"]
 var _last_variant := {"sun": "", "moon": ""}
 
+# Dedupe taps: both the Area3D physics-pick and the SP1 screen-space hit-test
+# route to trigger_tap; this per-body cooldown stops one tap double-firing.
+const _TAP_COOLDOWN := 0.25
+var _last_tap_time := {"sun": -1.0, "moon": -1.0}
+
 func _ready() -> void:
 	var pairs := [["sun", sun_disc], ["moon", moon_disc]]
 	for pair in pairs:
@@ -150,9 +155,17 @@ func _on_body_tapped(_camera: Node, event: InputEvent, _pos: Vector3,
 # given body ("sun"/"moon"). Called both by the Area3D physics-pick path and
 # by the SP1 viewer's screen-space hit test (more reliable on touch).
 func trigger_tap(body_key: String) -> void:
+	var now: float = float(Time.get_ticks_msec()) / 1000.0
+	if now - float(_last_tap_time[body_key]) < _TAP_COOLDOWN:
+		return
+	_last_tap_time[body_key] = now
 	var body: Node3D = sun_disc if body_key == "sun" else moon_disc
 	var variant := _pick_variant(body_key)
-	var sfx_player: AudioStreamPlayer3D = body.get_node_or_null("TapSfx/%s" % variant)
+	# Scene's TapSfx players are AudioStreamPlayer (non-positional). The old
+	# AudioStreamPlayer3D annotation was a TYPE MISMATCH that threw at runtime
+	# and aborted this function before any sound OR animation — the real reason
+	# taps did nothing across every prior attempt (iter 331 fix).
+	var sfx_player: AudioStreamPlayer = body.get_node_or_null("TapSfx/%s" % variant)
 	if sfx_player:
 		sfx_player.play()
 	if body_key == "sun":

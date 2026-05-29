@@ -23,18 +23,19 @@ mouse_filter = 2
 ; UI layer (PeteTap / RustlerTap) so they're tappable without eating the
 ; PLAY button.
 [node name="RustlerRig" type="Node2D" parent="."]
-position = Vector2(800, 1180)
-scale = Vector2(0.24, 0.24)
+position = Vector2(393, 1224)
+scale = Vector2(0.72, 0.72)
 modulate = Color(0.8, 0.8, 0.85, 0.8)
 script = ExtResource("6_rustler_rig")
+silent = true
 
 [node name="UI" type="CanvasLayer" parent="."]
 
 [node name="Pete" type="TextureRect" parent="UI"]
 anchors_preset = -1
-offset_left = 20.0
-offset_top = 1180.0
-offset_right = 300.0
+offset_left = 0.0
+offset_top = 800.0
+offset_right = 560.0
 offset_bottom = 1560.0
 mouse_filter = 0
 modulate = Color(0.82, 0.82, 0.86, 0.85)
@@ -85,14 +86,14 @@ mouse_filter = 2
 anchors_preset = -1
 anchor_right = 1.0
 offset_left = 60.0
-offset_top = 640.0
+offset_top = 630.0
 offset_right = -60.0
-offset_bottom = 780.0
+offset_bottom = 870.0
 theme = ExtResource("2_theme")
 theme_override_colors/font_color = Color(1, 0.45, 0.4, 1)
 theme_override_colors/font_outline_color = Color(0.18, 0.05, 0.05, 1)
-theme_override_constants/outline_size = 8
-theme_override_font_sizes/font_size = 88
+theme_override_constants/outline_size = 10
+theme_override_font_sizes/font_size = 150
 text = "♥ ♥ ♥ ♥ ♥"
 horizontal_alignment = 1
 vertical_alignment = 1

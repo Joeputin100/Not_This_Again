@@ -1,4 +1,4 @@
-[gd_scene load_steps=31 format=3 uid="uid://b0nttg_sp1_crowd_001"]
+[gd_scene load_steps=33 format=3 uid="uid://b0nttg_sp1_crowd_001"]
 
 ; SP1 debug crowd viewer — 3D crowd preview wired through a SubViewport
 ; so it renders correctly under the project's mobile / canvas_items
@@ -48,8 +48,21 @@ uv1_scale = Vector3(12, 12, 1)
 ; Environment provides ambient fill so areas not directly hit by the key
 ; light still read clearly. The horizon/ambient color is a warm grey-blue,
 ; tunable later per "level lighting preset" (daylight / sunset / moonlight).
+[sub_resource type="FastNoiseLite" id="CloudNoise"]
+noise_type = 1
+frequency = 0.04
+fractal_octaves = 4
+
+[sub_resource type="NoiseTexture2D" id="CloudNoiseTex"]
+width = 512
+height = 512
+seamless = true
+generate_mipmaps = true
+noise = SubResource("CloudNoise")
+
 [sub_resource type="ShaderMaterial" id="ShaderMat_clouds"]
 shader = ExtResource("14_clouds")
+shader_parameter/noise_tex = SubResource("CloudNoiseTex")
 
 [sub_resource type="Sky" id="Sky_clouds"]
 sky_material = SubResource("ShaderMat_clouds")
@@ -286,7 +299,7 @@ theme_override_colors/font_color = Color(0.95, 0.78, 0.35, 1)
 custom_minimum_size = Vector2(0, 54)
 min_value = 1.0
 max_value = 200.0
-value = 20.0
+value = -20.0
 step = 1.0
 
 [node name="SizeLabel" type="Label" parent="UI/Panel/Root/Body/ColLeft"]

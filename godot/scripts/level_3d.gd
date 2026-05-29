@@ -1090,17 +1090,13 @@ func _play_rush_3d(rush_id: String) -> void:
 # Iter 125: candy burst — N small colored CSGSpheres tween outward in
 # a sphere from `pos`, scale to 0 and queue_free over `duration` seconds.
 # `scale` multiplies the burst radius; bigger scale → wider burst.
-func _burst_at(pos: Vector3, count: int, color: Color, scale: float = 1.0, duration: float = 0.7) -> void:
+func _burst_at(pos: Vector3, count: int, _color: Color, scale: float = 1.0, duration: float = 0.7) -> void:
 	for i in range(count):
-		var c := CSGSphere3D.new()
-		c.radius = 0.14
-		c.radial_segments = 6
-		c.rings = 4
-		var mat := StandardMaterial3D.new()
-		mat.albedo_color = color
-		mat.emission_enabled = true
-		mat.emission = color * 1.4
-		c.material = mat
+		# iter 331: candy billboard instead of a faceted CSGSphere. The old
+		# spheres flew up+out and read as "polygons raining from the sky"
+		# during the JELLY_FRENZY sugar rush (and every other burst). Candy art
+		# is pre-colored, so the `color` arg is now ignored (kept for callers).
+		var c: Sprite3D = _make_candy_billboard(CANDY_BULLET_TEX[FireMode.CANDY], 0.3)
 		c.position = pos
 		popups_root.add_child(c)
 		var angle: float = float(i) / float(count) * TAU + _rng.randf() * 0.4
@@ -4840,10 +4836,11 @@ func _spawn_bullet_at(world_x: float, world_z: float) -> void:
 	var size_mult: float = 1.4 if _fire_mode == FireMode.RIFLE else (
 		1.1 if _fire_mode == FireMode.FROSTBITE else 1.0)
 	var paths: Array = CANDY_BULLET_TEX.get(_fire_mode, CANDY_BULLET_TEX[FireMode.CANDY])
-	# Match the old CSG sphere's visible size: sphere diameter was
-	# 2×BULLET_PIXEL_SIZE; the candy art only fills ~70% of its 512² cell
-	# so a small 1.2 bump keeps the visible candy ≈ the old bullet size.
-	var world_diam: float = BULLET_PIXEL_SIZE * 2.0 * size_mult * 1.2
+	# iter 331: candy art fills ~97-100% of its 512² cell (measured), so a
+	# full-frame disk reads MUCH bigger than the old translucent sphere of the
+	# same diameter — at 1.2× the bullet was ~65% of the cowboy's width. 0.6×
+	# (~0.22 world units) makes it a clearly jelly-bean-sized projectile.
+	var world_diam: float = BULLET_PIXEL_SIZE * 2.0 * size_mult * 0.6
 	var bullet: Sprite3D = _make_candy_billboard(paths, world_diam)
 	bullet.position = Vector3(world_x, BULLET_SPAWN_Y, world_z - 0.5)
 	bullets_root.add_child(bullet)

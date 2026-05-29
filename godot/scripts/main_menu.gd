@@ -63,6 +63,7 @@ var _crash_last_tap_time: float = 0.0
 var _button_idle_tween: Tween
 var _title_idle_tween: Tween
 var _subtitle_idle_tween: Tween
+var _hearts_idle_tween: Tween
 
 func _ready() -> void:
 	# Iter 65: hardened _ready. Each step is wrapped so a single failure
@@ -186,6 +187,8 @@ func _finalize_setup() -> void:
 		humbug_rect.pivot_offset = humbug_rect.size / 2.0
 	if pete_rect:
 		pete_rect.pivot_offset = pete_rect.size / 2.0
+	if hearts_label:
+		hearts_label.pivot_offset = hearts_label.size / 2.0
 
 # Iter 152: tap Professor Humbug → a banter line, and Monsieur Canard
 # (the duck-cane handle) chimes in with a quack ~60% of the time, a beat
@@ -381,6 +384,15 @@ func _on_idle_started() -> void:
 		.set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN_OUT)
 	_button_idle_tween.tween_property(play_button, "scale", Vector2(1.0, 1.0), 0.55) \
 		.set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN_OUT)
+	# Hearts: same gentle breathing pulse as the PLAY button (user: hearts
+	# should breathe like the buttons). Pivot is centered in _ready so it
+	# scales about its middle.
+	if hearts_label:
+		_hearts_idle_tween = create_tween().set_loops()
+		_hearts_idle_tween.tween_property(hearts_label, "scale", Vector2(1.08, 1.08), 0.6) \
+			.set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN_OUT)
+		_hearts_idle_tween.tween_property(hearts_label, "scale", Vector2(1.0, 1.0), 0.6) \
+			.set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN_OUT)
 	# Title: rotation sway, like a saloon sign in a breeze.
 	# tween_interval staggers start so elements don't fidget in lockstep.
 	_title_idle_tween = create_tween().set_loops()
@@ -451,3 +463,8 @@ func _kill_idle_tweens() -> void:
 	if _subtitle_idle_tween:
 		_subtitle_idle_tween.kill()
 		_subtitle_idle_tween = null
+	if _hearts_idle_tween:
+		_hearts_idle_tween.kill()
+		_hearts_idle_tween = null
+		if hearts_label:
+			hearts_label.scale = Vector2.ONE
