@@ -556,6 +556,42 @@ func _make_follower(idx: int) -> Sprite3D:
 	subviewport.add_child(f)
 	return f
 
+# Iter 335: golden "power-up" flourish when a posse member joins from a gate
+# (was a flat pop-into-existence). The member bounces in under a brief golden
+# glow with a rising halo flare — the crowd-runner "+1 power up" beat. Reuses
+# bonus_halo.png for the flare (no new asset).
+const POWERUP_GLOW_TEX := preload("res://assets/sprites/props/bonus_halo.png")
+
+func _spawn_powerup_flourish(member: Sprite3D) -> void:
+	if not is_instance_valid(member):
+		return
+	# Bounce in instead of blinking in.
+	member.scale = Vector3(0.25, 0.25, 0.25)
+	var pop := member.create_tween()
+	pop.tween_property(member, "scale", Vector3.ONE * 1.15, 0.18) \
+		.set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
+	pop.tween_property(member, "scale", Vector3.ONE, 0.12)
+	# Brief golden tint (overbright) that settles back to normal over ~1.3s.
+	member.modulate = Color(1.9, 1.5, 0.65, 1.0)
+	member.create_tween().tween_property(member, "modulate", Color.WHITE, 1.3) \
+		.set_trans(Tween.TRANS_SINE)
+	# Rising golden halo flare behind the member.
+	var glow := Sprite3D.new()
+	glow.texture = POWERUP_GLOW_TEX
+	glow.billboard = 1
+	glow.shaded = false
+	glow.modulate = Color(1.8, 1.4, 0.45, 0.95)
+	glow.pixel_size = 2.6 / float(maxi(POWERUP_GLOW_TEX.get_height(), 1))
+	glow.position = member.position + Vector3(0.0, 0.5, -0.05)
+	popups_root.add_child(glow)
+	var gt := glow.create_tween().set_parallel(true)
+	gt.tween_property(glow, "scale", Vector3.ONE * 1.7, 0.8) \
+		.set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
+	gt.tween_property(glow, "position:y", glow.position.y + 1.1, 0.9) \
+		.set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
+	gt.tween_property(glow, "modulate:a", 0.0, 0.9)
+	gt.chain().tween_callback(glow.queue_free)
+
 # Iter 72: posse followers behind the leader in a trapezoid formation.
 func _spawn_posse_followers() -> void:
 	if cowboy_3d == null:
@@ -2311,7 +2347,12 @@ func _sync_followers_to_count(target: int) -> void:
 	if cowboy_3d == null or not is_instance_valid(cowboy_3d):
 		return
 	while _followers.size() < want:
-		_followers.append(_make_follower(_followers.size()))
+		var new_follower: Sprite3D = _make_follower(_followers.size())
+		_followers.append(new_follower)
+		# Iter 335: golden power-up flourish on gate-joined members (initial
+		# level-start posse spawns via _spawn_posse_followers, which doesn't
+		# hit this grow path, so they don't flourish).
+		_spawn_powerup_flourish(new_follower)
 
 # ---- Iter 149: special posse members (rescued heroes) ----------------------
 # Rescued heroes persist as distinct units: own PNG, a hero skill on a timer,
