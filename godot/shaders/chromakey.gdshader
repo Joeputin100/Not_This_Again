@@ -17,6 +17,13 @@ uniform vec3 chroma_color : source_color = vec3(0.0, 1.0, 0.0);
 uniform float similarity : hint_range(0.0, 1.0) = 0.22;
 uniform float blend_amount : hint_range(0.0, 0.5) = 0.10;
 
+// Iter 336: also kill the soft GREEN SHADOW the figure casts on the screen — a
+// darker/desaturated green that's far enough from pure #00FF00 to survive the
+// distance key, so it lingered as a green blob at the feet (esp. under Pete).
+// Any clearly green-DOMINANT pixel (green well above both red and blue) is
+// screen spill, not figure; figure tones (skin/red/brown) aren't green-dominant.
+uniform float green_dom_cut : hint_range(0.04, 0.4) = 0.12;
+
 // Iter 40c: kill near-black letterbox bars too. Every Veo-rendered clip
 // (24 of them at time of writing) is 720×1280 with 280-pixel pure-black
 // bars on top and bottom — the content lives in the middle 720×720
@@ -39,6 +46,10 @@ void fragment() {
 	// near-pure-black background, not figure content — drop to alpha 0.
 	float brightness = max(c.r, max(c.g, c.b));
 	if (brightness < black_threshold) {
+		alpha = 0.0;
+	}
+	// Green-dominant spill (incl. the soft shadow on the screen) → drop.
+	if (c.g - max(c.r, c.b) > green_dom_cut) {
 		alpha = 0.0;
 	}
 	COLOR = vec4(c.rgb, c.a * alpha);
