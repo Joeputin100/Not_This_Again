@@ -23,15 +23,6 @@ uniform float cloudcover : hint_range(0.0, 1.0) = 0.4;
 uniform float cloud_speed : hint_range(0.0, 0.2) = 0.006;
 uniform sampler2D noise_tex : repeat_enable, filter_linear_mipmap;
 
-// 3 octaves of the SAME precomputed noise, at rising frequency + independent
-// drift directions so the layers don't slide in lockstep. ~3 texture taps.
-float cloud_fbm(vec2 uv, float t) {
-	float n  = texture(noise_tex, uv * 1.0 + vec2(t,        t * 0.2)).r * 0.55;
-	n       += texture(noise_tex, uv * 2.3 + vec2(-t * 1.6, t * 0.7)).r * 0.30;
-	n       += texture(noise_tex, uv * 4.9 + vec2(t * 2.4, -t * 0.4)).r * 0.15;
-	return n; // ~0..1
-}
-
 void sky() {
 	// Height factor: 0 at the horizon, 1 straight up.
 	float hy = clamp(EYEDIR.y, 0.0, 1.0);
@@ -41,16 +32,27 @@ void sky() {
 	// the horizon (same mapping the old shader used).
 	vec2 uv = EYEDIR.xz / max(EYEDIR.y * 0.8 + 0.25, 0.18) * 0.35;
 	float t = TIME * cloud_speed;
-	float d = cloud_fbm(uv, t);
 
-	// cloudcover raises the cloud floor (more sky covered). Soft edges via
-	// smoothstep keep the clouds wispy rather than hard-edged.
-	float density = smoothstep(0.55 - cloudcover * 0.5, 0.95, d);
+	// Two prerendered cloud layers (the SAME baked high-octave noise) at
+	// different scales + drift rates → parallax depth and billowing, the look
+	// the heavy live shader produced but for ~2 texture taps. A near layer
+	// carries the big masses, a far layer adds finer wisps that scroll faster.
+	float near = texture(noise_tex, uv * 0.9 + vec2(t,        t * 0.15)).r;
+	float far  = texture(noise_tex, uv * 1.9 + vec2(-t * 0.6, t * 0.45)).r;
+	// Billow combine: emphasise where both layers agree → puffy cores with
+	// torn edges rather than a flat wash.
+	float d = near * 0.7 + far * 0.4 + near * far * 0.3;
+
+	// cloudcover raises the cloud floor (more sky covered). Two-stage
+	// smoothstep gives a denser, more defined core with a soft fringe.
+	float edge = smoothstep(0.55 - cloudcover * 0.45, 0.95, d);
+	float core = smoothstep(0.72 - cloudcover * 0.35, 1.05, d);
+	float density = clamp(edge * 0.65 + core * 0.55, 0.0, 1.0);
 	// Fade clouds out at the horizon so the projection singularity there
 	// doesn't smear into a band.
-	density *= smoothstep(0.0, 0.25, EYEDIR.y);
+	density *= smoothstep(0.0, 0.22, EYEDIR.y);
 
-	// Subtle self-shading: denser cores read slightly brighter.
-	vec3 lit = cloud_color * (0.85 + 0.15 * d);
-	COLOR = mix(skycolour, lit, clamp(density, 0.0, 1.0));
+	// Self-shading: bright sunlit tops over slightly darker bulk for volume.
+	vec3 lit = cloud_color * (0.78 + 0.42 * core);
+	COLOR = mix(skycolour, lit, density);
 }
