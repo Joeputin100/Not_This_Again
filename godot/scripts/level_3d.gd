@@ -556,41 +556,58 @@ func _make_follower(idx: int) -> Sprite3D:
 	subviewport.add_child(f)
 	return f
 
-# Iter 335: golden "power-up" flourish when a posse member joins from a gate
-# (was a flat pop-into-existence). The member bounces in under a brief golden
-# glow with a rising halo flare — the crowd-runner "+1 power up" beat. Reuses
-# bonus_halo.png for the flare (no new asset).
-const POWERUP_GLOW_TEX := preload("res://assets/sprites/props/bonus_halo.png")
+# Iter 335: candy-Western "deputized" flourish when a posse member joins from a
+# gate (was a flat pop-into-existence). They bounce in inside a powdered-sugar
+# poof, and a glossy candy sheriff-star pops over their head and lingers —
+# "you're deputized into the posse". Western entrance (dust) × candy badge.
+const POWERUP_PUFF_TEX := preload("res://assets/sprites/fx/sugar_puff.png")
+const POWERUP_STAR_TEX := preload("res://assets/sprites/fx/candy_sheriff_star.png")
 
 func _spawn_powerup_flourish(member: Sprite3D) -> void:
 	if not is_instance_valid(member):
 		return
-	# Bounce in instead of blinking in.
+	# Bounce in instead of blinking in, with a brief warm flash.
 	member.scale = Vector3(0.25, 0.25, 0.25)
 	var pop := member.create_tween()
 	pop.tween_property(member, "scale", Vector3.ONE * 1.15, 0.18) \
 		.set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
 	pop.tween_property(member, "scale", Vector3.ONE, 0.12)
-	# Brief golden tint (overbright) that settles back to normal over ~1.3s.
-	member.modulate = Color(1.9, 1.5, 0.65, 1.0)
-	member.create_tween().tween_property(member, "modulate", Color.WHITE, 1.3) \
-		.set_trans(Tween.TRANS_SINE)
-	# Rising golden halo flare behind the member.
-	var glow := Sprite3D.new()
-	glow.texture = POWERUP_GLOW_TEX
-	glow.billboard = 1
-	glow.shaded = false
-	glow.modulate = Color(1.8, 1.4, 0.45, 0.95)
-	glow.pixel_size = 2.6 / float(maxi(POWERUP_GLOW_TEX.get_height(), 1))
-	glow.position = member.position + Vector3(0.0, 0.5, -0.05)
-	popups_root.add_child(glow)
-	var gt := glow.create_tween().set_parallel(true)
-	gt.tween_property(glow, "scale", Vector3.ONE * 1.7, 0.8) \
+	member.modulate = Color(1.5, 1.35, 0.95, 1.0)
+	member.create_tween().tween_property(member, "modulate", Color.WHITE, 0.5)
+	# Powdered-sugar poof at the member's feet (Western dust, candy-fied).
+	var puff := Sprite3D.new()
+	puff.texture = POWERUP_PUFF_TEX
+	puff.billboard = 1
+	puff.shaded = false
+	puff.pixel_size = 2.2 / float(maxi(POWERUP_PUFF_TEX.get_height(), 1))
+	puff.position = member.position + Vector3(0.0, 0.25, 0.0)
+	puff.scale = Vector3(0.4, 0.4, 0.4)
+	popups_root.add_child(puff)
+	var pt := puff.create_tween().set_parallel(true)
+	pt.tween_property(puff, "scale", Vector3.ONE * 1.5, 0.5) \
 		.set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
-	gt.tween_property(glow, "position:y", glow.position.y + 1.1, 0.9) \
-		.set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
-	gt.tween_property(glow, "modulate:a", 0.0, 0.9)
-	gt.chain().tween_callback(glow.queue_free)
+	pt.tween_property(puff, "modulate:a", 0.0, 0.55)
+	pt.chain().tween_callback(puff.queue_free)
+	# Candy sheriff-star pops in overhead, lingers, then rises + fades.
+	var star := Sprite3D.new()
+	star.texture = POWERUP_STAR_TEX
+	star.billboard = 1
+	star.shaded = false
+	star.pixel_size = 1.1 / float(maxi(POWERUP_STAR_TEX.get_height(), 1))
+	star.position = member.position + Vector3(0.0, 1.5, -0.02)
+	star.scale = Vector3.ZERO
+	popups_root.add_child(star)
+	var base_y: float = star.position.y
+	var st := star.create_tween()
+	st.tween_property(star, "scale", Vector3.ONE * 1.3, 0.20) \
+		.set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
+	st.tween_property(star, "scale", Vector3.ONE, 0.12)
+	st.tween_interval(0.45)
+	st.set_parallel(true)
+	st.tween_property(star, "position:y", base_y + 0.8, 0.5) \
+		.set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_IN)
+	st.tween_property(star, "modulate:a", 0.0, 0.5)
+	st.chain().tween_callback(star.queue_free)
 
 # Iter 72: posse followers behind the leader in a trapezoid formation.
 func _spawn_posse_followers() -> void:
