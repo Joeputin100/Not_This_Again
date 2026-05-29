@@ -13,6 +13,57 @@ const MOON_TEX_WINK := preload("res://assets/sprites/sky/moon_wink.png")
 # Candy mountain range baked into the sky shader's horizon (iter 335).
 const MOUNTAINS_TEX := preload("res://assets/sprites/props/candy_mountains.png")
 
+# Iter 336: shared two-axis sky presets for gameplay + level-select.
+#   TIME OF DAY (from the system clock) drives sun/moon + light-tinted sky.
+#   WEATHER (per level / themed) drives the clouds.
+# sun/moon heights are LOW so they read at the down-tilted in-game cameras.
+# (SP1 keeps its own richer LIGHTING_PRESETS; these are for the world scenes.)
+const SKY_TOD := {
+	"daylight": {
+		"sun_visible": true, "sun_height": 7.0, "sun_tex": "daylight",
+		"sun_tint": Color(1, 1, 1, 1), "sun_corona_intensity": 1.1,
+		"sun_corona_body": Color(1.0, 0.95, 0.30, 1), "sun_corona_ray": Color(1.0, 0.65, 0.15, 1),
+		"moon_visible": false,
+		"sky_top": Color(0.20, 0.42, 0.64, 1), "sky_bot": Color(0.58, 0.80, 1.0, 1),
+	},
+	"sunset": {
+		"sun_visible": true, "sun_height": 5.0, "sun_tex": "sunset",
+		"sun_tint": Color(1, 0.95, 0.85, 1), "sun_corona_intensity": 1.25,
+		"sun_corona_body": Color(1.0, 0.70, 0.15, 1), "sun_corona_ray": Color(1.0, 0.35, 0.10, 1),
+		"moon_visible": false,
+		"sky_top": Color(0.45, 0.28, 0.42, 1), "sky_bot": Color(1.0, 0.58, 0.30, 1),
+	},
+	"moonlight": {
+		"sun_visible": false, "moon_visible": true, "moon_height": 7.0,
+		"moon_tint": Color(0.88, 0.92, 1.05, 1), "moon_corona_color": Color(0.74, 0.84, 1.0, 1),
+		"moon_corona_strength": 0.85,
+		"sky_top": Color(0.03, 0.05, 0.13, 1), "sky_bot": Color(0.10, 0.14, 0.30, 1),
+	},
+}
+const SKY_WEATHER := {
+	"fair":     {"cloud_tint": Color(1.10, 1.10, 0.95, 1), "cloud_cover": 0.45, "cloud_speed": 0.006},
+	"overcast": {"cloud_tint": Color(0.92, 0.92, 0.94, 1), "cloud_cover": 0.66, "cloud_speed": 0.010},
+	"stormy":   {"cloud_tint": Color(0.40, 0.42, 0.48, 1), "cloud_cover": 0.94, "cloud_speed": 0.020},
+}
+
+# System clock → time-of-day key. Local hour buckets.
+static func tod_from_clock() -> String:
+	var h: int = Time.get_datetime_dict_from_system().get("hour", 12)
+	if h >= 6 and h < 17:
+		return "daylight"
+	elif h >= 17 and h < 20:
+		return "sunset"
+	return "moonlight"
+
+# Merge a time-of-day base with a weather overlay into one apply_preset dict.
+static func make_sky_preset(tod: String, weather: String) -> Dictionary:
+	var base: Dictionary = SKY_TOD.get(tod, SKY_TOD["daylight"])
+	var p: Dictionary = base.duplicate(true)
+	var w: Dictionary = SKY_WEATHER.get(weather, SKY_WEATHER["fair"])
+	for k in w:
+		p[k] = w[k]
+	return p
+
 # Shaders for the procedural build path (gameplay / level-select). The SP1
 # scene supplies these via its own .tscn sub-resources; here we build the same
 # rig in code so the sky can be dropped into any SubViewport without

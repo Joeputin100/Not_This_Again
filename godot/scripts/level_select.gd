@@ -125,6 +125,25 @@ func _ready() -> void:
 	_ground_level_nodes()
 	_setup_humbug()
 	_build_debug_overlay()
+	_build_sky()
+
+# Iter 336: same self-building sky as gameplay — sun/moon + clouds + candy
+# mountains in the level-select terrain SubViewport. Time of day follows the
+# system clock; weather reflects the player's current level.
+func _build_sky() -> void:
+	var sv: SubViewport = get_node_or_null("Terrain3D/SubViewport")
+	if sv == null:
+		return
+	var cam: Camera3D = sv.get_node_or_null("Camera3D")
+	var sky := SkyBodies.new()
+	sky.name = "SkyBodies"
+	sv.add_child(sky)
+	if cam != null:
+		sky.bind_camera(cam)
+	var weather: String = "overcast" if (get_node_or_null("/root/GameState") \
+		and GameState.current_level == 2) else "fair"
+	sky.apply_preset(SkyBodies.make_sky_preset(SkyBodies.tod_from_clock(), weather),
+		Vector3(-0.5, 0.0, 1.0))
 
 # Iter 158: bind the path tiles to the terrain — perspective scale + a
 # haze fade with distance, plus a contact shadow per level node.

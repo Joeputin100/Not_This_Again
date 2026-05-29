@@ -553,22 +553,25 @@ func _build_sky_3d() -> void:
 		_sky.bind_camera(camera)
 	_apply_level_sky()
 
-# Gameplay sky preset. The sun sits LOW (near the horizon) so it reads at the
-# down-tilted gameplay camera instead of floating off the top of the frame.
-# (Time-of-day-by-clock + per-level weather refine this in a later step.)
+# Gameplay sky: time-of-day from the system clock × this level's signature
+# weather (iter 336). The SKY_TOD presets keep the sun/moon LOW so they read at
+# the down-tilted gameplay camera.
 func _apply_level_sky() -> void:
 	if _sky == null:
 		return
-	var preset := {
-		"sun_visible": true, "sun_height": 7.0, "sun_tex": "daylight",
-		"sun_tint": Color(1, 1, 1, 1), "sun_corona_intensity": 1.1,
-		"sun_corona_body": Color(1.0, 0.95, 0.30, 1),
-		"sun_corona_ray": Color(1.0, 0.65, 0.15, 1),
-		"moon_visible": false,
-		"sky_top": Color(0.20, 0.42, 0.64, 1), "sky_bot": Color(0.58, 0.80, 1.0, 1),
-		"cloud_tint": Color(1.10, 1.10, 0.95, 1), "cloud_cover": 0.45, "cloud_speed": 0.006,
-	}
+	var preset: Dictionary = SkyBodies.make_sky_preset(
+		SkyBodies.tod_from_clock(), _level_weather())
 	_sky.apply_preset(preset, Vector3(-0.5, 0.0, 1.0))
+
+# Per-level signature weather (offline/deterministic, themed). L2 (Mine Shaft)
+# is gloomy/overcast; others fair for now. Easy to extend per level theme.
+func _level_weather() -> String:
+	var lvl: int = 1
+	if get_node_or_null("/root/GameState"):
+		lvl = GameState.current_level
+	match lvl:
+		2: return "overcast"
+		_: return "fair"
 
 # A posse follower — video billboard textured from the staggered pool,
 # placed at a trapezoid formation slot computed from its index.
