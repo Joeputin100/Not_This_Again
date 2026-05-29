@@ -1092,11 +1092,12 @@ func _play_rush_3d(rush_id: String) -> void:
 # `scale` multiplies the burst radius; bigger scale → wider burst.
 func _burst_at(pos: Vector3, count: int, _color: Color, scale: float = 1.0, duration: float = 0.7) -> void:
 	for i in range(count):
-		# iter 331: candy billboard instead of a faceted CSGSphere. The old
+		# iter 331/333: candy billboard instead of a faceted CSGSphere. The old
 		# spheres flew up+out and read as "polygons raining from the sky"
-		# during the JELLY_FRENZY sugar rush (and every other burst). Candy art
-		# is pre-colored, so the `color` arg is now ignored (kept for callers).
-		var c: Sprite3D = _make_candy_billboard(CANDY_BULLET_TEX[FireMode.CANDY], 0.3)
+		# during the JELLY_FRENZY sugar rush (and every other burst). Uses the
+		# full FRENZY candy set (gummies + cotton/bomb/fireball/jawbreaker) so
+		# bursts aren't all gummies. Candy art is pre-colored → `color` ignored.
+		var c: Sprite3D = _make_candy_billboard(CANDY_BULLET_TEX[FireMode.FRENZY], 0.3)
 		c.position = pos
 		popups_root.add_child(c)
 		var angle: float = float(i) / float(count) * TAU + _rng.randf() * 0.4
@@ -1119,14 +1120,10 @@ func _burst_at(pos: Vector3, count: int, _color: Color, scale: float = 1.0, dura
 # Iter 125: drop a candy 'bonus jar' from above at `landing` with a
 # bounce-and-burst finale + bounty popup + GameState increment.
 func _drop_bonus_at(landing: Vector3, value: int, color: Color, label: String = "") -> void:
-	var c := CSGBox3D.new()
-	c.size = Vector3(0.55, 0.55, 0.55)
-	var mat := StandardMaterial3D.new()
-	mat.albedo_color = color
-	mat.emission_enabled = true
-	mat.emission = color * 0.9
-	c.material = mat
-	c.rotation_degrees = Vector3(_rng.randf_range(0, 60), _rng.randf_range(0, 60), _rng.randf_range(0, 60))
+	# iter 333: a big candy "prize" billboard instead of a faceted CSGBox —
+	# the box was the last polygon raining during the sugar rush. `color` is
+	# still used for the bounty popup below.
+	var c: Sprite3D = _make_candy_billboard(CANDY_BULLET_TEX[FireMode.FRENZY], 0.8)
 	c.position = landing + Vector3(0, 9.0, 0)
 	popups_root.add_child(c)
 	var tw := create_tween()
@@ -2265,12 +2262,35 @@ func _check_gate_trigger(gate: Node3D) -> void:
 		var ui_canvas2: Node = get_node_or_null("UI")
 		if ui_canvas2 != null:
 			FlourishBanner.spawn(ui_canvas2, "JELLY_FRENZY")
+		_spawn_frenzy_candy_rain()
 	# Iter 110: disintegrate the gate instead of letting it slide past.
 	# Scale-collapse + queue_free so the player feels the contact.
 	var tween := create_tween()
 	tween.tween_property(gate, "scale", Vector3(0.01, 0.01, 0.01), 0.25) \
 		.set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_IN)
 	tween.tween_callback(gate.queue_free)
+
+# Iter 333: in-game JELLY_FRENZY augments gunfire with a NON-BLOCKING candy
+# sky-rain. (The debug sugar-rush ceremony pauses the world; this runs while
+# the player keeps shooting — the original "augment gunfire" design.) ~30
+# candy billboards fall over 3s, each popping into a small candy burst. Added
+# to popups_root so they're purely visual (no bullet collision/despawn).
+func _spawn_frenzy_candy_rain() -> void:
+	const RAIN_COUNT: int = 30
+	const RAIN_DURATION: float = 3.0
+	var interval: float = RAIN_DURATION / float(RAIN_COUNT)
+	for i in range(RAIN_COUNT):
+		var x: float = _rng.randf_range(-3.5, 3.5)
+		var z: float = _rng.randf_range(-12.0, 0.0)
+		var candy: Sprite3D = _make_candy_billboard(CANDY_BULLET_TEX[FireMode.FRENZY], 0.4)
+		candy.position = Vector3(x, 12.0 + _rng.randf_range(0.0, 3.0), z)
+		popups_root.add_child(candy)
+		var fall := create_tween()
+		fall.tween_property(candy, "position:y", 0.2, 0.7) \
+			.set_trans(Tween.TRANS_CUBIC).set_ease(Tween.EASE_IN)
+		fall.tween_callback(_burst_at.bind(Vector3(x, 0.3, z), 4, Color.WHITE, 0.4, 0.3))
+		fall.tween_callback(candy.queue_free)
+		await get_tree().create_timer(interval).timeout
 
 # Iter 110: keep the visible posse Sprite3Ds in sync with _posse_count_3d.
 # Called from gate-trigger and bullet-damage paths. Adds followers up to
