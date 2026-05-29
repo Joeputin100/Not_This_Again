@@ -41,18 +41,21 @@ void sky() {
 	float far  = texture(noise_tex, uv * 1.9 + vec2(-t * 0.6, t * 0.45)).r;
 	// Billow combine: emphasise where both layers agree → puffy cores with
 	// torn edges rather than a flat wash.
-	float d = near * 0.7 + far * 0.4 + near * far * 0.3;
+	float d = clamp(near * 0.6 + far * 0.4 + near * far * 0.25, 0.0, 1.0);
 
-	// cloudcover raises the cloud floor (more sky covered). Two-stage
-	// smoothstep gives a denser, more defined core with a soft fringe.
-	float edge = smoothstep(0.55 - cloudcover * 0.45, 0.95, d);
-	float core = smoothstep(0.72 - cloudcover * 0.35, 1.05, d);
-	float density = clamp(edge * 0.65 + core * 0.55, 0.0, 1.0);
+	// cloudcover drives coverage across the whole weather range: low cover
+	// shows only the densest puffs (clear/fair); high cover fills the sky in
+	// (overcast → stormy). `lo` is the density threshold clouds start at.
+	float lo = mix(0.80, 0.02, cloudcover);
+	float density = smoothstep(lo, lo + 0.30, d);
+	float core = smoothstep(lo + 0.16, lo + 0.46, d);  // brighter dense centres
 	// Fade clouds out at the horizon so the projection singularity there
 	// doesn't smear into a band.
 	density *= smoothstep(0.0, 0.22, EYEDIR.y);
 
-	// Self-shading: bright sunlit tops over slightly darker bulk for volume.
-	vec3 lit = cloud_color * (0.78 + 0.42 * core);
-	COLOR = mix(skycolour, lit, density);
+	// Self-shading: bright sunlit tops over darker bulk for volume. With a
+	// dark cloud_color + high cover (stormy preset) this reads as heavy,
+	// menacing cloud; with a bright tint + low cover it's fair-weather puffs.
+	vec3 lit = cloud_color * (0.80 + 0.38 * core);
+	COLOR = mix(skycolour, lit, clamp(density, 0.0, 1.0));
 }

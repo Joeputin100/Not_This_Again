@@ -72,6 +72,8 @@ func _push_cloud_uniforms(preset: Dictionary) -> void:
 		cm.set_shader_parameter("cloud_color", preset["cloud_tint"])
 	if preset.has("cloud_cover"):
 		cm.set_shader_parameter("cloudcover", preset["cloud_cover"])
+	if preset.has("cloud_speed"):
+		cm.set_shader_parameter("cloud_speed", preset["cloud_speed"])
 
 func _push_sun_uniforms(preset: Dictionary) -> void:
 	var mat: ShaderMaterial = sun_disc.get_node("DiscMesh").material_override
