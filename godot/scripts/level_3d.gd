@@ -3974,6 +3974,10 @@ const PROP_TEX_REGISTRY: Dictionary = {
 	# Tumbleweed — for FUTURE conversion of obstacle CSGSphere. Tumble
 	# applied via UV-rotation in a shader variant (iter 132+).
 	"tumbleweed":      {"path": "res://assets/sprites/props/tumbleweed.png",      "w": 1.4, "h": 1.4, "sway_amp": 0.0,  "bob_amp": 0.020},
+	# Iter 334: obstacle sprites (were CSG placeholders). Barrel = wooden keg
+	# (rigid, tiny bob); bull = wide beast (no sway, slight breathing bob).
+	"barrel":          {"path": "res://assets/sprites/props/barrel.png",          "w": 1.2, "h": 1.6, "sway_amp": 0.01, "bob_amp": 0.012},
+	"bull":            {"path": "res://assets/sprites/props/bull.png",            "w": 2.4, "h": 1.8, "sway_amp": 0.0,  "bob_amp": 0.016},
 }
 
 # Iter 131: try-load a prop texture by slug. Returns null if the file
@@ -4361,14 +4365,12 @@ func _process(delta: float) -> void:
 		_spawn_timer = OBSTACLE_SPAWN_INTERVAL
 		_spawn_obstacle()
 	# Move all obstacles toward camera (z increases since camera is at z>0).
-	# Iter 87: tumbleweeds (CSGSphere3D) rotate as they roll forward —
-	# adds life vs just sliding rigid shapes. Other shapes (barrel /
-	# cactus / bull boxes) stay rigid since they don't roll IRL.
+	# Iter 334: obstacles are breathing sprites now; the tumbleweed's roll is
+	# the shader UV-spin (set in _spawn_obstacle), so no per-frame node spin
+	# is needed here.
 	for child in obstacles_root.get_children():
 		if child is Node3D:
 			child.position.z += OBSTACLE_SPEED * motion_delta
-			if child is CSGSphere3D:
-				child.rotation.x += OBSTACLE_SPEED * motion_delta * 0.5
 			if child.position.z > OBSTACLE_DESPAWN_Z:
 				child.queue_free()
 	# Iter 75: gates scroll like obstacles + check trigger when crossing z plane
@@ -4774,42 +4776,37 @@ func _spawn_obstacle() -> void:
 		COWBOY_X_BOUND * 0.85)
 	var pick: int = _rng.randi() % 4
 	var obstacle: Node3D
-	var mat := StandardMaterial3D.new()
+	# Iter 334: all four obstacle types are now breathing sprites (barrel,
+	# cactus, bull were crude CSG boxes/cylinders; tumbleweed was already a
+	# sprite since iter 179). Sprites exist in assets/sprites/props.
 	match pick:
 		ObstacleType.BARREL:
-			var b := CSGCylinder3D.new()
-			b.radius = 0.8
-			b.height = 1.4
-			mat.albedo_color = Color(0.42, 0.26, 0.13, 1)
-			b.material = mat
-			b.position = Vector3(lane_x, 0.7, OBSTACLE_SPAWN_Z)
-			obstacle = b
+			obstacle = _obstacle_prop("barrel", lane_x)
 		ObstacleType.CACTUS:
-			var c := CSGBox3D.new()
-			c.size = Vector3(0.7, 2.4, 0.7)
-			mat.albedo_color = Color(0.22, 0.45, 0.18, 1)
-			c.material = mat
-			c.position = Vector3(lane_x, 1.2, OBSTACLE_SPAWN_Z)
-			obstacle = c
+			# Random cactus variant for shoulder variety.
+			var cslug: String = ["cactus_saguaro", "cactus_barrel", "cactus_prickly"][_rng.randi() % 3]
+			obstacle = _obstacle_prop(cslug, lane_x)
 		ObstacleType.TUMBLEWEED:
-			# Iter 179: real tumbleweed.png sprite (was 3 stacked CSG
-			# spheres). The breathing shader's UV-spin gives the roll.
-			var tw_tex: Texture2D = _load_prop_tex("tumbleweed")
-			var tw: MeshInstance3D = _make_breathing_prop(tw_tex, 1.4, 1.4, 0.0, 1.5, 0.02, 2.2)
+			var tw: MeshInstance3D = _obstacle_prop("tumbleweed", lane_x)
 			var tw_mat: ShaderMaterial = tw.material_override
 			if tw_mat != null:
 				tw_mat.set_shader_parameter("rotation_mode", 1)   # UV-spin = rolling
 				tw_mat.set_shader_parameter("rotation_speed", 0.6)
-			tw.position = Vector3(lane_x, 0.9, OBSTACLE_SPAWN_Z)
+			tw.position.y = 0.9  # ride a touch above ground so it reads as rolling
 			obstacle = tw
 		_:  # BULL
-			var bull := CSGBox3D.new()
-			bull.size = Vector3(2.5, 1.6, 1.8)
-			mat.albedo_color = Color(0.32, 0.18, 0.10, 1)
-			bull.material = mat
-			bull.position = Vector3(lane_x, 0.8, OBSTACLE_SPAWN_Z)
-			obstacle = bull
+			obstacle = _obstacle_prop("bull", lane_x)
 	obstacles_root.add_child(obstacle)
+
+# Iter 334: build a registry-driven breathing-sprite obstacle, grounded so its
+# bottom sits at y≈0 and placed at the far spawn line on the given lane.
+func _obstacle_prop(slug: String, lane_x: float) -> MeshInstance3D:
+	var entry: Dictionary = PROP_TEX_REGISTRY[slug]
+	var prop: MeshInstance3D = _make_breathing_prop(
+		_load_prop_tex(slug), entry.w, entry.h,
+		entry.get("sway_amp", 0.0), 1.5, entry.get("bob_amp", 0.012), 2.2)
+	prop.position = Vector3(lane_x, float(entry.h) * 0.5, OBSTACLE_SPAWN_Z)
+	return prop
 
 # Iter 66/73: spawn jelly-bean-colored bullets at the cowboy's position
 # AND at every follower's position (iter 73). One AudioBus.play_gunfire
