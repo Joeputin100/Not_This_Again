@@ -11,9 +11,20 @@ const SUN_TEXTURES := {
 const MOON_TEX_NORMAL := preload("res://assets/sprites/sky/moon_normal.png")
 const MOON_TEX_WINK := preload("res://assets/sprites/sky/moon_wink.png")
 
-@onready var sun_disc: Node3D = $SunDisc
-@onready var sun_stick: Node3D = $SunStick
-@onready var moon_disc: Node3D = $MoonDisc
+# Shaders for the procedural build path (gameplay / level-select). The SP1
+# scene supplies these via its own .tscn sub-resources; here we build the same
+# rig in code so the sky can be dropped into any SubViewport without
+# duplicating ~15 scene nodes.
+const _SH_SUN := preload("res://shaders/sun_lollipop.gdshader")
+const _SH_CORONA := preload("res://shaders/sun_corona_star.gdshader")
+const _SH_STICK := preload("res://shaders/sun_stick.gdshader")
+const _SH_MOON := preload("res://shaders/moon_cookie.gdshader")
+const _SH_CLOUDS := preload("res://shaders/sky_clouds.gdshader")
+
+# Assigned in _ready: either found from scene children (SP1) or built in code.
+var sun_disc: Node3D = null
+var sun_stick: Node3D = null
+var moon_disc: Node3D = null
 
 var _camera: Camera3D = null
 
@@ -57,8 +68,11 @@ func apply_preset(preset: Dictionary, shadow_offset: Vector3) -> void:
 	_push_cloud_uniforms(preset)
 
 func _push_cloud_uniforms(preset: Dictionary) -> void:
-	# Clouds are the WorldEnvironment sky shader (sibling under Viewport3D).
-	var we: Node = get_parent().get_node_or_null("WorldEnvironment")
+	# Clouds are the WorldEnvironment sky shader — a sibling under Viewport3D
+	# (SP1) or a child of this node (procedural build).
+	var we: Node = get_node_or_null("WorldEnvironment")
+	if we == null:
+		we = get_parent().get_node_or_null("WorldEnvironment")
 	if we == null or we.environment == null or we.environment.sky == null:
 		return
 	var cm: ShaderMaterial = we.environment.sky.sky_material
@@ -130,6 +144,14 @@ const _TAP_COOLDOWN := 0.25
 var _last_tap_time := {"sun": -1.0, "moon": -1.0}
 
 func _ready() -> void:
+	# SP1 supplies the bodies as scene children; gameplay / level-select add a
+	# bare SkyBodies node, so build the rig in code when it's missing.
+	if has_node("SunDisc"):
+		sun_disc = $SunDisc
+		sun_stick = $SunStick
+		moon_disc = $MoonDisc
+	else:
+		_build_procedural()
 	var pairs := [["sun", sun_disc], ["moon", moon_disc]]
 	for pair in pairs:
 		var body_key: String = pair[0]
@@ -137,6 +159,81 @@ func _ready() -> void:
 		var area: Area3D = body.get_node_or_null("TapArea")
 		if area:
 			area.input_event.connect(_on_body_tapped.bind(body_key, body))
+
+# Build the full sun/moon rig + a cloud WorldEnvironment in code (gameplay /
+# level-select). Mirrors the SP1 .tscn: sun disc (lollipop) + corona (star) +
+# stick, moon (cookie), and a sky-shader cloud environment. No tap areas — the
+# sky isn't tapped during play.
+func _build_procedural() -> void:
+	sun_disc = Node3D.new()
+	sun_disc.name = "SunDisc"
+	add_child(sun_disc)
+	sun_disc.add_child(_make_disc("Corona", 30.0, _SH_CORONA, -25))
+	sun_disc.add_child(_make_disc("DiscMesh", 12.0, _SH_SUN, -20))
+
+	sun_stick = Node3D.new()
+	sun_stick.name = "SunStick"
+	add_child(sun_stick)
+	var stick := MeshInstance3D.new()
+	stick.name = "StickMesh"
+	var sq := QuadMesh.new()
+	sq.size = Vector2(0.6, 1.0)
+	stick.mesh = sq
+	stick.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	var stick_mat := ShaderMaterial.new()
+	stick_mat.shader = _SH_STICK
+	stick_mat.render_priority = -23
+	stick.material_override = stick_mat
+	sun_stick.add_child(stick)
+
+	moon_disc = Node3D.new()
+	moon_disc.name = "MoonDisc"
+	add_child(moon_disc)
+	moon_disc.add_child(_make_disc("DiscMesh", 9.0, _SH_MOON, -20))
+	moon_disc.visible = false
+
+	# Cloud sky environment (child of self → applies to this viewport's world).
+	var noise := FastNoiseLite.new()
+	noise.noise_type = FastNoiseLite.TYPE_SIMPLEX_SMOOTH
+	noise.frequency = 0.02
+	noise.fractal_octaves = 6
+	var ntex := NoiseTexture2D.new()
+	ntex.width = 1024
+	ntex.height = 1024
+	ntex.seamless = true
+	ntex.generate_mipmaps = true
+	ntex.noise = noise
+	var cloud_mat := ShaderMaterial.new()
+	cloud_mat.shader = _SH_CLOUDS
+	cloud_mat.set_shader_parameter("noise_tex", ntex)
+	var sky := Sky.new()
+	sky.sky_material = cloud_mat
+	sky.process_mode = Sky.PROCESS_MODE_INCREMENTAL
+	sky.radiance_size = Sky.RADIANCE_SIZE_32
+	var env := Environment.new()
+	env.background_mode = Environment.BG_SKY
+	env.sky = sky
+	env.ambient_light_source = Environment.AMBIENT_SOURCE_SKY
+	env.tonemap_mode = Environment.TONE_MAPPER_FILMIC
+	var we := WorldEnvironment.new()
+	we.name = "WorldEnvironment"
+	we.environment = env
+	add_child(we)
+
+# One billboarded disc quad with a shader material. Used for sun disc, corona,
+# and moon.
+func _make_disc(disc_name: String, size: float, shader: Shader, priority: int) -> MeshInstance3D:
+	var mi := MeshInstance3D.new()
+	mi.name = disc_name
+	var q := QuadMesh.new()
+	q.size = Vector2(size, size)
+	mi.mesh = q
+	mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	var mat := ShaderMaterial.new()
+	mat.shader = shader
+	mat.render_priority = priority
+	mi.material_override = mat
+	return mi
 
 func _pick_variant(body_key: String) -> String:
 	var pool := VARIANTS.filter(func(v): return v != _last_variant[body_key])

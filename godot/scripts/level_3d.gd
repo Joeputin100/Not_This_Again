@@ -373,10 +373,12 @@ func _ready() -> void:
 	# cowboy and ~±10 at obstacle-spawn z=-24.
 	if camera != null:
 		camera.position = Vector3(0, 7.0, 3.0)
-		camera.rotation_degrees = Vector3(-55, 0, 0)
+		# iter 335: start at the CALM pitch (scenic, sky visible); _process eases
+		# it toward BUSY (-55°) as threats appear.
+		camera.rotation_degrees = Vector3(CAM_PITCH_CALM, 0, 0)
 		camera.fov = 50.0
 		camera.keep_aspect = 0  # Camera3D.KEEP_WIDTH (portrait viewport)
-		DebugLog.add("level_3d: camera overridden (y=7 z=3 pitch=-55° fov=50 KEEP_WIDTH)")
+		DebugLog.add("level_3d: camera overridden (y=7 z=3 dynamic pitch fov=50 KEEP_WIDTH)")
 	# Iter 95: build 3D content (cowboy + mountains + 8 container Node3Ds)
 	# AFTER initial setup. Hypothesis: bundling everything into .tscn was
 	# overloading mobile scene-load — script-side spawn defers texture
@@ -504,6 +506,10 @@ func _build_3d_content() -> void:
 	# 3) 4 mountain MeshInstance3D silhouettes.
 	_spawn_mountains_lvl3d()
 	DebugLog.add("level_3d: mountains added")
+	# 4) Sky — sun/moon + clouds (iter 335). Self-building SkyBodies in the
+	# subviewport; the dynamic camera (calm → -35° reveals it) tilts to show it.
+	_build_sky_3d()
+	DebugLog.add("level_3d: sky added")
 
 func _make_lvl3d_container(node_name: String) -> Node3D:
 	var n := Node3D.new()
@@ -533,6 +539,59 @@ func _spawn_mountains_lvl3d() -> void:
 		m.position = c["pos"]
 		m.scale = c["scl"]
 		subviewport.add_child(m)
+
+# Iter 335: dynamic action camera. Pitch eases between CALM (more sky / the
+# sun-moon visible, when little is happening — e.g. level start) and BUSY
+# (steeper, tactical) based on how many threats are active.
+const CAM_PITCH_CALM := -25.0
+const CAM_PITCH_BUSY := -55.0
+const CAM_PITCH_LERP := 1.3
+var _sky: SkyBodies = null
+var _cam_pitch: float = CAM_PITCH_CALM
+
+# Ease the camera pitch by action intensity: more active threats → steeper
+# (BUSY/tactical), few/none → shallower (CALM, sky + sun/moon visible). Boss
+# fights pin it to BUSY. (iter 335)
+func _update_dynamic_camera(delta: float) -> void:
+	if camera == null:
+		return
+	var threats: int = 0
+	for c in outlaws_root.get_children():
+		if is_instance_valid(c) and not c.get_meta("is_captive", false):
+			threats += 1
+	var intensity: float = clampf(float(threats) / 8.0, 0.0, 1.0)
+	if _level_state == LevelState.BOSS:
+		intensity = 1.0
+	var target: float = lerpf(CAM_PITCH_CALM, CAM_PITCH_BUSY, intensity)
+	_cam_pitch = lerpf(_cam_pitch, target, clampf(delta * CAM_PITCH_LERP, 0.0, 1.0))
+	camera.rotation_degrees.x = _cam_pitch
+
+# Build the sun/moon + cloud sky in the gameplay subviewport (self-building
+# SkyBodies) and apply this level's sky look.
+func _build_sky_3d() -> void:
+	_sky = SkyBodies.new()
+	_sky.name = "SkyBodies"
+	subviewport.add_child(_sky)
+	if camera != null:
+		_sky.bind_camera(camera)
+	_apply_level_sky()
+
+# Gameplay sky preset. The sun sits LOW (near the horizon) so it reads at the
+# down-tilted gameplay camera instead of floating off the top of the frame.
+# (Time-of-day-by-clock + per-level weather refine this in a later step.)
+func _apply_level_sky() -> void:
+	if _sky == null:
+		return
+	var preset := {
+		"sun_visible": true, "sun_height": 7.0, "sun_tex": "daylight",
+		"sun_tint": Color(1, 1, 1, 1), "sun_corona_intensity": 1.1,
+		"sun_corona_body": Color(1.0, 0.95, 0.30, 1),
+		"sun_corona_ray": Color(1.0, 0.65, 0.15, 1),
+		"moon_visible": false,
+		"sky_top": Color(0.20, 0.42, 0.64, 1), "sky_bot": Color(0.58, 0.80, 1.0, 1),
+		"cloud_tint": Color(1.10, 1.10, 0.95, 1), "cloud_cover": 0.45, "cloud_speed": 0.006,
+	}
+	_sky.apply_preset(preset, Vector3(-0.5, 0.0, 1.0))
 
 # A posse follower — video billboard textured from the staggered pool,
 # placed at a trapezoid formation slot computed from its index.
@@ -4387,6 +4446,7 @@ func _process(delta: float) -> void:
 	_update_cowboy_anim()
 	# Iter 179: animate the bonus-crate electric auras.
 	_update_bonus_auras(delta)
+	_update_dynamic_camera(delta)
 	if _pete_defeated or _failed:
 		_level_state = LevelState.FINISHED
 		return
