@@ -4,7 +4,7 @@
 Each breed: 720x1280 portrait, chroma-green background (0,177,64),
 panicked cartoon chicken centred at ~50% of frame height.
 
-Uses Gemini gemini-3.1-flash-image-preview for image generation, key
+Uses Gemini gemini-3.1-flash-image for image generation, key
 pulled from GSM secret GEMINI_API_KEY.
 
 Run: python3 tools/gen_chicken_frames.py
@@ -24,7 +24,7 @@ import io
 
 API_URL = (
     "https://generativelanguage.googleapis.com/v1beta/models/"
-    "gemini-3.1-flash-image-preview:generateContent"
+    "gemini-3.1-flash-image:generateContent"
 )
 
 CANVAS = (720, 1280)

@@ -24,7 +24,7 @@ import urllib.request
 
 API_URL = (
     "https://generativelanguage.googleapis.com/v1beta/models/"
-    "gemini-3.1-flash-image-preview:generateContent"
+    "gemini-3.1-flash-image:generateContent"
 )
 
 OUT_DIR = "godot/assets/sprites/fx"
