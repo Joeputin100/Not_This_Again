@@ -86,10 +86,10 @@ mouse_filter = 2
 [node name="Hearts" type="Control" parent="UI"]
 anchors_preset = -1
 anchor_right = 1.0
-offset_left = 60.0
-offset_top = 630.0
-offset_right = -60.0
-offset_bottom = 810.0
+offset_left = 230.0
+offset_top = 150.0
+offset_right = -230.0
+offset_bottom = 270.0
 mouse_filter = 2
 script = ExtResource("7_hearts")
 

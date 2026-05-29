@@ -138,7 +138,7 @@ var boss_root: Node3D
 @onready var back_button: Button = $UI/BackButton
 @onready var info_label: Label = $UI/InfoLabel
 # Iter 79: dedicated HUD labels.
-@onready var hearts_label: Label = $UI/HeartsLabel
+@onready var hearts_label: HeartRow = $UI/HeartsLabel
 @onready var posse_label: Label = $UI/PosseLabel
 @onready var hits_label: Label = $UI/HitsLabel
 # Iter 95: also created in _build_3d_content().
@@ -372,9 +372,10 @@ func _ready() -> void:
 	# fov=50° gives horizontal half-FOV=25° → visible road x=±4 at the
 	# cowboy and ~±10 at obstacle-spawn z=-24.
 	if camera != null:
-		camera.position = Vector3(0, 7.0, 3.0)
-		# iter 335: start at the CALM pitch (scenic, sky visible); _process eases
-		# it toward BUSY (-55°) as threats appear.
+		# iter 335/337: start at the CALM pitch + position (scenic, sky visible,
+		# posse framed); _process eases toward BUSY (-55°, pulled in) as threats
+		# appear.
+		camera.position = CAM_POS_CALM
 		camera.rotation_degrees = Vector3(CAM_PITCH_CALM, 0, 0)
 		camera.fov = 50.0
 		camera.keep_aspect = 0  # Camera3D.KEEP_WIDTH (portrait viewport)
@@ -524,6 +525,12 @@ func _make_lvl3d_container(node_name: String) -> Node3D:
 const CAM_PITCH_CALM := -25.0
 const CAM_PITCH_BUSY := -55.0
 const CAM_PITCH_LERP := 1.3
+# iter337: the camera also pulls UP + BACK as it tilts shallow (calm), so it
+# orbits the posse instead of pivoting in place — otherwise the shallow calm
+# angle drops the foreground posse off the bottom of the frame. BUSY position
+# is the original (0,7,3) that framed the posse at -55°.
+const CAM_POS_BUSY := Vector3(0.0, 7.0, 3.0)
+const CAM_POS_CALM := Vector3(0.0, 11.5, 7.5)
 var _sky: SkyBodies = null
 var _cam_pitch: float = CAM_PITCH_CALM
 
@@ -541,8 +548,11 @@ func _update_dynamic_camera(delta: float) -> void:
 	if _level_state == LevelState.BOSS:
 		intensity = 1.0
 	var target: float = lerpf(CAM_PITCH_CALM, CAM_PITCH_BUSY, intensity)
-	_cam_pitch = lerpf(_cam_pitch, target, clampf(delta * CAM_PITCH_LERP, 0.0, 1.0))
+	var ease: float = clampf(delta * CAM_PITCH_LERP, 0.0, 1.0)
+	_cam_pitch = lerpf(_cam_pitch, target, ease)
 	camera.rotation_degrees.x = _cam_pitch
+	var target_pos: Vector3 = CAM_POS_BUSY.lerp(CAM_POS_CALM, 1.0 - intensity)
+	camera.position = camera.position.lerp(target_pos, ease)
 
 # Build the sun/moon + cloud sky in the gameplay subviewport (self-building
 # SkyBodies) and apply this level's sky look.
@@ -1106,8 +1116,16 @@ func _check_bullet_gate_collision(bullet: Node3D) -> bool:
 			pass  # iter 119: × gates absorb the bullet but DON'T increment. Multipliers stay at ×2 max so posse doesn't explode.
 		elif value >= 0:
 			value += 1
-		else:  # value < 0
-			value += 1  # move toward 0 (less negative)
+		else:  # value < 0 — climb toward 0, but iter337: skip the dead "0 red"
+			# dwell and flip straight to +1 so a shot -N gate visibly turns
+			# positive (was getting stuck at 0 / staying red).
+			value += 1
+			if value == 0:
+				value = 1
+		# iter337: once positive, carry the "+" op so the label reads "+N" and
+		# _gate_color_for paints it blue (it keys on value sign, not op).
+		if value > 0:
+			op = "+"
 		# Persist + update visuals.
 		gate.set_meta(side + "_value", value)
 		gate.set_meta(side + "_op", op)
@@ -3296,10 +3314,7 @@ func _refresh_hud() -> void:
 		if get_node_or_null("/root/GameState"):
 			max_h = GameState.MAX_HEARTS
 			current = GameState.hearts
-		var parts: PackedStringArray = PackedStringArray()
-		for i in range(max_h):
-			parts.append("♥" if i < current else "·")
-		hearts_label.text = " ".join(parts)
+		hearts_label.set_hearts(current, max_h)  # iter337: drawn, not ♥ glyph
 	if posse_label:
 		posse_label.text = "POSSE: %d" % _posse_count_3d
 	if hits_label:
@@ -4166,7 +4181,7 @@ const PROP_TEX_REGISTRY: Dictionary = {
 	# Iter 334: obstacle sprites (were CSG placeholders). Barrel = wooden keg
 	# (rigid, tiny bob); bull = wide beast (no sway, slight breathing bob).
 	"barrel":          {"path": "res://assets/sprites/props/barrel.png",          "w": 1.2, "h": 1.6, "sway_amp": 0.01, "bob_amp": 0.012},
-	"bull":            {"path": "res://assets/sprites/props/bull.png",            "w": 2.4, "h": 1.8, "sway_amp": 0.0,  "bob_amp": 0.016},
+	"bull":            {"path": "res://assets/sprites/props/bull.png",            "w": 2.6, "h": 1.42, "sway_amp": 0.0,  "bob_amp": 0.016},
 }
 
 # Iter 131: try-load a prop texture by slug. Returns null if the file

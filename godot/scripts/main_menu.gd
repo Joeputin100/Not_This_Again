@@ -33,6 +33,7 @@ const BuildInfo = preload("res://scripts/build_info.gd")
 @onready var rustler_tap: Control = $UI/RustlerTap
 const PETE_REACTS: int = 3      # pete_react_0..2
 const RUSTLER_REACTS: int = 3   # candy_rustler_react_0..2 (short grunts, NOT the full boss taunts)
+const RUSTLER_BASE_SCALE := Vector2(0.72, 0.72)  # must match RustlerRig.scale in main_menu.tscn
 var _last_pete: int = -1
 var _last_rustler: int = -1
 const HUMBUG_MENU_LINES: int = 6
@@ -319,9 +320,13 @@ func _on_rustler_tap(event: InputEvent) -> void:
 	AudioBus.play_character_line("candy_rustler_react_%d" % i)
 	var rig := get_node_or_null("RustlerRig")
 	if rig:
+		# iter337: pulse around his ACTUAL scene scale. The old tween hard-coded
+		# 0.24/0.27 from before iter333 enlarged him to 0.72, so a tap shrank him
+		# 3× and the scale-down toward his origin read as "moving to centre".
+		var base: Vector2 = RUSTLER_BASE_SCALE
 		var t := create_tween()
-		t.tween_property(rig, "scale", Vector2(0.27, 0.27), 0.08)
-		t.tween_property(rig, "scale", Vector2(0.24, 0.24), 0.24).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
+		t.tween_property(rig, "scale", base * 1.12, 0.08)
+		t.tween_property(rig, "scale", base, 0.22).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
 
 func _exit_tree() -> void:
 	_kill_idle_tweens()
