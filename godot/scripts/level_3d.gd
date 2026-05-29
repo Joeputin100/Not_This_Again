@@ -3296,9 +3296,12 @@ func _spawn_prospector() -> void:
 
 const CONTAINER_HP_BY_TIER: Dictionary = {1: 30, 2: 60, 3: 100}
 const CONTAINER_TEX: Dictionary = {
-	"wagon_covered": {"path": "res://assets/sprites/props/wagon_covered.png", "w": 2.4, "h": 1.6},
-	"mining_cart":   {"path": "res://assets/sprites/props/mining_cart.png",   "w": 2.0, "h": 1.4},
-	"barrel":        {"path": "res://assets/sprites/props/barrel.png",        "w": 1.2, "h": 1.6},
+	# body_half_w = visible (opaque) half-width in world units — the sprites
+	# have wide transparent margins, so this is much less than w/2. Pushers
+	# press against THIS edge, not the invisible frame (iter 334).
+	"wagon_covered": {"path": "res://assets/sprites/props/wagon_covered.png", "w": 3.3, "h": 2.2, "body_half_w": 1.16},
+	"mining_cart":   {"path": "res://assets/sprites/props/mining_cart.png",   "w": 2.0, "h": 1.4, "body_half_w": 0.69},
+	"barrel":        {"path": "res://assets/sprites/props/barrel.png",        "w": 1.2, "h": 1.6, "body_half_w": 0.53},
 }
 const HERO_TEX: Dictionary = {
 	"marshmallow_sheriff": "res://assets/sprites/props/hero_marshmallow_sheriff.png",
@@ -3555,7 +3558,12 @@ var _cart_encounter: bool = false  # iter 173: a pushed-cart encounter pauses th
 const PUSHER_TEX_LEFT := "res://assets/sprites/props/pusher_left.png"
 const PUSHER_TEX_RIGHT := "res://assets/sprites/props/pusher_right.png"
 const PUSHER_TEX_MELEE := "res://assets/sprites/props/pusher_melee.png"
-const PUSHER_HEIGHT_WORLD: float = 1.2  # ~70% of regular outlaw
+const PUSHER_HEIGHT_WORLD: float = 0.85  # iter 334: 1.2 → 0.85 so a bigger mob fits on screen
+# iter 334: the wagon rocks on its wheels while being shoved (was rigid/wooden).
+# Applied as a small rotation.z on the captive node — its billboarded children
+# swing in an arc about the ground pivot, reading as a cart rocking.
+const WAGON_ROCK_DEG: float = 4.5
+const WAGON_ROCK_FREQ: float = 3.2
 const PUSHER_MELEE_DPS: float = 0.5  # posse members / sec while in contact
 const PUSHER_MELEE_RANGE: float = 1.5
 
@@ -3574,12 +3582,18 @@ func _spawn_pushed_wagon(hero_slug: String, container_slug: String,
 	# density at 10-100 count, lay out cols × rows behind the wagon.
 	var cols: int = clampi(int(ceil(sqrt(float(n_pushers)))), 3, 8)
 	var rows: int = int(ceil(float(n_pushers) / float(cols)))
+	# Front rank presses against the wagon's VISIBLE (opaque) left face — the
+	# body_half_w accounts for the sprite's transparent margins, so the pushers
+	# actually touch the cart instead of standing off in empty space. A small
+	# overlap (−0.15) reads as "pressing into it". Tighter ranks (0.42) + columns
+	# (0.40) pack the smaller pushers shoulder-to-shoulder (iter 334).
+	var c_entry: Dictionary = CONTAINER_TEX.get(container_slug, CONTAINER_TEX["wagon_covered"])
+	var body_half_w: float = float(c_entry.get("body_half_w", float(c_entry.w) * 0.5))
 	for i in range(n_pushers):
 		var col: int = i % cols
 		var row: int = i / cols
-		# col centered around 0, row stacking BEHIND wagon (-x = away from cliff)
-		var ox: float = -1.5 - float(row) * 0.7
-		var oz: float = (float(col) - float(cols - 1) * 0.5) * 0.55
+		var ox: float = -(body_half_w - 0.15) - float(row) * 0.42
+		var oz: float = (float(col) - float(cols - 1) * 0.5) * 0.40
 		var is_left_side: bool = oz < 0.0  # left side of wagon
 		var pusher: Node3D = _spawn_pusher(
 			captive.position + Vector3(ox, 0, oz), is_left_side)
@@ -3687,6 +3701,14 @@ func _update_pushed_wagons(delta: float) -> void:
 			continue
 		var push_speed: float = minf(float(alive) * PUSH_FORCE_PER_PUSHER, MAX_PUSH_SPEED)
 		captive.position.x += push_speed * delta
+		# iter 334: rock the wagon on its wheels while it's shoved (was rigid).
+		# Tilt scales with push intensity so a mobbed wagon lurches harder. The
+		# rotation pivots at the ground origin, so the billboarded body swings
+		# in an arc — reads as rocking, not sliding.
+		var rock_t: float = float(Time.get_ticks_msec()) * 0.001 * WAGON_ROCK_FREQ \
+			+ float(captive.get_instance_id() % 360)
+		var rock_intensity: float = clampf(push_speed / MAX_PUSH_SPEED, 0.25, 1.0)
+		captive.rotation.z = sin(rock_t) * deg_to_rad(WAGON_ROCK_DEG) * rock_intensity
 		# Move pushers with the wagon (they're chasing it)
 		for p in pushers:
 			if is_instance_valid(p) and not p.get_meta("is_dead", false) and \
