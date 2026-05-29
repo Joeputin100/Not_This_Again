@@ -399,6 +399,7 @@ func _ready() -> void:
 	if info_label != null:
 		info_label.text = "iter97 RDY-5 followers ok"
 	info_label.text = "iter97 OK · build %s · top-left to exit" % BuildInfo.SHA
+	_build_weapon_indicator()
 	DebugLog.add("level_3d _ready (build=%s)" % BuildInfo.SHA)
 	# Iter 124: honor DebugPreview.pending_test_range flag.
 	if get_node_or_null("/root/DebugPreview") != null and DebugPreview.pending_test_range:
@@ -2648,9 +2649,67 @@ func _collect_bonus(bonus: Node3D) -> void:
 		"rifle":     _fire_mode = FireMode.RIFLE
 		"frostbite": _fire_mode = FireMode.FROSTBITE
 		"frenzy":    _fire_mode = FireMode.FRENZY
+	_update_weapon_label()
 	_spawn_popup_3d(bonus.position + Vector3(0, 2.0, 0),
 		t.to_upper(), BONUS_COLORS[t], 56)
 	bonus.queue_free()
+
+# Iter 336: top-right indicator of the posse's currently-loaded weapon (the
+# active FireMode), with a candy-bullet icon + name. Updated on pickup.
+const WEAPON_NAMES := {
+	FireMode.CANDY: "JELLY BEAN", FireMode.RIFLE: "RIFLE",
+	FireMode.FROSTBITE: "FROSTBITE", FireMode.FRENZY: "FRENZY",
+}
+const WEAPON_ICONS := {
+	FireMode.CANDY: "candy_red.png", FireMode.RIFLE: "candy_choc_stripe.png",
+	FireMode.FROSTBITE: "candy_freezeray.png", FireMode.FRENZY: "candy_bomb.png",
+}
+const WEAPON_COLORS := {
+	FireMode.CANDY: Color(1.0, 0.62, 0.80, 1), FireMode.RIFLE: Color(0.88, 0.66, 0.40, 1),
+	FireMode.FROSTBITE: Color(0.60, 0.86, 1.0, 1), FireMode.FRENZY: Color(1.0, 0.58, 0.88, 1),
+}
+var _weapon_label: Label = null
+var _weapon_icon: TextureRect = null
+
+func _build_weapon_indicator() -> void:
+	var ui: Node = get_node_or_null("UI")
+	if ui == null:
+		return
+	_weapon_icon = TextureRect.new()
+	_weapon_icon.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	_weapon_icon.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+	_weapon_icon.anchor_left = 1.0
+	_weapon_icon.anchor_right = 1.0
+	_weapon_icon.offset_left = -110.0
+	_weapon_icon.offset_right = -20.0
+	_weapon_icon.offset_top = 275.0
+	_weapon_icon.offset_bottom = 365.0
+	_weapon_icon.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	ui.add_child(_weapon_icon)
+	_weapon_label = Label.new()
+	_weapon_label.add_theme_font_size_override("font_size", 38)
+	_weapon_label.add_theme_color_override("font_outline_color", Color(0.14, 0.05, 0.03, 1))
+	_weapon_label.add_theme_constant_override("outline_size", 7)
+	_weapon_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
+	_weapon_label.anchor_left = 1.0
+	_weapon_label.anchor_right = 1.0
+	_weapon_label.offset_left = -460.0
+	_weapon_label.offset_right = -120.0
+	_weapon_label.offset_top = 301.0
+	_weapon_label.offset_bottom = 351.0
+	_weapon_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	ui.add_child(_weapon_label)
+	_update_weapon_label()
+
+func _update_weapon_label() -> void:
+	if _weapon_label == null:
+		return
+	_weapon_label.text = WEAPON_NAMES.get(_fire_mode, "JELLY BEAN")
+	_weapon_label.add_theme_color_override("font_color", WEAPON_COLORS.get(_fire_mode, Color.WHITE))
+	if _weapon_icon != null:
+		var icon_path: String = _CANDY_DIR + str(WEAPON_ICONS.get(_fire_mode, "candy_red.png"))
+		if ResourceLoader.exists(icon_path):
+			_weapon_icon.texture = load(icon_path)
 
 # ── Iter 179: bonus-crate auras (ported from glitz_picker.gd) ─────────────
 # A bonus's glitz config (GlitzPrefs.BONUS_GLITZ) can carry an aura behind
