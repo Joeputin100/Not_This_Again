@@ -321,7 +321,6 @@ func _on_canard_tap(event: InputEvent) -> void:
 		return
 	canard_zone.accept_event()
 	_canard_tap_count += 1
-	DebugLog.add("canard tap %d/%d" % [_canard_tap_count, CANARD_EGG_TAPS])  # iter338 diag
 	# Iter 160: the CANARD_EGG_TAPS-th tap is the last straw — Canard
 	# bursts, then a fresh duck-head springs from the cane.
 	if _canard_tap_count >= CANARD_EGG_TAPS:
@@ -535,48 +534,60 @@ func _humbug_annoyed_flourish() -> void:
 # The CANARD_EGG_TAPS-th tap: a poof, a candy-shrapnel burst, and a fresh
 # duck-head that springs out of the licorice cane a beat later.
 func _canard_explode() -> void:
-	DebugLog.add("canard EXPLODE triggered")  # iter338 diag — if this logs but
-	# nothing shows on screen, the FX is the bug, not the count threshold.
 	var origin: Vector2 = _humbug_base_pos + canard_zone.position + canard_zone.size * 0.5
 	if _canard_player != null:
 		_canard_player.stream = POOF_SFX
-		_canard_player.pitch_scale = 1.0
-		_canard_player.volume_db = 0.0
+		_canard_player.pitch_scale = 0.6   # iter338: pitch down → a deeper BOOM
+		_canard_player.volume_db = 7.0      # and louder
 		_canard_player.play()
 	_humbug_annoyed_flourish()
 	_spawn_explosion_fx(origin)
+	_screen_shake(26.0, 0.45)              # iter338: it's an explosion now
 	get_tree().create_timer(0.45).timeout.connect(_spawn_new_canard_head.bind(origin))
 
+# Brief decaying positional shake of the whole scene (Node2D root).
+func _screen_shake(amp: float, dur: float) -> void:
+	var t := create_tween()
+	var steps: int = maxi(int(dur / 0.035), 1)
+	for i in steps:
+		var f: float = 1.0 - float(i) / float(steps)   # decay to 0
+		t.tween_property(self, "position",
+			Vector2(randf_range(-amp, amp), randf_range(-amp, amp)) * f, 0.035)
+	t.tween_property(self, "position", Vector2.ZERO, 0.05)
+
 func _spawn_explosion_fx(origin: Vector2) -> void:
-	var flash := Polygon2D.new()
-	flash.color = Color(1.0, 0.95, 0.70, 0.92)
-	flash.polygon = _circle_points(40.0)
-	flash.position = origin
-	add_child(flash)
-	var ft := create_tween()
-	ft.set_parallel(true)
-	ft.tween_property(flash, "scale", Vector2(3.4, 3.4), 0.35) \
-		.set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
-	ft.tween_property(flash, "modulate:a", 0.0, 0.35)
-	ft.chain().tween_callback(flash.queue_free)
+	# iter338: bigger two-layer fireball — white-hot core over an orange bloom.
+	for layer in [{"col": Color(1.0, 0.55, 0.10, 0.95), "r": 95.0, "to": 5.2, "t": 0.45},
+			{"col": Color(1.0, 0.97, 0.78, 0.98), "r": 60.0, "to": 4.0, "t": 0.32}]:
+		var flash := Polygon2D.new()
+		flash.color = layer["col"]
+		flash.polygon = _circle_points(layer["r"])
+		flash.position = origin
+		add_child(flash)
+		var ft := create_tween()
+		ft.set_parallel(true)
+		ft.tween_property(flash, "scale", Vector2(layer["to"], layer["to"]), layer["t"]) \
+			.set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
+		ft.tween_property(flash, "modulate:a", 0.0, layer["t"])
+		ft.chain().tween_callback(flash.queue_free)
 	var burst := CPUParticles2D.new()
 	burst.position = origin
 	burst.emitting = false
 	burst.one_shot = true
 	burst.explosiveness = 1.0
-	burst.amount = 26
-	burst.lifetime = 0.7
+	burst.amount = 60
+	burst.lifetime = 0.9
 	burst.direction = Vector2(0, -1)
 	burst.spread = 180.0
-	burst.initial_velocity_min = 220.0
-	burst.initial_velocity_max = 520.0
-	burst.gravity = Vector2(0, 900)
-	burst.scale_amount_min = 5.0
-	burst.scale_amount_max = 11.0
+	burst.initial_velocity_min = 300.0
+	burst.initial_velocity_max = 760.0
+	burst.gravity = Vector2(0, 950)
+	burst.scale_amount_min = 7.0
+	burst.scale_amount_max = 16.0
 	burst.color = Color(1.0, 0.82, 0.25, 1)
 	add_child(burst)
 	burst.emitting = true
-	get_tree().create_timer(1.7).timeout.connect(burst.queue_free)
+	get_tree().create_timer(1.9).timeout.connect(burst.queue_free)
 
 # A fresh Monsieur Canard springs from the cane, bounces onto the
 # cane-top (covering the burst original), and quacks his debut.
