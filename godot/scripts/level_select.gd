@@ -94,13 +94,17 @@ var _s_min: float = 0.0
 var _s_max: float = 0.0
 var _drag_dist: float = 0.0             # accumulated drag (px) — tells a pan from a tap
 var _focus_level: int = 0               # level the view snaps back to (the cowboy's)
-var pan_speed: float = 0.012            # arc-length per drag pixel (debug-tunable; was 0.03 = too fast)
-var snap_dur: float = 0.8               # snap-back tween seconds (debug-tunable; was 0.5 = too fast)
+var pan_speed: float = 0.021            # arc-length per drag pixel (tuned on-device)
+var snap_dur: float = 1.60              # drift-back tween seconds (tuned on-device)
+var snap_delay: float = 5.0             # idle seconds after a gesture before the view drifts back
+var _snap_timer: Timer                  # one-shot; fires the drift-back after snap_delay of no input
+var _snap_tween: Tween                  # the running drift-back (killed if the user grabs again)
 var _touches: Dictionary = {}           # active finger index -> position (1 = pan, 2 = pinch)
 var _pinch_base: float = 0.0
 var _was_pinch: bool = false
 var _zoom: float = 1.0
 var _base_fov: float = 70.0
+var _humbug_base_scale: Vector2 = Vector2.ONE
 const _BREATHING_SHADER: Shader = preload("res://shaders/breathing_prop.gdshader")
 const _CREAK_SFX: AudioStream = preload("res://assets/sfx/sign_creak.ogg")
 var _props: Array = []                  # [{node, anchor, h}] — swaying, tappable props
@@ -208,6 +212,10 @@ func _ready() -> void:
 	if _cam != null:
 		_base_fov = _cam.fov
 	_build_tuning_sliders()
+	_snap_timer = Timer.new()
+	_snap_timer.one_shot = true
+	_snap_timer.timeout.connect(_snap_to_focus)
+	add_child(_snap_timer)
 
 # Iter 336: same self-building sky as gameplay — sun/moon + clouds + candy
 # mountains in the level-select terrain SubViewport. Time of day follows the
@@ -336,6 +344,7 @@ func _set_focus_s(s: float) -> void:
 func _input(event: InputEvent) -> void:
 	if event is InputEventScreenTouch:
 		if event.pressed:
+			_cancel_snap()  # grabbing interrupts any pending/running drift-back
 			_touches[event.index] = event.position
 			if _touches.size() == 1:
 				_drag_dist = 0.0
@@ -349,10 +358,9 @@ func _input(event: InputEvent) -> void:
 			if _touches.is_empty():
 				if _was_pinch:
 					_snap_zoom()
-				elif _drag_dist > 30.0:
-					_snap_to_focus()
-				else:
+				elif _drag_dist <= 30.0:
 					_try_tap_prop(pos)
+				_arm_snap()  # let it settle, then drift back to the cowboy
 	elif event is InputEventScreenDrag:
 		_touches[event.index] = event.position
 		if _touches.size() >= 2:
@@ -361,22 +369,39 @@ func _input(event: InputEvent) -> void:
 			_pan(event.relative.y)
 	elif event is InputEventMouseButton and event.button_index == MOUSE_BUTTON_LEFT:
 		if event.pressed:
+			_cancel_snap()
 			_drag_dist = 0.0
-		elif _drag_dist > 30.0:
-			_snap_to_focus()
 		else:
-			_try_tap_prop(event.position)
+			if _drag_dist <= 30.0:
+				_try_tap_prop(event.position)
+			_arm_snap()
 	elif event is InputEventMouseMotion and (event.button_mask & MOUSE_BUTTON_MASK_LEFT) != 0:
 		_pan(event.relative.y)
 
 func _pan(dy: float) -> void:
+	_cancel_snap()
 	_drag_dist += absf(dy)  # drag DOWN reveals levels further up the trail
 	_set_focus_s(_path_s + dy * pan_speed)
 
+# Wait snap_delay seconds of no input (so a 2nd/3rd swipe can chain), then drift.
+func _arm_snap() -> void:
+	if _snap_timer != null:
+		_snap_timer.start(snap_delay)
+
+func _cancel_snap() -> void:
+	if _snap_timer != null:
+		_snap_timer.stop()
+	if _snap_tween != null and _snap_tween.is_valid():
+		_snap_tween.kill()
+		_snap_tween = null
+
+# Drift back to the cowboy's level: starts slow, accelerates into the snap (EASE_IN).
 func _snap_to_focus() -> void:
 	var target: float = ORB_START_S + float(_focus_level) * ORB_GAP_S
-	var tw := create_tween().set_trans(Tween.TRANS_CUBIC).set_ease(Tween.EASE_OUT)
-	tw.tween_method(_set_focus_s, _path_s, target, snap_dur)
+	if _snap_tween != null and _snap_tween.is_valid():
+		_snap_tween.kill()
+	_snap_tween = create_tween().set_trans(Tween.TRANS_CUBIC).set_ease(Tween.EASE_IN)
+	_snap_tween.tween_method(_set_focus_s, _path_s, target, snap_dur)
 
 # --- Pinch-zoom (two-finger), snaps back to default on release --------------
 func _two_dist() -> float:
@@ -396,7 +421,17 @@ func _set_zoom() -> void:
 	var cam: Camera3D = get_node_or_null("Terrain3D/SubViewport/Camera3D")
 	if cam != null:
 		cam.fov = clampf(_base_fov / _zoom, 32.0, 95.0)
-		_place_orbs_on_terrain()
+		_place_orbs_on_terrain()  # re-scales the cowboy by _fov_mag too
+		if humbug != null:
+			humbug.scale = _humbug_base_scale * _fov_mag()  # 2D guide + canard track the zoom
+
+# Magnification a camera-FOV zoom applies to on-screen size, so 2D overlays
+# (cowboy, Humbug) match the 3D billboards that zoom through the projection.
+func _fov_mag() -> float:
+	var cam := get_node_or_null("Terrain3D/SubViewport/Camera3D") as Camera3D
+	if cam == null:
+		return 1.0
+	return tan(deg_to_rad(_base_fov) * 0.5) / tan(deg_to_rad(cam.fov) * 0.5)
 
 func _snap_zoom() -> void:
 	var tw := create_tween().set_trans(Tween.TRANS_CUBIC).set_ease(Tween.EASE_OUT)
@@ -426,22 +461,23 @@ func _build_tuning_sliders() -> void:
 	bg.name = "TuningSliders"
 	bg.color = Color(0.06, 0.05, 0.10, 0.9)
 	bg.set_anchors_preset(Control.PRESET_BOTTOM_WIDE)
-	bg.offset_top = -360.0
+	bg.offset_top = -480.0
 	parent.add_child(bg)
 	var box := VBoxContainer.new()
 	box.set_anchors_preset(Control.PRESET_FULL_RECT)
 	box.offset_left = 50.0
 	box.offset_right = -50.0
-	box.offset_top = 28.0
-	box.offset_bottom = -28.0
-	box.add_theme_constant_override("separation", 16)
+	box.offset_top = 24.0
+	box.offset_bottom = -24.0
+	box.add_theme_constant_override("separation", 14)
 	bg.add_child(box)
 	var grab := _slider_grabber()
 	for spec in [
 			{"name": "pan_speed", "min": 0.004, "max": 0.06, "step": 0.001, "val": pan_speed, "fmt": "%.3f"},
-			{"name": "snap_dur", "min": 0.1, "max": 1.6, "step": 0.05, "val": snap_dur, "fmt": "%.2f"}]:
+			{"name": "snap_dur", "min": 0.1, "max": 2.5, "step": 0.05, "val": snap_dur, "fmt": "%.2f"},
+			{"name": "snap_delay", "min": 0.0, "max": 10.0, "step": 0.5, "val": snap_delay, "fmt": "%.1f"}]:
 		var lbl := Label.new()
-		lbl.add_theme_font_size_override("font_size", 46)
+		lbl.add_theme_font_size_override("font_size", 44)
 		lbl.add_theme_color_override("font_color", Color(1, 1, 0.85))
 		lbl.text = "%s  %s" % [spec["name"], spec["fmt"] % spec["val"]]
 		var sl := HSlider.new()
@@ -449,7 +485,7 @@ func _build_tuning_sliders() -> void:
 		sl.max_value = spec["max"]
 		sl.step = spec["step"]
 		sl.value = spec["val"]
-		sl.custom_minimum_size = Vector2(0, 80)
+		sl.custom_minimum_size = Vector2(0, 70)
 		sl.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 		sl.add_theme_icon_override("grabber", grab)
 		sl.add_theme_icon_override("grabber_highlight", grab)
@@ -458,8 +494,10 @@ func _build_tuning_sliders() -> void:
 		sl.value_changed.connect(func(v: float):
 			if nm == "pan_speed":
 				pan_speed = v
-			else:
+			elif nm == "snap_dur":
 				snap_dur = v
+			else:
+				snap_delay = v
 			lbl.text = "%s  %s" % [nm, fmt % v])
 		box.add_child(lbl)
 		box.add_child(sl)
@@ -496,7 +534,7 @@ func _place_orbs_on_terrain() -> void:
 		var center: Vector2 = cam.unproject_position(world)
 		var base: Vector2 = btn.get_meta("base_scale", Vector2.ONE)
 		var dist: float = cam.global_position.distance_to(world)
-		btn.scale = base * clampf(ORB_NEAR_DIST / dist, 0.3, 1.05) * ORB_SIZE_MULT
+		btn.scale = base * clampf(ORB_NEAR_DIST / dist, 0.3, 1.05) * ORB_SIZE_MULT * _fov_mag()
 		btn.position = center - btn.size * 0.5
 	_place_cowboy_marker(cam, terrain, gnd)
 
@@ -552,7 +590,7 @@ func _place_cowboy_marker(cam: Camera3D, terrain, gnd: Node3D) -> void:
 		return
 	_cowboy_sprite.visible = true
 	var c: Vector2 = cam.unproject_position(world)
-	var sc: float = clampf(ORB_NEAR_DIST / cam.global_position.distance_to(world), 0.3, 1.05) * ORB_SIZE_MULT * 0.62
+	var sc: float = clampf(ORB_NEAR_DIST / cam.global_position.distance_to(world), 0.3, 1.05) * ORB_SIZE_MULT * 0.62 * _fov_mag()
 	_cowboy_sprite.scale = Vector2(sc, sc)
 	_cowboy_sprite.position = c - Vector2(0.0, _cowboy_half_h * sc)  # feet on the ground
 
@@ -730,6 +768,10 @@ func _build_trail_mesh() -> void:
 	mat.vertex_color_use_as_albedo = true
 	mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA_DEPTH_PRE_PASS
 	mat.cull_mode = BaseMaterial3D.CULL_DISABLED
+	# Draw the path BEFORE the grass so foreground tufts (nearer than the path's
+	# near edge) paint over it. Its alpha depth-prepass still writes depth, so
+	# grass BEHIND the path is depth-culled — only the in-front tufts overlap.
+	mat.render_priority = -1
 	mi.material_override = mat
 	gnd.add_child(mi)
 
@@ -774,6 +816,7 @@ func _tv(st: SurfaceTool, p: Vector3, uv: Vector2, a: float) -> void:
 
 func _setup_humbug() -> void:
 	humbug.pivot_offset = humbug.size * 0.5  # flourishes scale/rotate in place
+	_humbug_base_scale = humbug.scale
 	_humbug_base_pos = humbug.position
 	humbug.pressed.connect(_on_humbug_pressed)
 	canard_zone.mouse_filter = Control.MOUSE_FILTER_STOP
