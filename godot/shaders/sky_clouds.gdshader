@@ -31,7 +31,7 @@ uniform bool mountains_on = false;
 uniform float mtn_az_half = 0.62;   // half azimuth span (rad) the range covers
 uniform float mtn_base = -0.26;     // bottom of band (below true horizon, ≈ the
                                     // terrain far-edge elevation, so bases sit on it)
-uniform float mtn_top = 0.12;       // top elevation (rad) of the mountain band (peaks)
+uniform float mtn_top = 0.19;       // top elevation (rad) of the mountain band (peaks) — iter339: raised so peaks clear the hilly terrain
 
 void sky() {
 	// Height factor: 0 at the horizon, 1 straight up.

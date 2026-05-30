@@ -16,9 +16,9 @@
 [ext_resource type="Script" path="res://scripts/terrain_3d.gd" id="2_script"]
 
 [sub_resource type="PlaneMesh" id="PlaneMesh_ground"]
-size = Vector2(40, 60)
+size = Vector2(40, 150)
 subdivide_width = 32
-subdivide_depth = 64
+subdivide_depth = 150
 
 ; uv1_scale = (1,1) so the dirt_path_2k texture maps 1:1 across the
 ; entire plane — path coordinates baked into the texture render at
@@ -39,6 +39,10 @@ texture_filter = 5
 [node name="Terrain3D" type="Node2D"]
 script = ExtResource("2_script")
 auto_scroll = false
+hilly = true
+hill_amp = 1.2
+grassy = true
+grass_count = 5000
 
 [node name="SubViewport" type="SubViewport" parent="."]
 size = Vector2i(1080, 1920)

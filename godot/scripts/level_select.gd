@@ -64,6 +64,62 @@ const LEVEL_NODE_NAMES: Array[String] = [
 	"LevelNode7Locked", "LevelNode8Locked",
 ]
 
+# Iter 339: orbs sit ON the 3D terrain. Each level tile is anchored to a
+# plane-LOCAL (x, z) point on the hilly map; _place_orbs_on_terrain() projects
+# it through the SubViewport camera so the tiles ride the terrain (and will
+# pan/snap with it). Index 0 = level 1 (near), index 7 = level 8 (far). This
+# is the general "terrain-anchored object" system props/characters reuse later
+# (see memory project_level_select_decoration).
+# The level path is a procedural serpentine that recedes toward a vanishing
+# point (impression of infinite levels). Orbs are sampled along it; the trail
+# is sampled densely so it reads as a smooth CURVE, and runs PAST the last orb
+# toward the horizon (fading) for the infinite feel. _path_screen(u) maps
+# u (0 = near/bottom .. 1 = horizon) to a screen point; setup ray-casts those
+# onto the ground to get terrain anchors, which then pan/snap with the map.
+const ORB_COUNT: int = 8
+const TRAIL_SAMPLES: int = 72
+const ORB_START_S: float = 1.5   # arc length (world units) of level 1 from the path's near end
+const ORB_GAP_S: float = 7.0     # world spacing between levels along the path (~10 orb widths)
+const PATH_Z_NEAR: float = 4.0   # plane-local z of the path's near end (level 1)
+const PATH_Z_FAR: float = -54.0  # ...and its far end (the trail runs off-screen; you swipe to it)
+const PATH_AMP: float = 7.0      # switchback half-width
+const PATH_SWITCHBACKS: float = 5.0
+const VIEW_FOCUS_Z: float = -2.0 # world z where the focused (cowboy's) level sits — near the bottom
+var _orb_anchors: Array[Vector2] = []   # plane-local (x, z) per orb
+var _trail_anchors: Array[Vector2] = [] # plane-local (x, z) densely along the path
+var _path_pts: Array[Vector2] = []      # dense path samples for arc-length lookup
+var _path_cum: PackedFloat32Array = PackedFloat32Array()
+var _path_s: float = 0.0                # current focus position along the path (arc length)
+var _s_min: float = 0.0
+var _s_max: float = 0.0
+var _drag_dist: float = 0.0             # accumulated drag (px) — tells a pan from a tap
+var _focus_level: int = 0               # level the view snaps back to (the cowboy's)
+const PAN_SPEED: float = 0.03           # arc-length per drag pixel
+const _BREATHING_SHADER: Shader = preload("res://shaders/breathing_prop.gdshader")
+const _CREAK_SFX: AudioStream = preload("res://assets/sfx/sign_creak.ogg")
+var _props: Array = []                  # [{node, anchor, h}] — swaying, tappable props
+var _prop_player: AudioStreamPlayer
+var _cowboy_sprite: AnimatedSprite2D    # idle-looping marker on the cowboy's level
+var _cowboy_s: float = 0.0              # the cowboy's arc-length position along the path
+var _walking: bool = false              # true while the cowboy strides to a selected orb
+var _cowboy_half_h: float = 128.0       # half the idle texture height (for grounding his feet)
+const COWBOY_SIDE: float = -1.9         # he stands this far to the side of the path/orb
+const ORB_NODE_NAMES: Array[String] = [
+	"LevelNode1", "LevelNode2", "LevelNode3Locked", "LevelNode4Locked",
+	"LevelNode5Locked", "LevelNode6Locked", "LevelNode7Locked", "LevelNode8Locked",
+]
+const ORB_NEAR_DIST: float = 4.0  # camera distance at which a tile is full-size
+const ORB_SIZE_MULT: float = 2.0  # iter339: orbs much bigger (×3 overlapped)
+# Iter 339: rendered (Imagen) orb art per level. L1-4 are dual-themed
+# (difficulty × terrain); L5-8 share the locked orb.
+const ORB_TEX := {1: "orb_l1", 2: "orb_l2", 3: "orb_l3", 4: "orb_l4"}
+# Old fixed-position 2D level decorations, retired by the 3D orbs + floating numbers.
+const ORB_OLD_DECOR: Array[String] = [
+	"DiffLabel1", "DiffLabel2", "DiffLabel3", "DiffLabel4",
+	"Glyph1Hat", "Glyph2Pickaxe", "Glyph3Boot", "Glyph4Wagon",
+]
+const _RYE_FONT := preload("res://assets/fonts/Rye-Regular.ttf")
+
 # Iter 159: Humbug / Canard interaction.
 const HUMBUG_TIP_LINES: int = 6      # humbug.tips → humbug_tip_N.mp3
 const HUMBUG_THOUGHT_LINES: int = 5  # humbug.thoughts → humbug_thought_N.mp3
@@ -126,6 +182,22 @@ func _ready() -> void:
 	_setup_humbug()
 	_build_debug_overlay()
 	_build_sky()
+	_setup_orb_anchors()
+	var terr := get_node_or_null("Terrain3D")
+	if terr != null:
+		var prop_av := PackedVector2Array()
+		for d in PROP_DATA:
+			prop_av.append(_prop_local(d[1], d[2]))
+		# weed just the candy centre so grass grows over the dirt shoulder + trail edge (overlapping it), + a clear patch around each prop
+		terr.call("build_grass", PackedVector2Array(_trail_anchors), 0.95, prop_av, 2.8)
+	_build_trail_mesh()
+	_build_orb_visuals()
+	_place_props()
+	_place_cowboy()
+	_focus_on(_focus_level)  # default view = the cowboy's (highest completed) level
+	_prop_player = AudioStreamPlayer.new()
+	_prop_player.bus = "Master"
+	add_child(_prop_player)
 
 # Iter 336: same self-building sky as gameplay — sun/moon + clouds + candy
 # mountains in the level-select terrain SubViewport. Time of day follows the
@@ -196,6 +268,388 @@ func _make_contact_shadow(node_size: Vector2) -> Polygon2D:
 	shadow.show_behind_parent = true
 	shadow.position = Vector2(node_size.x * 0.5, node_size.y * 0.97)
 	return shadow
+
+# Iter 339: derive each tile's terrain anchor by ray-casting its designed
+# screen position onto the ground plane (y = 0). Stored once; thereafter the
+# tiles are driven by re-projecting these anchors, so they ride the terrain.
+func _setup_orb_anchors() -> void:
+	# Dense samples of the world-space serpentine — used for the ribbon, for
+	# arc-length orb spacing, and for arc-length panning.
+	_path_pts.clear()
+	_path_cum = PackedFloat32Array()
+	var n: int = 200
+	for s in range(n + 1):
+		var w: Vector2 = _path_world(float(s) / float(n) * 1.04)
+		_path_pts.append(w)
+		_path_cum.append(0.0 if s == 0 else _path_cum[s - 1] + w.distance_to(_path_pts[s - 1]))
+	_trail_anchors = _path_pts
+	# Orbs spaced by fixed WORLD distance (~10 orb widths) along the path.
+	_orb_anchors.clear()
+	for k in ORB_COUNT:
+		_orb_anchors.append(_path_point_at_length(ORB_START_S + float(k) * ORB_GAP_S, _path_pts, _path_cum))
+	_s_min = ORB_START_S
+	_s_max = ORB_START_S + float(ORB_COUNT - 1) * ORB_GAP_S
+
+# Walk the cumulative arc-length table to the path point at world distance s.
+func _path_point_at_length(s: float, pts: Array[Vector2], cum: PackedFloat32Array) -> Vector2:
+	s = clampf(s, 0.0, cum[cum.size() - 1])
+	for i in range(1, cum.size()):
+		if cum[i] >= s:
+			var seg: float = maxf(cum[i] - cum[i - 1], 0.0001)
+			return pts[i - 1].lerp(pts[i], (s - cum[i - 1]) / seg)
+	return pts[pts.size() - 1]
+
+# Focus the view on a level (by its arc length along the path) — this is both
+# the default view and the snap-back target.
+func _focus_on(idx: int) -> void:
+	_focus_level = clampi(idx, 0, ORB_COUNT - 1)
+	_set_focus_s(ORB_START_S + float(_focus_level) * ORB_GAP_S)
+
+# Slide the ground so the path point at arc-length s sits at the focus (screen
+# centre, near the bottom). Centres BOTH x and z, so switchback orbs don't fall
+# off the side when scrolled near.
+func _set_focus_s(s: float) -> void:
+	_path_s = clampf(s, _s_min, _s_max)
+	var gnd: Node3D = get_node_or_null("Terrain3D/SubViewport/Ground")
+	if gnd == null:
+		return
+	var pp: Vector2 = _path_point_at_length(_path_s, _path_pts, _path_cum)
+	gnd.position = Vector3(-pp.x, 0.0, VIEW_FOCUS_Z - pp.y)
+	_place_orbs_on_terrain()
+
+# --- Swipe-to-pan along the trail, snapping back to the cowboy's level --------
+# Reset the drag accumulator on every press (in _input so it always fires, even
+# when the press lands on an orb button).
+func _input(event: InputEvent) -> void:
+	if (event is InputEventScreenTouch and event.pressed) \
+	or (event is InputEventMouseButton and event.pressed and event.button_index == MOUSE_BUTTON_LEFT):
+		_drag_dist = 0.0
+
+# Drags the orbs/Humbug didn't consume pan the trail; release snaps back.
+func _unhandled_input(event: InputEvent) -> void:
+	if event is InputEventScreenDrag:
+		_pan(event.relative.y)
+	elif event is InputEventMouseMotion and (event.button_mask & MOUSE_BUTTON_MASK_LEFT) != 0:
+		_pan(event.relative.y)
+	elif (event is InputEventScreenTouch and not event.pressed) \
+	or (event is InputEventMouseButton and not event.pressed and event.button_index == MOUSE_BUTTON_LEFT):
+		if _drag_dist > 30.0:
+			_snap_to_focus()
+		else:
+			_try_tap_prop(event.position)
+
+func _pan(dy: float) -> void:
+	_drag_dist += absf(dy)  # drag DOWN reveals levels further up the trail
+	_set_focus_s(_path_s + dy * PAN_SPEED)
+
+func _snap_to_focus() -> void:
+	var target: float = ORB_START_S + float(_focus_level) * ORB_GAP_S
+	var tw := create_tween().set_trans(Tween.TRANS_CUBIC).set_ease(Tween.EASE_OUT)
+	tw.tween_method(_set_focus_s, _path_s, target, 0.5)
+
+# Procedural level path in plane-LOCAL (x, z) world space. p: 0 = near (level
+# 1) .. 1 = far. A serpentine running far up the (long) terrain — most of it is
+# off-screen; you swipe to pan along it. World-space (not screen-space) so it
+# can extend well beyond a single view.
+func _path_world(p: float) -> Vector2:
+	var z: float = lerpf(PATH_Z_NEAR, PATH_Z_FAR, clampf(p, -0.25, 1.2))  # p<0 extends toward the camera
+	var x: float = PATH_AMP * sin(p * PI * PATH_SWITCHBACKS)
+	return Vector2(x, z)
+
+# Iter 339: project each level tile's terrain anchor to the screen so the orbs
+# sit ON the hilly map. Tiles behind the camera are hidden; the rest are scaled
+# by camera distance for perspective and centred on their projected point.
+func _place_orbs_on_terrain() -> void:
+	var cam: Camera3D = get_node_or_null("Terrain3D/SubViewport/Camera3D")
+	var terrain = get_node_or_null("Terrain3D")
+	var gnd: Node3D = get_node_or_null("Terrain3D/SubViewport/Ground")
+	if cam == null or terrain == null or gnd == null or _orb_anchors.size() < ORB_NODE_NAMES.size():
+		return
+	for i in ORB_NODE_NAMES.size():
+		var btn: Control = get_node_or_null(NodePath(ORB_NODE_NAMES[i])) as Control
+		if btn == null:
+			continue
+		var a: Vector2 = _orb_anchors[i]
+		var hy: float = terrain.call("height_at", a.x, a.y)
+		var world: Vector3 = gnd.global_transform * Vector3(a.x, hy, a.y)
+		if cam.is_position_behind(world):
+			btn.visible = false
+			continue
+		btn.visible = true
+		var center: Vector2 = cam.unproject_position(world)
+		var base: Vector2 = btn.get_meta("base_scale", Vector2.ONE)
+		var dist: float = cam.global_position.distance_to(world)
+		btn.scale = base * clampf(ORB_NEAR_DIST / dist, 0.3, 1.05) * ORB_SIZE_MULT
+		btn.position = center - btn.size * 0.5
+	_place_cowboy_marker(cam, terrain, gnd)
+
+# Iter 339: the welcome sign + larger-than-life Western props, dotted along the
+# trail. Each is a swaying breathing-shader billboard on the terrain (child of
+# Ground so it pans with the map) and is tappable for a bounce + creak.
+# [texture, arc-length along the path, side offset (+ right / - left), width, sway]
+const PROP_DATA: Array = [
+	["res://assets/sprites/props/sign_candy_west.png", 7.5, 3.7, 2.6, 0.035],
+	["res://assets/sprites/props/cactus_saguaro.png", 10.0, -3.0, 1.9, 0.05],
+	["res://assets/sprites/props/wagon_covered.png", 17.0, 3.4, 3.2, 0.03],
+	["res://assets/sprites/props/rock_large.png", 24.0, -3.0, 2.2, 0.02],
+	["res://assets/sprites/props/cactus_prickly.png", 31.0, 3.0, 1.7, 0.05],
+	["res://assets/sprites/props/tumbleweed.png", 38.0, -2.8, 1.4, 0.09],
+	["res://assets/sprites/props/rock_small.png", 45.0, 3.0, 1.3, 0.02],
+]
+
+func _place_props() -> void:
+	for d in PROP_DATA:
+		_add_prop(d[0], d[1], d[2], d[3], d[4])
+
+# The cowboy — a larger, idle-looping marker standing on the highest completed
+# (current) level. A 2D animated sprite (so it draws over the orb), driven each
+# frame by that orb's projection in _place_cowboy_marker().
+func _place_cowboy() -> void:
+	if get_node_or_null("/root/GameState"):
+		_focus_level = clampi(GameState.current_level - 1, 0, ORB_COUNT - 1)
+	_cowboy_s = ORB_START_S + float(_focus_level) * ORB_GAP_S
+	var old := get_node_or_null("Cowboy")
+	if old != null:
+		old.set("visible", false)  # retire the tiny fixed 2D cowboy
+	var frames := SpriteFrames.new()
+	frames.set_animation_loop("default", true)
+	frames.set_animation_speed("default", 2.5)
+	var f0: Texture2D = load("res://assets/sprites/posse_idle_00.png")
+	_cowboy_half_h = float(f0.get_height()) * 0.5
+	frames.add_frame("default", f0)
+	frames.add_frame("default", load("res://assets/sprites/posse_idle_01.png"))
+	_cowboy_sprite = AnimatedSprite2D.new()
+	_cowboy_sprite.name = "CowboyMarker"
+	_cowboy_sprite.sprite_frames = frames
+	_cowboy_sprite.centered = true
+	add_child(_cowboy_sprite)
+	_cowboy_sprite.play("default")
+
+func _place_cowboy_marker(cam: Camera3D, terrain, gnd: Node3D) -> void:
+	if _cowboy_sprite == null:
+		return
+	var a: Vector2 = _prop_local(_cowboy_s, COWBOY_SIDE)  # beside the path/orb, not on it
+	var world: Vector3 = gnd.global_transform * Vector3(a.x, float(terrain.call("height_at", a.x, a.y)), a.y)
+	if cam.is_position_behind(world):
+		_cowboy_sprite.visible = false
+		return
+	_cowboy_sprite.visible = true
+	var c: Vector2 = cam.unproject_position(world)
+	var sc: float = clampf(ORB_NEAR_DIST / cam.global_position.distance_to(world), 0.3, 1.05) * ORB_SIZE_MULT * 0.62
+	_cowboy_sprite.scale = Vector2(sc, sc)
+	_cowboy_sprite.position = c - Vector2(0.0, _cowboy_half_h * sc)  # feet on the ground
+
+# Iter 339: rendered orbs as 3D breathing billboards on the terrain (depth-sort
+# with the sign/props — fixes the old 2D-orb-over-3D-sign layering), each with a
+# stylized level number floating + breathing above it. The original level
+# buttons are kept invisible as tap-targets (still projected by _place_orbs).
+func _build_orb_visuals() -> void:
+	var gnd: Node3D = get_node_or_null("Terrain3D/SubViewport/Ground")
+	var terrain = get_node_or_null("Terrain3D")
+	if gnd == null or terrain == null:
+		return
+	for i in ORB_COUNT:
+		var level: int = i + 1
+		var tex: Texture2D = load("res://assets/sprites/props/%s.png" % ORB_TEX.get(level, "orb_locked"))
+		var a: Vector2 = _orb_anchors[i]
+		var gy: float = float(terrain.call("height_at", a.x, a.y))
+		var w: float = 1.1
+		var h: float = w * float(tex.get_height()) / float(tex.get_width())
+		var orb := _make_prop(tex, w, h, 0.04)  # gentle breathe via breathing_prop
+		orb.position = Vector3(a.x, gy + h * 0.5, a.y)
+		gnd.add_child(orb)
+		# stylized level number floating above, breathing on a looping tween
+		var num := Label3D.new()
+		num.text = str(level)
+		num.font = _RYE_FONT
+		num.font_size = 180
+		num.outline_size = 36
+		num.modulate = Color(1.0, 0.97, 0.85)
+		num.outline_modulate = Color(0.25, 0.10, 0.05)
+		num.billboard = BaseMaterial3D.BILLBOARD_ENABLED
+		num.pixel_size = 0.0040
+		num.position = Vector3(a.x, gy + h + 0.25, a.y)
+		gnd.add_child(num)
+		var bt := create_tween().set_loops()
+		bt.tween_property(num, "scale", Vector3.ONE * 1.14, 1.0).set_trans(Tween.TRANS_SINE)
+		bt.tween_property(num, "scale", Vector3.ONE, 1.0).set_trans(Tween.TRANS_SINE)
+		var btn := get_node_or_null(NodePath(ORB_NODE_NAMES[i])) as Control
+		if btn != null:
+			btn.modulate.a = 0.0  # invisible visual; still catches taps
+	for nm in ORB_OLD_DECOR:
+		var node := get_node_or_null(NodePath(nm))
+		if node != null:
+			node.set("visible", false)
+
+# Plane-local (x, z) a perpendicular `side` distance off the path at arc-length
+# `arc_s` — so props sit just beside the trail and stay on-screen when scrolled to.
+func _prop_local(arc_s: float, side: float) -> Vector2:
+	var pp: Vector2 = _path_point_at_length(arc_s, _path_pts, _path_cum)
+	var pp2: Vector2 = _path_point_at_length(arc_s + 0.6, _path_pts, _path_cum)
+	var tang: Vector2 = pp2 - pp
+	if tang.length() < 0.001:
+		tang = Vector2(0, -1)
+	tang = tang.normalized()
+	return pp + Vector2(tang.y, -tang.x) * side
+
+# Build one swaying billboard prop beside the path, drop it on the terrain as a
+# Ground child, and register it as tappable.
+func _add_prop(tex_path: String, arc_s: float, side: float, w: float, sway_amp: float) -> void:
+	var gnd: Node3D = get_node_or_null("Terrain3D/SubViewport/Ground")
+	var terrain = get_node_or_null("Terrain3D")
+	if gnd == null or terrain == null:
+		return
+	var tex: Texture2D = load(tex_path)
+	if tex == null:
+		return
+	var local: Vector2 = _prop_local(arc_s, side)
+	var h: float = w * float(tex.get_height()) / float(tex.get_width())
+	var prop := _make_prop(tex, w, h, sway_amp)
+	prop.position = Vector3(local.x, float(terrain.call("height_at", local.x, local.y)) + h * 0.5, local.y)
+	gnd.add_child(prop)
+	_props.append({"node": prop, "anchor": local, "h": h})
+
+func _make_prop(tex: Texture2D, w: float, h: float, sway_amp: float) -> MeshInstance3D:
+	var mesh := MeshInstance3D.new()
+	var plane := PlaneMesh.new()
+	plane.size = Vector2(w, h)
+	plane.subdivide_width = 5
+	plane.subdivide_depth = 7
+	plane.orientation = 2  # FACE_Z — vertical plane the billboard shader expects
+	mesh.mesh = plane
+	var mat := ShaderMaterial.new()
+	mat.shader = _BREATHING_SHADER
+	mat.set_shader_parameter("albedo_tex", tex)
+	mat.set_shader_parameter("modulate", Color(1, 1, 1, 1))
+	mat.set_shader_parameter("sway_amp", sway_amp)
+	mat.set_shader_parameter("sway_freq", 1.4)
+	mat.set_shader_parameter("bob_amp", 0.012)
+	mat.set_shader_parameter("bob_freq", 2.0)
+	mat.set_shader_parameter("time_offset", randf() * 6.28)
+	if get_node_or_null("/root/SwayPrefs"):
+		mat.set_shader_parameter("sway_profile", SwayPrefs.get_profile())
+	mat.set_shader_parameter("sway_intensity", sway_amp / 0.06)
+	mat.set_shader_parameter("mesh_height", h)
+	mesh.material_override = mat
+	return mesh
+
+# A tap on a prop (not on an orb/Humbug — those are GUI) bounces it + creaks.
+func _try_tap_prop(pos: Vector2) -> void:
+	var cam: Camera3D = get_node_or_null("Terrain3D/SubViewport/Camera3D")
+	if cam == null:
+		return
+	for p in _props:
+		var node: MeshInstance3D = p["node"]
+		var world: Vector3 = node.global_transform.origin
+		if cam.is_position_behind(world):
+			continue
+		var c: Vector2 = cam.unproject_position(world)
+		var top: Vector2 = cam.unproject_position(world + Vector3(0, p["h"] * 0.5, 0))
+		if pos.distance_to(c) < maxf(c.distance_to(top), 55.0):
+			_bounce_prop(node)
+			return
+
+func _bounce_prop(node: MeshInstance3D) -> void:
+	var mat: ShaderMaterial = node.material_override
+	if mat == null:
+		return
+	if _prop_player != null:
+		_prop_player.stream = _CREAK_SFX
+		_prop_player.play()
+	var tw := create_tween()
+	tw.tween_method(_set_bonk.bind(mat), 1.0, 0.62, 0.07)
+	tw.tween_method(_set_bonk.bind(mat), 0.62, 1.12, 0.12).set_trans(Tween.TRANS_BACK)
+	tw.tween_method(_set_bonk.bind(mat), 1.12, 1.0, 0.20).set_ease(Tween.EASE_OUT)
+
+func _set_bonk(v: float, mat: ShaderMaterial) -> void:
+	mat.set_shader_parameter("bonk_squash", v)
+
+# Iter 339: the candy path ribbon. A Line2D drawn under the orb tiles (above
+# the terrain), tapering with distance via its width_curve. Inserted right
+# after Terrain3D in the tree so it draws over the ground but under the tiles.
+# Iter 339: the candy path as a 3D ribbon laid on the terrain (child of Ground,
+# so it drapes over the hills, depth-sorts with the grass, and pans with the
+# map). Built once. UV.v runs along the path so the candy texture tiles; the
+# far tail fades via vertex alpha for the "infinite levels" haze.
+func _build_trail_mesh() -> void:
+	var terrain = get_node_or_null("Terrain3D")
+	var gnd: Node3D = get_node_or_null("Terrain3D/SubViewport/Ground")
+	if terrain == null or gnd == null or _trail_anchors.size() < 2:
+		return
+	var eps: float = 0.06
+	var tile_len: float = 3.6
+	# Extend the ribbon toward the camera (off the bottom of the screen) so the
+	# near end runs off-screen instead of stopping with a hard cap.
+	var anchors: Array[Vector2] = []
+	for p in [-0.18, -0.12, -0.06]:
+		anchors.append(_path_world(p))
+	anchors.append_array(_trail_anchors)
+	var n: int = anchors.size()
+	var ctr: Array[Vector3] = []
+	for a in anchors:
+		ctr.append(Vector3(a.x, float(terrain.call("height_at", a.x, a.y)) + eps, a.y))
+	var run := PackedFloat32Array()
+	run.append(0.0)
+	for i in range(1, n):
+		run.append(run[i - 1] + Vector2(ctr[i].x, ctr[i].z).distance_to(Vector2(ctr[i - 1].x, ctr[i - 1].z)))
+	var st := SurfaceTool.new()
+	st.begin(Mesh.PRIMITIVE_TRIANGLES)
+	for i in range(n - 1):
+		var lr0: Array = _trail_rail(terrain, ctr, i, eps)
+		var lr1: Array = _trail_rail(terrain, ctr, i + 1, eps)
+		var v0: float = run[i] / tile_len
+		var v1: float = run[i + 1] / tile_len
+		var a0: float = _trail_alpha(i, n)
+		var a1: float = _trail_alpha(i + 1, n)
+		_tv(st, lr0[0], Vector2(0, v0), a0); _tv(st, lr0[1], Vector2(1, v0), a0); _tv(st, lr1[1], Vector2(1, v1), a1)
+		_tv(st, lr0[0], Vector2(0, v0), a0); _tv(st, lr1[1], Vector2(1, v1), a1); _tv(st, lr1[0], Vector2(0, v1), a1)
+	st.generate_normals()
+	var mi := MeshInstance3D.new()
+	mi.name = "CandyTrail3D"
+	mi.mesh = st.commit()
+	var mat := StandardMaterial3D.new()
+	mat.albedo_texture = preload("res://assets/sprites/props/candy_path.png")
+	mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	mat.vertex_color_use_as_albedo = true
+	mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA_DEPTH_PRE_PASS
+	mat.cull_mode = BaseMaterial3D.CULL_DISABLED
+	mi.material_override = mat
+	gnd.add_child(mi)
+
+const TRAIL_WIDTH: float = 3.8
+
+# Left/right rail points at sample i — offset perpendicular to the path in XZ,
+# re-dropped onto the terrain so the ribbon hugs the hills across its width.
+func _trail_rail(terrain, ctr: Array, i: int, eps: float) -> Array:
+	var n: int = ctr.size()
+	var tang: Vector3
+	if i == 0:
+		tang = ctr[1] - ctr[0]
+	elif i == n - 1:
+		tang = ctr[n - 1] - ctr[n - 2]
+	else:
+		tang = ctr[i + 1] - ctr[i - 1]
+	tang.y = 0.0
+	if tang.length() < 0.001:
+		tang = Vector3(0, 0, -1)
+	tang = tang.normalized()
+	var perp := Vector3(tang.z, 0.0, -tang.x)
+	var lp: Vector3 = ctr[i] - perp * (TRAIL_WIDTH * 0.5)
+	var rp: Vector3 = ctr[i] + perp * (TRAIL_WIDTH * 0.5)
+	lp.y = float(terrain.call("height_at", lp.x, lp.z)) + eps
+	rp.y = float(terrain.call("height_at", rp.x, rp.z)) + eps
+	return [lp, rp]
+
+func _trail_alpha(i: int, n: int) -> float:
+	# Samples run to u≈1.1; orbs only reach u≈0.88, so keep the ribbon solid
+	# under every orb and fade only the tail beyond it into the haze.
+	var u: float = float(i) / float(n - 1) * 1.10
+	return 1.0 if u <= 0.9 else clampf((1.08 - u) / 0.18, 0.0, 1.0)
+
+func _tv(st: SurfaceTool, p: Vector3, uv: Vector2, a: float) -> void:
+	st.set_color(Color(1, 1, 1, a))
+	st.set_uv(uv)
+	st.add_vertex(p)
 
 # ---------------------------------------------------------------------------
 # Iter 159: Professor Humbug + Monsieur Canard
@@ -649,8 +1103,20 @@ func _on_level_2_pressed() -> void:
 # around the node's CURRENT (perspective-scaled) scale so it doesn't snap
 # back to full size.
 func _start_level(btn: Button, level_num: int) -> void:
+	if _drag_dist > 30.0:
+		return  # this press was the tail of a pan-drag, not a tap
+	if _walking:
+		return
 	DebugLog.add("LEVEL %d selected from level_select" % level_num)
 	AudioBus.play_tap()
+	# Candy-Crush flow: the cowboy strides along the path to the chosen orb (the
+	# view following), then the level loads.
+	_walking = true
+	var target_s: float = ORB_START_S + float(level_num - 1) * ORB_GAP_S
+	var dur: float = clampf(absf(target_s - _cowboy_s) / 14.0, 0.25, 1.6)  # ~14 arc units/sec
+	var walk := create_tween().set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN_OUT)
+	walk.tween_method(_set_cowboy_s, _cowboy_s, target_s, dur)
+	await walk.finished
 	GameState.current_level = level_num
 	btn.disabled = true
 	var cur: Vector2 = btn.scale
@@ -660,6 +1126,12 @@ func _start_level(btn: Button, level_num: int) -> void:
 		.set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
 	await tween.finished
 	get_tree().change_scene_to_file("res://scenes/level_3d.tscn")
+
+# One step of the cowboy's walk: advance his arc-length and pan the view to
+# follow (which also repositions his marker via _place_cowboy_marker).
+func _set_cowboy_s(s: float) -> void:
+	_cowboy_s = s
+	_set_focus_s(s)
 
 func _to_main_menu() -> void:
 	get_tree().change_scene_to_file("res://scenes/main_menu.tscn")
