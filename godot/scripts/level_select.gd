@@ -94,7 +94,13 @@ var _s_min: float = 0.0
 var _s_max: float = 0.0
 var _drag_dist: float = 0.0             # accumulated drag (px) — tells a pan from a tap
 var _focus_level: int = 0               # level the view snaps back to (the cowboy's)
-const PAN_SPEED: float = 0.03           # arc-length per drag pixel
+var pan_speed: float = 0.012            # arc-length per drag pixel (debug-tunable; was 0.03 = too fast)
+var snap_dur: float = 0.8               # snap-back tween seconds (debug-tunable; was 0.5 = too fast)
+var _touches: Dictionary = {}           # active finger index -> position (1 = pan, 2 = pinch)
+var _pinch_base: float = 0.0
+var _was_pinch: bool = false
+var _zoom: float = 1.0
+var _base_fov: float = 70.0
 const _BREATHING_SHADER: Shader = preload("res://shaders/breathing_prop.gdshader")
 const _CREAK_SFX: AudioStream = preload("res://assets/sfx/sign_creak.ogg")
 var _props: Array = []                  # [{node, anchor, h}] — swaying, tappable props
@@ -198,6 +204,10 @@ func _ready() -> void:
 	_prop_player = AudioStreamPlayer.new()
 	_prop_player.bus = "Master"
 	add_child(_prop_player)
+	var _cam := get_node_or_null("Terrain3D/SubViewport/Camera3D") as Camera3D
+	if _cam != null:
+		_base_fov = _cam.fov
+	_build_tuning_sliders()
 
 # Iter 336: same self-building sky as gameplay — sun/moon + clouds + candy
 # mountains in the level-select terrain SubViewport. Time of day follows the
@@ -320,32 +330,113 @@ func _set_focus_s(s: float) -> void:
 # --- Swipe-to-pan along the trail, snapping back to the cowboy's level --------
 # Reset the drag accumulator on every press (in _input so it always fires, even
 # when the press lands on an orb button).
+# Unified gesture handler: 1 finger = pan the trail, 2 fingers = pinch-zoom, a
+# tap = prop bounce. Non-consuming, so the orb buttons still get taps (the
+# _drag_dist guard in _start_level stops a drag from loading a level).
 func _input(event: InputEvent) -> void:
-	if (event is InputEventScreenTouch and event.pressed) \
-	or (event is InputEventMouseButton and event.pressed and event.button_index == MOUSE_BUTTON_LEFT):
-		_drag_dist = 0.0
-
-# Drags the orbs/Humbug didn't consume pan the trail; release snaps back.
-func _unhandled_input(event: InputEvent) -> void:
-	if event is InputEventScreenDrag:
-		_pan(event.relative.y)
-	elif event is InputEventMouseMotion and (event.button_mask & MOUSE_BUTTON_MASK_LEFT) != 0:
-		_pan(event.relative.y)
-	elif (event is InputEventScreenTouch and not event.pressed) \
-	or (event is InputEventMouseButton and not event.pressed and event.button_index == MOUSE_BUTTON_LEFT):
-		if _drag_dist > 30.0:
+	if event is InputEventScreenTouch:
+		if event.pressed:
+			_touches[event.index] = event.position
+			if _touches.size() == 1:
+				_drag_dist = 0.0
+				_was_pinch = false
+			elif _touches.size() == 2:
+				_was_pinch = true
+				_pinch_base = _two_dist()
+		else:
+			var pos: Vector2 = event.position
+			_touches.erase(event.index)
+			if _touches.is_empty():
+				if _was_pinch:
+					_snap_zoom()
+				elif _drag_dist > 30.0:
+					_snap_to_focus()
+				else:
+					_try_tap_prop(pos)
+	elif event is InputEventScreenDrag:
+		_touches[event.index] = event.position
+		if _touches.size() >= 2:
+			_apply_pinch()
+		else:
+			_pan(event.relative.y)
+	elif event is InputEventMouseButton and event.button_index == MOUSE_BUTTON_LEFT:
+		if event.pressed:
+			_drag_dist = 0.0
+		elif _drag_dist > 30.0:
 			_snap_to_focus()
 		else:
 			_try_tap_prop(event.position)
+	elif event is InputEventMouseMotion and (event.button_mask & MOUSE_BUTTON_MASK_LEFT) != 0:
+		_pan(event.relative.y)
 
 func _pan(dy: float) -> void:
 	_drag_dist += absf(dy)  # drag DOWN reveals levels further up the trail
-	_set_focus_s(_path_s + dy * PAN_SPEED)
+	_set_focus_s(_path_s + dy * pan_speed)
 
 func _snap_to_focus() -> void:
 	var target: float = ORB_START_S + float(_focus_level) * ORB_GAP_S
 	var tw := create_tween().set_trans(Tween.TRANS_CUBIC).set_ease(Tween.EASE_OUT)
-	tw.tween_method(_set_focus_s, _path_s, target, 0.5)
+	tw.tween_method(_set_focus_s, _path_s, target, snap_dur)
+
+# --- Pinch-zoom (two-finger), snaps back to default on release --------------
+func _two_dist() -> float:
+	var pts: Array = _touches.values()
+	return pts[0].distance_to(pts[1]) if pts.size() >= 2 else 0.0
+
+func _apply_pinch() -> void:
+	var d: float = _two_dist()
+	if _pinch_base <= 0.0:
+		_pinch_base = d
+		return
+	_zoom = clampf(_zoom * (d / _pinch_base), 0.6, 2.5)
+	_pinch_base = d
+	_set_zoom()
+
+func _set_zoom() -> void:
+	var cam: Camera3D = get_node_or_null("Terrain3D/SubViewport/Camera3D")
+	if cam != null:
+		cam.fov = clampf(_base_fov / _zoom, 32.0, 95.0)
+		_place_orbs_on_terrain()
+
+func _snap_zoom() -> void:
+	var tw := create_tween().set_trans(Tween.TRANS_CUBIC).set_ease(Tween.EASE_OUT)
+	tw.tween_method(func(z: float): _zoom = z; _set_zoom(), _zoom, 1.0, snap_dur)
+
+# Debug-only sliders to live-tune pan speed + snap duration on-device.
+func _build_tuning_sliders() -> void:
+	if not OS.has_feature("debug"):
+		return
+	var box := VBoxContainer.new()
+	box.name = "TuningSliders"
+	box.position = Vector2(300, 250)  # top area, clear of Humbug + the orbs
+	box.add_theme_constant_override("separation", 2)
+	var ps_lbl := Label.new()
+	ps_lbl.text = "pan_speed  %.3f" % pan_speed
+	var ps := HSlider.new()
+	ps.min_value = 0.004
+	ps.max_value = 0.06
+	ps.step = 0.001
+	ps.value = pan_speed
+	ps.custom_minimum_size = Vector2(380, 36)
+	ps.value_changed.connect(func(v: float): pan_speed = v; ps_lbl.text = "pan_speed  %.3f" % v)
+	var sd_lbl := Label.new()
+	sd_lbl.text = "snap_dur  %.2f" % snap_dur
+	var sd := HSlider.new()
+	sd.min_value = 0.1
+	sd.max_value = 1.6
+	sd.step = 0.05
+	sd.value = snap_dur
+	sd.custom_minimum_size = Vector2(380, 36)
+	sd.value_changed.connect(func(v: float): snap_dur = v; sd_lbl.text = "snap_dur  %.2f" % v)
+	box.add_child(ps_lbl)
+	box.add_child(ps)
+	box.add_child(sd_lbl)
+	box.add_child(sd)
+	var ui := get_node_or_null("UI")
+	if ui != null:
+		ui.add_child(box)
+	else:
+		add_child(box)
 
 # Procedural level path in plane-LOCAL (x, z) world space. p: 0 = near (level
 # 1) .. 1 = far. A serpentine running far up the (long) terrain — most of it is

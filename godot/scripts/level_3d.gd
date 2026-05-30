@@ -4611,6 +4611,10 @@ func _process(delta: float) -> void:
 		# just tick their death timer. queue_free when the death.ogv
 		# animation has played out.
 		if outlaw.get_meta("dying", false):
+			# Iter 340: scroll the dying outlaw WITH the terrain (same world
+			# velocity as props/scenery) so its death-anim stays stuck to its
+			# spot on the ground instead of drifting backward relative to it.
+			outlaw.position.z += OBSTACLE_SPEED * motion_delta
 			var dt: float = outlaw.get_meta("death_timer", 0.0) - delta
 			outlaw.set_meta("death_timer", dt)
 			if dt <= 0.0:
