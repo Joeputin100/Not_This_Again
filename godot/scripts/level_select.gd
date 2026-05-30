@@ -402,41 +402,67 @@ func _snap_zoom() -> void:
 	var tw := create_tween().set_trans(Tween.TRANS_CUBIC).set_ease(Tween.EASE_OUT)
 	tw.tween_method(func(z: float): _zoom = z; _set_zoom(), _zoom, 1.0, snap_dur)
 
-# Debug-only sliders to live-tune pan speed + snap duration on-device.
+# A fat circular grabber texture so the sliders are thumb-draggable on a phone.
+func _slider_grabber() -> ImageTexture:
+	var r: int = 30
+	var img := Image.create(r * 2, r * 2, false, Image.FORMAT_RGBA8)
+	img.fill(Color(0, 0, 0, 0))
+	for y in r * 2:
+		for x in r * 2:
+			var d: float = Vector2(x - r, y - r).length()
+			if d <= r:
+				img.set_pixel(x, y, Color(1.0, 0.85, 0.35) if d < r - 4 else Color(0.2, 0.1, 0.05))
+	return ImageTexture.create_from_image(img)
+
+# Debug-only sliders to live-tune pan speed + snap duration on-device. Dark
+# bottom panel, large readable values, tall full-width sliders + fat grabbers.
 func _build_tuning_sliders() -> void:
 	if not OS.has_feature("debug"):
 		return
+	var parent: Node = get_node_or_null("UI")
+	if parent == null:
+		parent = self
+	var bg := ColorRect.new()
+	bg.name = "TuningSliders"
+	bg.color = Color(0.06, 0.05, 0.10, 0.9)
+	bg.set_anchors_preset(Control.PRESET_BOTTOM_WIDE)
+	bg.offset_top = -360.0
+	parent.add_child(bg)
 	var box := VBoxContainer.new()
-	box.name = "TuningSliders"
-	box.position = Vector2(300, 250)  # top area, clear of Humbug + the orbs
-	box.add_theme_constant_override("separation", 2)
-	var ps_lbl := Label.new()
-	ps_lbl.text = "pan_speed  %.3f" % pan_speed
-	var ps := HSlider.new()
-	ps.min_value = 0.004
-	ps.max_value = 0.06
-	ps.step = 0.001
-	ps.value = pan_speed
-	ps.custom_minimum_size = Vector2(380, 36)
-	ps.value_changed.connect(func(v: float): pan_speed = v; ps_lbl.text = "pan_speed  %.3f" % v)
-	var sd_lbl := Label.new()
-	sd_lbl.text = "snap_dur  %.2f" % snap_dur
-	var sd := HSlider.new()
-	sd.min_value = 0.1
-	sd.max_value = 1.6
-	sd.step = 0.05
-	sd.value = snap_dur
-	sd.custom_minimum_size = Vector2(380, 36)
-	sd.value_changed.connect(func(v: float): snap_dur = v; sd_lbl.text = "snap_dur  %.2f" % v)
-	box.add_child(ps_lbl)
-	box.add_child(ps)
-	box.add_child(sd_lbl)
-	box.add_child(sd)
-	var ui := get_node_or_null("UI")
-	if ui != null:
-		ui.add_child(box)
-	else:
-		add_child(box)
+	box.set_anchors_preset(Control.PRESET_FULL_RECT)
+	box.offset_left = 50.0
+	box.offset_right = -50.0
+	box.offset_top = 28.0
+	box.offset_bottom = -28.0
+	box.add_theme_constant_override("separation", 16)
+	bg.add_child(box)
+	var grab := _slider_grabber()
+	for spec in [
+			{"name": "pan_speed", "min": 0.004, "max": 0.06, "step": 0.001, "val": pan_speed, "fmt": "%.3f"},
+			{"name": "snap_dur", "min": 0.1, "max": 1.6, "step": 0.05, "val": snap_dur, "fmt": "%.2f"}]:
+		var lbl := Label.new()
+		lbl.add_theme_font_size_override("font_size", 46)
+		lbl.add_theme_color_override("font_color", Color(1, 1, 0.85))
+		lbl.text = "%s  %s" % [spec["name"], spec["fmt"] % spec["val"]]
+		var sl := HSlider.new()
+		sl.min_value = spec["min"]
+		sl.max_value = spec["max"]
+		sl.step = spec["step"]
+		sl.value = spec["val"]
+		sl.custom_minimum_size = Vector2(0, 80)
+		sl.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		sl.add_theme_icon_override("grabber", grab)
+		sl.add_theme_icon_override("grabber_highlight", grab)
+		var nm: String = spec["name"]
+		var fmt: String = spec["fmt"]
+		sl.value_changed.connect(func(v: float):
+			if nm == "pan_speed":
+				pan_speed = v
+			else:
+				snap_dur = v
+			lbl.text = "%s  %s" % [nm, fmt % v])
+		box.add_child(lbl)
+		box.add_child(sl)
 
 # Procedural level path in plane-LOCAL (x, z) world space. p: 0 = near (level
 # 1) .. 1 = far. A serpentine running far up the (long) terrain — most of it is
