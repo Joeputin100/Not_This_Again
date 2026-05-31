@@ -164,6 +164,11 @@ var _gun_state: RefCounted
 #   FINISHED   — Pete defeated or posse=0: motion stops, modal up
 enum LevelState { COUNTDOWN, PLAYING, BOSS, FINISHED }
 var _level_state: int = LevelState.COUNTDOWN
+# SP2: data-driven level (LevelDef timeline played by LevelPlayer).
+var _level_def: LevelDef = null
+var _level_player: LevelPlayer = null
+var _level_distance: float = 0.0      # world distance scrolled (drives the timeline)
+var _boss_from_data: bool = false     # true when the LevelDef has a BOSS event (legacy timer yields)
 const COUNTDOWN_TOTAL: float = 3.5  # 3, 2, 1, GO! across this window
 var _countdown_remaining: float = COUNTDOWN_TOTAL
 var _hits: int = 0
@@ -402,7 +407,18 @@ func _ready() -> void:
 	info_label.text = "iter97 OK · build %s · top-left to exit" % BuildInfo.SHA
 	_build_weapon_indicator()
 	_build_quake_bar()
-	DebugLog.add("level_3d _ready (build=%s)" % BuildInfo.SHA)
+	# SP2: load the data-driven level definition for the current level + play
+	# its timeline. The .tres exist at res://resources/levels/level_N.tres.
+	var _lvl: int = GameState.current_level if get_node_or_null("/root/GameState") else 1
+	var _def_path := "res://resources/levels/level_%d.tres" % _lvl
+	if ResourceLoader.exists(_def_path):
+		_level_def = load(_def_path)
+	if _level_def != null and not _level_def.events.is_empty():
+		_level_player = LevelPlayer.new(_level_def.events)
+		for _ev in _level_def.events:
+			if _ev.kind == LevelEvent.EventKind.BOSS:
+				_boss_from_data = true
+	DebugLog.add("level_3d _ready (build=%s, leveldef=%s, boss_from_data=%s)" % [BuildInfo.SHA, str(_level_def != null), str(_boss_from_data)])
 	# Iter 124: honor DebugPreview.pending_test_range flag.
 	if get_node_or_null("/root/DebugPreview") != null and DebugPreview.pending_test_range:
 		_test_range_mode = true
@@ -3109,6 +3125,21 @@ func _set_pete_anim(pete: Node3D, stream: VideoStream, duration: float = 0.0) ->
 	sprite.texture = sv.get_texture()
 	pete.set_meta("anim_revert_t", duration)
 
+# SP2: route a timeline event to its gameplay spawner. Only BOSS is wired in
+# slice 1; later slices add the other EventKinds.
+func _dispatch_level_event(ev: LevelEvent) -> void:
+	match ev.kind:
+		LevelEvent.EventKind.BOSS:
+			if not _pete_spawned and not _test_range_mode:
+				_pete_spawned = true
+				if String(ev.params.get("boss", "pete")) == "rustler":
+					_spawn_candy_rustler()
+				else:
+					_spawn_pete()
+				_level_state = LevelState.BOSS
+				DebugLog.add("SP2: boss spawned from data event at dist %.1f" % ev.distance)
+
+
 func _spawn_pete() -> void:
 	# Iter 109: video-driven billboard using pete/taps_foot_idle.ogv +
 	# chromakey shader (matches the 2D gameplay outlaw.tscn pattern).
@@ -4805,6 +4836,11 @@ func _process(delta: float) -> void:
 	# outlaws/scenery freeze in place during the duel. Cowboy steering +
 	# bullets + Pete continue to update on the real delta.
 	var motion_delta: float = delta if (_level_state == LevelState.PLAYING and not _cart_encounter) else 0.0
+	# SP2: advance the data timeline by the scrolled distance + dispatch crossings.
+	if _level_player != null:
+		_level_distance += OBSTACLE_SPEED * motion_delta
+		for ev in _level_player.advance(_level_distance):
+			_dispatch_level_event(ev)
 	# Spawn obstacles periodically (PLAYING only).
 	if _level_state != LevelState.PLAYING:
 		_spawn_timer = OBSTACLE_SPAWN_INTERVAL  # reset so they don't pile up
@@ -5024,7 +5060,7 @@ func _process(delta: float) -> void:
 	# Iter 77: spawn Pete after PETE_SPAWN_DELAY.
 	# Iter 118: only counts elapsed during PLAYING.
 	# Iter 124: skip Pete in test range mode.
-	if _level_state == LevelState.PLAYING and not _pete_spawned and not _test_range_mode and _level_elapsed >= PETE_SPAWN_DELAY:
+	if _level_state == LevelState.PLAYING and not _pete_spawned and not _test_range_mode and not _boss_from_data and _level_elapsed >= PETE_SPAWN_DELAY:
 		_pete_spawned = true
 		# Iter 157: boss dispatch by level — level 2 → The Candy Rustler,
 		# every other level → Slippery Pete.
