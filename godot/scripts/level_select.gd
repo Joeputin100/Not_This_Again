@@ -676,9 +676,9 @@ func _build_orb_visuals() -> void:
 		var orb := _make_prop(tex, w, h, 0.04)  # gentle breathe via breathing_prop
 		orb.position = Vector3(a.x, gy + h * 0.5, a.y)
 		_orb_local_centers.append(orb.position)  # for aligned tap targets
-		# Current (last-unlocked) orb: xyz breathe + silver water ripple.
+		# Current (last-unlocked) orb: a gentle breathe marks it (no halo).
 		if i == _focus_level:
-			_add_orb_ripple(gnd, orb, h)
+			_add_orb_breathe(orb)
 		gnd.add_child(orb)
 		# stylized level number floating above, breathing on a looping tween
 		var num := Label3D.new()
@@ -709,53 +709,13 @@ func _build_orb_visuals() -> void:
 		if node != null:
 			node.set("visible", false)
 
-const _SEA_COLS: int = 8
-const _SEA_ROWS: int = 6
-const _SEA_FRAMES: int = 48
-var _sea_mat: StandardMaterial3D = null
-var _sea_frame: int = 0
-
-# Current-level orb treatment: (1) a slow gentle xyz breathe, and (2) a silver
-# water surface — a baked Seascape loop (offline-rendered, sea_halo_sheet.png)
-# played behind the orb so it sits in lapping water. Flipbook via a stock
-# StandardMaterial3D's uv1_offset (NO runtime shader — custom shaders rendered
-# as white rectangles on the mobile renderer; built-ins are safe).
-func _add_orb_ripple(gnd: Node3D, orb: MeshInstance3D, orb_h: float) -> void:
-	# (1) a SLOW, gentle xyz breathe (~4s cycle) — present but calm, not frantic.
+# Current-level orb treatment: a slow, gentle xyz breathe (~4s cycle) so it
+# stands apart from the other orbs. (The water/seascape halo was removed per
+# user — the breathe alone is the marker.)
+func _add_orb_breathe(orb: MeshInstance3D) -> void:
 	var bt := create_tween().set_loops()
 	bt.tween_property(orb, "scale", Vector3.ONE * 1.09, 2.0).set_trans(Tween.TRANS_SINE)
 	bt.tween_property(orb, "scale", Vector3.ONE * 0.97, 2.0).set_trans(Tween.TRANS_SINE)
-	# (2) water disc behind the orb (added before it → drawn behind).
-	var sea := MeshInstance3D.new()
-	var q := QuadMesh.new()
-	var sz: float = orb_h * 2.8
-	q.size = Vector2(sz, sz)
-	sea.mesh = q
-	_sea_mat = StandardMaterial3D.new()
-	_sea_mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
-	_sea_mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
-	_sea_mat.billboard_mode = BaseMaterial3D.BILLBOARD_ENABLED
-	_sea_mat.albedo_texture = load("res://assets/sprites/props/sea_halo_sheet.png")
-	_sea_mat.uv1_scale = Vector3(1.0 / _SEA_COLS, 1.0 / _SEA_ROWS, 1.0)
-	_sea_mat.cull_mode = BaseMaterial3D.CULL_DISABLED
-	sea.material_override = _sea_mat
-	sea.position = orb.position
-	gnd.add_child(sea)
-	_set_sea_frame(0)
-	var t := Timer.new()
-	t.wait_time = 1.0 / 12.0  # ~12fps flipbook
-	t.autostart = true
-	t.timeout.connect(_advance_sea_frame)
-	add_child(t)
-
-func _advance_sea_frame() -> void:
-	_sea_frame = (_sea_frame + 1) % _SEA_FRAMES
-	_set_sea_frame(_sea_frame)
-
-func _set_sea_frame(f: int) -> void:
-	if _sea_mat == null:
-		return
-	_sea_mat.uv1_offset = Vector3(float(f % _SEA_COLS) / _SEA_COLS, float(f / _SEA_COLS) / _SEA_ROWS, 0.0)
 
 # Plane-local (x, z) a perpendicular `side` distance off the path at arc-length
 # `arc_s` — so props sit just beside the trail and stay on-screen when scrolled to.

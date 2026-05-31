@@ -36,8 +36,15 @@ rm -rf "$OUT_DIR"
 STAGE="$OUT_DIR/.stage"
 mkdir -p "$STAGE"
 
-echo "==> downloading $ARTIFACT ..."
-gh run download "$RUN_ID" -R "$REPO" -n "$ARTIFACT" -D "$STAGE"
+# `gh run download` intermittently HANGS on these ~430MB artifacts (iter352),
+# so fetch the artifact zip straight from the REST API instead — fast + reliable.
+echo "==> downloading $ARTIFACT (direct API) ..."
+ART_ID="$(gh api "repos/$REPO/actions/runs/$RUN_ID/artifacts" \
+	--jq ".artifacts[] | select(.name==\"$ARTIFACT\") | .id" 2>/dev/null | head -1)"
+[ -n "$ART_ID" ] || { echo "FATAL: artifact $ARTIFACT not found on run $RUN_ID"; exit 1; }
+gh api "repos/$REPO/actions/artifacts/$ART_ID/zip" > "$STAGE/art.zip"
+[ "$(stat -c%s "$STAGE/art.zip" 2>/dev/null || echo 0)" -gt 1000000 ] || { echo "FATAL: artifact download failed"; exit 1; }
+unzip -o "$STAGE/art.zip" -d "$STAGE" >/dev/null
 AAB="$(find "$STAGE" -name '*.aab' | head -1)"
 [ -n "$AAB" ] || { echo "FATAL: no .aab inside the artifact"; exit 1; }
 
