@@ -169,6 +169,7 @@ var _level_def: LevelDef = null
 var _level_player: LevelPlayer = null
 var _level_distance: float = 0.0      # world distance scrolled (drives the timeline)
 var _boss_from_data: bool = false     # true when the LevelDef has a BOSS event (legacy timer yields)
+var _director: LevelDirector = null   # SP2 slice2: pacing (variable scroll speed + approach-zone halts)
 const COUNTDOWN_TOTAL: float = 3.5  # 3, 2, 1, GO! across this window
 var _countdown_remaining: float = COUNTDOWN_TOTAL
 var _hits: int = 0
@@ -415,6 +416,7 @@ func _ready() -> void:
 		_level_def = load(_def_path)
 	if _level_def != null and not _level_def.events.is_empty():
 		_level_player = LevelPlayer.new(_level_def.events)
+		_director = LevelDirector.new()  # SP2 slice2: drives variable scroll + approach zones
 		for _ev in _level_def.events:
 			if _ev.kind == LevelEvent.EventKind.BOSS:
 				_boss_from_data = true
@@ -3138,6 +3140,29 @@ func _dispatch_level_event(ev: LevelEvent) -> void:
 					_spawn_pete()
 				_level_state = LevelState.BOSS
 				DebugLog.add("SP2: boss spawned from data event at dist %.1f" % ev.distance)
+		LevelEvent.EventKind.PACING:
+			if _director != null:
+				_director.set_cruise(float(ev.params.get("speed_factor", 1.0)))
+				DebugLog.add("SP2: pacing cruise=%.2f at dist %.1f" % [_director.cruise, ev.distance])
+		LevelEvent.EventKind.APPROACH_ZONE:
+			if _director != null:
+				var exit_name := String(ev.params.get("exit", "clear"))
+				var exit_id := LevelDirector.ApproachExit.CLEAR
+				if exit_name == "timer":
+					exit_id = LevelDirector.ApproachExit.TIMER
+				elif exit_name == "event":
+					exit_id = LevelDirector.ApproachExit.EVENT
+				_director.enter_zone(exit_id, float(ev.params.get("timeout", 12.0)))
+				DebugLog.add("SP2: approach zone (%s) at dist %.1f" % [exit_name, ev.distance])
+
+# SP2: live (non-captive) enemy count — drives the director's reactive damping
+# + the CLEAR approach-zone exit. Mirrors the dynamic-camera threat count.
+func _live_enemy_count() -> int:
+	var n: int = 0
+	for c in outlaws_root.get_children():
+		if is_instance_valid(c) and not c.get_meta("is_captive", false):
+			n += 1
+	return n
 
 
 func _spawn_pete() -> void:
@@ -4840,7 +4865,12 @@ func _process(delta: float) -> void:
 	# Iter 118: world motion delta — 0 during BOSS so obstacles/gates/
 	# outlaws/scenery freeze in place during the duel. Cowboy steering +
 	# bullets + Pete continue to update on the real delta.
-	var motion_delta: float = delta if (_level_state == LevelState.PLAYING and not _cart_encounter) else 0.0
+	# SP2 slice2: the director eases the scroll speed (reactive to enemy count)
+	# + holds the world (factor -> 0) during approach zones while outlaws advance.
+	if _director != null:
+		_director.update(delta, _live_enemy_count())
+	var _sf: float = _director.speed_factor() if _director != null else 1.0
+	var motion_delta: float = (delta * _sf) if (_level_state == LevelState.PLAYING and not _cart_encounter) else 0.0
 	# SP2: advance the data timeline by the scrolled distance + dispatch crossings.
 	if _level_player != null:
 		_level_distance += OBSTACLE_SPEED * motion_delta
