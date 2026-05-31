@@ -2,16 +2,16 @@
 
 importer="texture"
 type="CompressedTexture2D"
-uid="uid://dmwl7tbu4dscg"
-path="res://.godot/imported/silver_ring.png-2e4a825f3ea82320be76af0b78a7e9b4.ctex"
+uid="uid://cc2f1ajwm0vxd"
+path="res://.godot/imported/sea_halo_sheet.png-ff5bef3e1bb43d7a1875526b08d355e9.ctex"
 metadata={
 "vram_texture": false
 }
 
 [deps]
 
-source_file="res://assets/sprites/props/silver_ring.png"
-dest_files=["res://.godot/imported/silver_ring.png-2e4a825f3ea82320be76af0b78a7e9b4.ctex"]
+source_file="res://assets/sprites/props/sea_halo_sheet.png"
+dest_files=["res://.godot/imported/sea_halo_sheet.png-ff5bef3e1bb43d7a1875526b08d355e9.ctex"]
 
 [params]
 

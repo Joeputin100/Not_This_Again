@@ -69,3 +69,4 @@ logs/
 __pycache__/
 *.pyc
 *.uid
+godot/.shader_render/frames/

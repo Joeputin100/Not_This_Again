@@ -709,56 +709,53 @@ func _build_orb_visuals() -> void:
 		if node != null:
 			node.set("visible", false)
 
-var _ripple_gnd: Node3D = null    # where ripple rings are parented (the orb's Ground)
-var _ripple_center: Vector3 = Vector3.ZERO
-var _ripple_h: float = 1.1
+const _SEA_COLS: int = 8
+const _SEA_ROWS: int = 6
+const _SEA_FRAMES: int = 48
+var _sea_mat: StandardMaterial3D = null
+var _sea_frame: int = 0
 
-# Current-level orb treatment: (1) a pronounced xyz breathe, and (2) silver
-# water ripples — expanding ring billboards spawned on a timer, each growing
-# outward from the orb's edge and fading, like wave crests lapping away. Built
-# from a stock StandardMaterial3D (NO custom shader — a custom spatial shader
-# rendered as a white rectangle on the mobile renderer; built-ins are safe).
+# Current-level orb treatment: (1) a slow gentle xyz breathe, and (2) a silver
+# water surface — a baked Seascape loop (offline-rendered, sea_halo_sheet.png)
+# played behind the orb so it sits in lapping water. Flipbook via a stock
+# StandardMaterial3D's uv1_offset (NO runtime shader — custom shaders rendered
+# as white rectangles on the mobile renderer; built-ins are safe).
 func _add_orb_ripple(gnd: Node3D, orb: MeshInstance3D, orb_h: float) -> void:
-	# (1) pronounced xyz breathe — clearly bigger than the other orbs' idle bob.
+	# (1) a SLOW, gentle xyz breathe (~4s cycle) — present but calm, not frantic.
 	var bt := create_tween().set_loops()
-	bt.tween_property(orb, "scale", Vector3.ONE * 1.16, 0.95).set_trans(Tween.TRANS_SINE)
-	bt.tween_property(orb, "scale", Vector3.ONE * 0.88, 0.95).set_trans(Tween.TRANS_SINE)
-	# (2) ripple emitter — a looping timer spawns one expanding ring every 0.55s.
-	_ripple_gnd = gnd
-	_ripple_center = orb.position
-	_ripple_h = orb_h
-	var t := Timer.new()
-	t.wait_time = 0.55
-	t.autostart = true
-	t.timeout.connect(_spawn_orb_ring)
-	add_child(t)
-	_spawn_orb_ring()  # one immediately so it's not blank for the first beat
-
-func _spawn_orb_ring() -> void:
-	if _ripple_gnd == null or not is_instance_valid(_ripple_gnd):
-		return
-	var ring := MeshInstance3D.new()
+	bt.tween_property(orb, "scale", Vector3.ONE * 1.09, 2.0).set_trans(Tween.TRANS_SINE)
+	bt.tween_property(orb, "scale", Vector3.ONE * 0.97, 2.0).set_trans(Tween.TRANS_SINE)
+	# (2) water disc behind the orb (added before it → drawn behind).
+	var sea := MeshInstance3D.new()
 	var q := QuadMesh.new()
-	var base: float = _ripple_h * 3.0
-	q.size = Vector2(base, base)
-	ring.mesh = q
-	var m := StandardMaterial3D.new()
-	m.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
-	m.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA  # alpha blend (additive washed out)
-	m.billboard_mode = BaseMaterial3D.BILLBOARD_ENABLED
-	m.albedo_texture = load("res://assets/sprites/props/silver_ring.png")
-	m.albedo_color = Color(0.85, 0.90, 1.0)
-	m.cull_mode = BaseMaterial3D.CULL_DISABLED
-	ring.material_override = m
-	ring.position = _ripple_center
-	ring.scale = Vector3.ONE * 0.30  # start at ~the orb's edge
-	_ripple_gnd.add_child(ring)
-	# grow outward + fade away (a crest lapping out), then free.
-	var tw := create_tween()
-	tw.set_parallel(true)
-	tw.tween_property(ring, "scale", Vector3.ONE * 1.0, 1.5).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_OUT)
-	tw.tween_property(ring, "transparency", 1.0, 1.5).set_trans(Tween.TRANS_SINE)
-	tw.chain().tween_callback(ring.queue_free)
+	var sz: float = orb_h * 2.8
+	q.size = Vector2(sz, sz)
+	sea.mesh = q
+	_sea_mat = StandardMaterial3D.new()
+	_sea_mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	_sea_mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	_sea_mat.billboard_mode = BaseMaterial3D.BILLBOARD_ENABLED
+	_sea_mat.albedo_texture = load("res://assets/sprites/props/sea_halo_sheet.png")
+	_sea_mat.uv1_scale = Vector3(1.0 / _SEA_COLS, 1.0 / _SEA_ROWS, 1.0)
+	_sea_mat.cull_mode = BaseMaterial3D.CULL_DISABLED
+	sea.material_override = _sea_mat
+	sea.position = orb.position
+	gnd.add_child(sea)
+	_set_sea_frame(0)
+	var t := Timer.new()
+	t.wait_time = 1.0 / 12.0  # ~12fps flipbook
+	t.autostart = true
+	t.timeout.connect(_advance_sea_frame)
+	add_child(t)
+
+func _advance_sea_frame() -> void:
+	_sea_frame = (_sea_frame + 1) % _SEA_FRAMES
+	_set_sea_frame(_sea_frame)
+
+func _set_sea_frame(f: int) -> void:
+	if _sea_mat == null:
+		return
+	_sea_mat.uv1_offset = Vector3(float(f % _SEA_COLS) / _SEA_COLS, float(f / _SEA_COLS) / _SEA_ROWS, 0.0)
 
 # Plane-local (x, z) a perpendicular `side` distance off the path at arc-length
 # `arc_s` — so props sit just beside the trail and stay on-screen when scrolled to.
