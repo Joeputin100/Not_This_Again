@@ -4692,13 +4692,18 @@ func _update_cowboy_anim() -> void:
 		elif dx > 0.25:
 			leader = COWBOY_RUN_RIGHT_STREAM
 	_set_cowboy_anim(leader)
-	if group != _posse_anim_group:
-		_posse_anim_group = group
-		for f in _followers:
-			if is_instance_valid(f):
-				var tex: Texture2D = _posse_pool_texture(f.get_meta("pool_slot", 0))
-				if tex != null:
-					f.texture = tex
+	# Keep every follower on the current anim group EVERY frame, not just on a
+	# group change — the transition-only version left any follower that got out
+	# of sync (spawn-timing race / stale viewport texture) stuck on the wrong
+	# clip forever (some posse idle while the rest ran). Self-healing + cheap
+	# (guarded compare over a handful of sprites; get_texture() is the cached
+	# ViewportTexture).
+	_posse_anim_group = group
+	for f in _followers:
+		if is_instance_valid(f):
+			var tex: Texture2D = _posse_pool_texture(f.get_meta("pool_slot", 0))
+			if tex != null and f.texture != tex:
+				f.texture = tex
 
 # Iter 76: outlaw fires a red bullet aimed at the cowboy.
 func _outlaw_fire(outlaw: Node3D) -> void:
