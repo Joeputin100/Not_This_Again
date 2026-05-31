@@ -1,6 +1,15 @@
-[gd_resource type="Resource" script_class="LevelDef" load_steps=2 format=3 uid="uid://b0nttg_lvldef_3"]
+[gd_resource type="Resource" script_class="LevelDef" format=3]
 
 [ext_resource type="Script" path="res://scripts/level_def.gd" id="1_def"]
+[ext_resource type="Script" path="res://scripts/level_event.gd" id="1_onuep"]
+
+[sub_resource type="Resource" id="Resource_mnyl5"]
+script = ExtResource("1_onuep")
+distance = 75.0
+kind = 5
+params = {
+"boss": "pete"
+}
 
 [resource]
 script = ExtResource("1_def")
@@ -8,4 +17,4 @@ difficulty = 3
 terrain = "farm"
 display_name = "FARM ROAD FRACAS"
 seed = 3
-weather_type = ""
+events = Array[ExtResource("1_onuep")]([SubResource("Resource_mnyl5")])

@@ -1,6 +1,15 @@
-[gd_resource type="Resource" script_class="LevelDef" load_steps=2 format=3 uid="uid://b0nttg_lvldef_2"]
+[gd_resource type="Resource" script_class="LevelDef" format=3]
 
 [ext_resource type="Script" path="res://scripts/level_def.gd" id="1_def"]
+[ext_resource type="Script" path="res://scripts/level_event.gd" id="1_or7n4"]
+
+[sub_resource type="Resource" id="Resource_o1k3p"]
+script = ExtResource("1_or7n4")
+distance = 75.0
+kind = 5
+params = {
+"boss": "rustler"
+}
 
 [resource]
 script = ExtResource("1_def")
@@ -8,4 +17,4 @@ difficulty = 2
 terrain = "mine"
 display_name = "MINE SHAFT MAYHEM"
 seed = 2
-weather_type = ""
+events = Array[ExtResource("1_or7n4")]([SubResource("Resource_o1k3p")])

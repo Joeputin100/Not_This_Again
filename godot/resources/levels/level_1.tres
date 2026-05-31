@@ -1,11 +1,18 @@
-[gd_resource type="Resource" script_class="LevelDef" load_steps=2 format=3 uid="uid://b0nttg_lvldef_1"]
+[gd_resource type="Resource" script_class="LevelDef" format=3]
 
 [ext_resource type="Script" path="res://scripts/level_def.gd" id="1_def"]
+[ext_resource type="Script" path="res://scripts/level_event.gd" id="1_sfdh2"]
+
+[sub_resource type="Resource" id="Resource_yc005"]
+script = ExtResource("1_sfdh2")
+distance = 75.0
+kind = 5
+params = {
+"boss": "pete"
+}
 
 [resource]
 script = ExtResource("1_def")
-difficulty = 1
-terrain = "frontier"
 display_name = "FRONTIER STANDOFF"
 seed = 1
-weather_type = ""
+events = Array[ExtResource("1_sfdh2")]([SubResource("Resource_yc005")])
