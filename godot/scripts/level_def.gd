@@ -26,3 +26,14 @@ extends Resource
 
 # Future: weather override. Empty = inherit project default.
 @export var weather_type: String = ""
+
+# SP2 Level Toolkit: the level as data. `events` is a distance-indexed timeline
+# (LevelPlayer fires each as the scrolled distance crosses it); `goal` is the
+# win condition. See docs/superpowers/specs/2026-05-31-sp2-level-toolkit-design.md.
+enum Goal { REACH_END, DEFEAT_BOSS, SURVIVE }
+
+@export var goal: int = Goal.DEFEAT_BOSS
+@export var goal_param: float = 0.0   # REACH_END: end-distance · SURVIVE: seconds
+@export var length: float = 0.0       # total path distance (world units)
+@export var events: Array[LevelEvent] = []
+
