@@ -2726,12 +2726,29 @@ func _build_weapon_indicator() -> void:
 # badge (dim→lit→spent). Reuses the existing weapon icon/label + HeartRow,
 # reparented into the bar; the old scattered POSSE label is hidden.
 var _quake_bar: Control = null
+var _ammo_box: HBoxContainer = null
 var _ammo_pips: Array = []
 var _posse_bar_label: Label = null
 var _pete_badge: TextureRect = null
 var _levelname_label: Label = null
+var _bullet_icon: TextureRect = null   # footnote: the bullet TYPE (candy) under the weapon hero
+var _boss_fill: ColorRect = null       # level-progress fill leading to the boss badge
 var _last_ammo_shown: int = -1
 var _last_posse_shown: int = -1
+const _RYE3D := preload("res://assets/fonts/Rye-Regular.ttf")
+const BOSS_TRACK_W: float = 300.0
+# Weapon HERO art (the gun, not the bullet). Only the six-shooter is drawn so
+# far; other modes fall back to it until their art exists.
+const WEAPON_HERO := {
+	FireMode.CANDY: "res://assets/sprites/props/weapon_six_shooter.png",
+	FireMode.RIFLE: "res://assets/sprites/props/weapon_six_shooter.png",
+	FireMode.FROSTBITE: "res://assets/sprites/props/weapon_six_shooter.png",
+	FireMode.FRENZY: "res://assets/sprites/props/weapon_six_shooter.png",
+}
+# Per-weapon magazine size — drives both the gun + the ammo clip pip count.
+const CLIP_BY_MODE := {
+	FireMode.CANDY: 6, FireMode.RIFLE: 4, FireMode.FROSTBITE: 5, FireMode.FRENZY: 8,
+}
 
 func _build_quake_bar() -> void:
 	var ui: Node = get_node_or_null("UI")
@@ -2760,35 +2777,26 @@ func _build_quake_bar() -> void:
 	_levelname_label.offset_top = 12.0
 	_levelname_label.offset_bottom = 50.0
 	_levelname_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	_levelname_label.add_theme_font_override("font", _RYE3D)
 	_levelname_label.add_theme_font_size_override("font_size", 30)
 	_levelname_label.add_theme_color_override("font_color", Color(1, 0.95, 0.8))
 	_levelname_label.add_theme_constant_override("outline_size", 6)
 	_levelname_label.add_theme_color_override("font_outline_color", Color(0.1, 0.04, 0.03))
 	_levelname_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	bar.add_child(_levelname_label)
-	# 4-colour jelly-bean ammo clip
-	var ammo_box := HBoxContainer.new()
-	ammo_box.name = "AmmoPips"
-	ammo_box.position = Vector2(286, 58)
-	ammo_box.add_theme_constant_override("separation", 8)
-	ammo_box.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	bar.add_child(ammo_box)
-	var clip: int = 6
-	if _gun != null:
-		clip = int(_gun.clip_size)
-	for i in clip:
-		var pip := TextureRect.new()
-		pip.custom_minimum_size = Vector2(44, 44)
-		pip.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
-		pip.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
-		pip.mouse_filter = Control.MOUSE_FILTER_IGNORE
-		ammo_box.add_child(pip)
-		_ammo_pips.append(pip)
-	_recolor_ammo_pips()
+	# 4-colour jelly-bean ammo clip (count = current weapon's magazine)
+	_ammo_box = HBoxContainer.new()
+	_ammo_box.name = "AmmoPips"
+	_ammo_box.position = Vector2(286, 58)
+	_ammo_box.add_theme_constant_override("separation", 8)
+	_ammo_box.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	bar.add_child(_ammo_box)
+	_rebuild_ammo_pips()
 	# posse counter (pulses on change)
 	_posse_bar_label = Label.new()
-	_posse_bar_label.position = Vector2(700, 52)
-	_posse_bar_label.add_theme_font_size_override("font_size", 54)
+	_posse_bar_label.position = Vector2(632, 40)
+	_posse_bar_label.add_theme_font_override("font", _RYE3D)
+	_posse_bar_label.add_theme_font_size_override("font_size", 48)
 	_posse_bar_label.add_theme_color_override("font_color", Color(1, 0.9, 0.5))
 	_posse_bar_label.add_theme_constant_override("outline_size", 8)
 	_posse_bar_label.add_theme_color_override("font_outline_color", Color(0.1, 0.04, 0.03))
@@ -2806,12 +2814,34 @@ func _build_quake_bar() -> void:
 		_pete_badge.texture = load("res://assets/sprites/slippery_pete.png")
 	_pete_badge.modulate = Color(0.5, 0.5, 0.55, 0.8)  # dim until the boss arrives
 	bar.add_child(_pete_badge)
+	# level-progress trail leading into the boss badge
+	var boss_track := ColorRect.new()
+	boss_track.position = Vector2(632, 116)
+	boss_track.size = Vector2(BOSS_TRACK_W, 22)
+	boss_track.color = Color(0.0, 0.0, 0.0, 0.45)
+	boss_track.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	bar.add_child(boss_track)
+	_boss_fill = ColorRect.new()
+	_boss_fill.position = Vector2(632, 116)
+	_boss_fill.size = Vector2(0, 22)
+	_boss_fill.color = Color(1.0, 0.45, 0.30, 1.0)
+	_boss_fill.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	bar.add_child(_boss_fill)
+	# bullet-TYPE footnote chip beside the weapon hero
+	_bullet_icon = TextureRect.new()
+	_bullet_icon.position = Vector2(148, 60)
+	_bullet_icon.size = Vector2(44, 44)
+	_bullet_icon.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	_bullet_icon.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+	_bullet_icon.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	bar.add_child(_bullet_icon)
 	# reparent the weapon hero + name + hearts into the bar (top of the z-order)
 	_reparent_into_bar(_weapon_icon, Vector2(14, 52), Vector2(124, 124))
 	if _weapon_label != null:
-		_weapon_label.add_theme_font_size_override("font_size", 24)
+		_weapon_label.add_theme_font_override("font", _RYE3D)
+		_weapon_label.add_theme_font_size_override("font_size", 26)
 		_weapon_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-		_reparent_into_bar(_weapon_label, Vector2(2, 168), Vector2(280, 32))
+		_reparent_into_bar(_weapon_label, Vector2(2, 160), Vector2(280, 36))
 	_reparent_into_bar(hearts_label, Vector2(286, 124), Vector2(330, 58))
 	if posse_label != null:
 		posse_label.visible = false  # absorbed into the bar
@@ -2832,6 +2862,25 @@ func _reparent_into_bar(node: Control, pos: Vector2, sz: Vector2) -> void:
 	node.offset_right = pos.x + sz.x
 	node.offset_bottom = pos.y + sz.y
 	node.size = sz
+
+# Rebuild the clip to the current weapon's magazine size, then colour the pips.
+func _rebuild_ammo_pips() -> void:
+	if _ammo_box == null:
+		return
+	for c in _ammo_box.get_children():
+		c.queue_free()
+	_ammo_pips.clear()
+	var clip: int = int(_gun.clip_size) if _gun != null else 6
+	for i in clip:
+		var pip := TextureRect.new()
+		pip.custom_minimum_size = Vector2(44, 44)
+		pip.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+		pip.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+		pip.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		_ammo_box.add_child(pip)
+		_ammo_pips.append(pip)
+	_recolor_ammo_pips()
+	_last_ammo_shown = -1  # force a refresh of the filled/spent state
 
 func _recolor_ammo_pips() -> void:
 	if _ammo_pips.is_empty():
@@ -2865,6 +2914,10 @@ func _refresh_quake_bar() -> void:
 		_last_posse_shown = _posse_count_3d
 	if _levelname_label != null:
 		_levelname_label.text = _level_display_name()
+	if _boss_fill != null:
+		var prog: float = 1.0 if _level_state == LevelState.BOSS or _pete_spawned \
+			else clampf(_level_elapsed / PETE_SPAWN_DELAY, 0.0, 1.0)
+		_boss_fill.size.x = BOSS_TRACK_W * prog
 	if _pete_badge != null:
 		if _pete_defeated:
 			_pete_badge.modulate = Color(0.3, 0.3, 0.3, 0.5)
@@ -2878,11 +2931,24 @@ func _update_weapon_label() -> void:
 		return
 	_weapon_label.text = WEAPON_NAMES.get(_fire_mode, "JELLY BEAN")
 	_weapon_label.add_theme_color_override("font_color", WEAPON_COLORS.get(_fire_mode, Color.WHITE))
+	# Hero = the WEAPON (gun) image; the bullet candy is the footnote chip.
 	if _weapon_icon != null:
-		var icon_path: String = _CANDY_DIR + str(WEAPON_ICONS.get(_fire_mode, "candy_red.png"))
-		if ResourceLoader.exists(icon_path):
-			_weapon_icon.texture = load(icon_path)
-	_recolor_ammo_pips()
+		var hero_path: String = WEAPON_HERO.get(_fire_mode, WEAPON_HERO[FireMode.CANDY])
+		if ResourceLoader.exists(hero_path):
+			_weapon_icon.texture = load(hero_path)
+	if _bullet_icon != null:
+		var bpath: String = _CANDY_DIR + str(WEAPON_ICONS.get(_fire_mode, "candy_red.png"))
+		if ResourceLoader.exists(bpath):
+			_bullet_icon.texture = load(bpath)
+	# Resize the magazine to this weapon's clip + give a fresh full mag, then
+	# rebuild the clip pips to match (count + colours).
+	var want: int = int(CLIP_BY_MODE.get(_fire_mode, 6))
+	if _gun != null and int(_gun.clip_size) != want:
+		_gun.clip_size = want
+		_gun_state = GunStateScript.new(_gun)  # fresh full mag of the new size
+		_rebuild_ammo_pips()
+	else:
+		_recolor_ammo_pips()
 
 # ── Iter 179: bonus-crate auras (ported from glitz_picker.gd) ─────────────
 # A bonus's glitz config (GlitzPrefs.BONUS_GLITZ) can carry an aura behind
@@ -4653,8 +4719,11 @@ func _process(delta: float) -> void:
 		_process_first_tick_logged = true
 		DebugLog.add("_process first tick — game loop is running, state=%d" % _level_state)
 	# Iter 343: keep the Quake bar's ammo/posse live without hunting every mutation.
-	if _quake_bar != null and _gun_state != null and _gun_state.ammo() != _last_ammo_shown:
-		_refresh_quake_bar()
+	if _quake_bar != null:
+		if _gun_state != null and _gun_state.ammo() != _last_ammo_shown:
+			_refresh_quake_bar()
+		if _boss_fill != null and _level_state == LevelState.PLAYING:
+			_boss_fill.size.x = BOSS_TRACK_W * clampf(_level_elapsed / PETE_SPAWN_DELAY, 0.0, 1.0)
 	# Swap the cowboy + crowd video clips to match the level state.
 	_update_cowboy_anim()
 	# Iter 179: animate the bonus-crate electric auras.
