@@ -86,6 +86,7 @@ const PATH_AMP: float = 7.0      # switchback half-width
 const PATH_SWITCHBACKS: float = 5.0
 const VIEW_FOCUS_Z: float = -2.0 # world z where the focused (cowboy's) level sits — near the bottom
 var _orb_anchors: Array[Vector2] = []   # plane-local (x, z) per orb
+var _orb_local_centers: Array[Vector3] = []  # 3D centre of each orb billboard (for aligned tap targets)
 var _trail_anchors: Array[Vector2] = [] # plane-local (x, z) densely along the path
 var _path_pts: Array[Vector2] = []      # dense path samples for arc-length lookup
 var _path_cum: PackedFloat32Array = PackedFloat32Array()
@@ -538,18 +539,23 @@ func _place_orbs_on_terrain() -> void:
 		var btn: Control = get_node_or_null(NodePath(ORB_NODE_NAMES[i])) as Control
 		if btn == null:
 			continue
-		var a: Vector2 = _orb_anchors[i]
-		var hy: float = terrain.call("height_at", a.x, a.y)
-		var world: Vector3 = gnd.global_transform * Vector3(a.x, hy, a.y)
+		if i >= _orb_local_centers.size():
+			continue
+		# Project to the orb's true 3D CENTRE (not the ground point) so the tap
+		# target sits ON the floating orb, and give it a generous diameter.
+		var world: Vector3 = gnd.global_transform * _orb_local_centers[i]
 		if cam.is_position_behind(world):
 			btn.visible = false
 			continue
 		btn.visible = true
 		var center: Vector2 = cam.unproject_position(world)
-		var base: Vector2 = btn.get_meta("base_scale", Vector2.ONE)
 		var dist: float = cam.global_position.distance_to(world)
-		btn.scale = base * clampf(ORB_NEAR_DIST / dist, 0.3, 1.05) * ORB_SIZE_MULT * _fov_mag()
-		btn.position = center - btn.size * 0.5
+		var sc: float = clampf(ORB_NEAR_DIST / dist, 0.3, 1.05) * ORB_SIZE_MULT * _fov_mag()
+		var d: float = maxf(190.0 * sc, 150.0)  # min 150px tap area, centred on the orb
+		btn.scale = Vector2.ONE
+		btn.custom_minimum_size = Vector2.ZERO
+		btn.size = Vector2(d, d)
+		btn.position = center - Vector2(d, d) * 0.5
 	_place_cowboy_marker(cam, terrain, gnd)
 	_place_humbug_marker(cam, terrain, gnd)
 
@@ -657,6 +663,9 @@ func _build_orb_visuals() -> void:
 	var terrain = get_node_or_null("Terrain3D")
 	if gnd == null or terrain == null:
 		return
+	if get_node_or_null("/root/GameState"):  # know the current level before tagging the halo orb
+		_focus_level = clampi(GameState.current_level - 1, 0, ORB_COUNT - 1)
+	_orb_local_centers.clear()
 	for i in ORB_COUNT:
 		var level: int = i + 1
 		var tex: Texture2D = load("res://assets/sprites/props/%s.png" % ORB_TEX.get(level, "orb_locked"))
@@ -666,6 +675,12 @@ func _build_orb_visuals() -> void:
 		var h: float = w * float(tex.get_height()) / float(tex.get_width())
 		var orb := _make_prop(tex, w, h, 0.04)  # gentle breathe via breathing_prop
 		orb.position = Vector3(a.x, gy + h * 0.5, a.y)
+		_orb_local_centers.append(orb.position)  # for aligned tap targets
+		# Silver light halo BEHIND the last unlocked (current) level's orb — a
+		# soft additive glow sprite, not the shader silhouette-halo (which would
+		# fill the orb's translucent glass dome).
+		if i == _focus_level:
+			_add_orb_halo(gnd, orb.position, h)
 		gnd.add_child(orb)
 		# stylized level number floating above, breathing on a looping tween
 		var num := Label3D.new()
@@ -685,10 +700,40 @@ func _build_orb_visuals() -> void:
 		var btn := get_node_or_null(NodePath(ORB_NODE_NAMES[i])) as Control
 		if btn != null:
 			btn.modulate.a = 0.0  # invisible visual; still catches taps
+			if btn is Button:
+				var empty := StyleBoxEmpty.new()
+				for st in ["normal", "hover", "pressed", "focus", "disabled"]:
+					(btn as Button).add_theme_stylebox_override(st, empty)
+				(btn as Button).flat = true
+				(btn as Button).text = ""
 	for nm in ORB_OLD_DECOR:
 		var node := get_node_or_null(NodePath(nm))
 		if node != null:
 			node.set("visible", false)
+
+# Soft silver glow behind the current-level orb (a billboard, drawn under the
+# orb so its radial edges read as a halo ring), gently pulsing.
+func _add_orb_halo(gnd: Node3D, orb_center: Vector3, orb_h: float) -> void:
+	var glow := MeshInstance3D.new()
+	var q := QuadMesh.new()
+	var sz: float = orb_h * 2.8
+	q.size = Vector2(sz, sz)
+	glow.mesh = q
+	var m := StandardMaterial3D.new()
+	m.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	m.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA  # soft alpha (orb shader uses a hard cutoff)
+	m.blend_mode = BaseMaterial3D.BLEND_MODE_ADD        # additive silver light
+	m.billboard_mode = BaseMaterial3D.BILLBOARD_ENABLED
+	m.albedo_texture = load("res://assets/sprites/props/silver_glow.png")
+	m.albedo_color = Color(1.0, 1.05, 1.3)  # bright silver-blue (additive)
+	m.cull_mode = BaseMaterial3D.CULL_DISABLED
+	m.render_priority = -2  # behind the orb billboard
+	glow.material_override = m
+	glow.position = orb_center  # added before the orb → drawn behind it
+	gnd.add_child(glow)
+	var pt := create_tween().set_loops()
+	pt.tween_property(glow, "scale", Vector3.ONE * 1.12, 1.1).set_trans(Tween.TRANS_SINE)
+	pt.tween_property(glow, "scale", Vector3.ONE, 1.1).set_trans(Tween.TRANS_SINE)
 
 # Plane-local (x, z) a perpendicular `side` distance off the path at arc-length
 # `arc_s` — so props sit just beside the trail and stay on-screen when scrolled to.

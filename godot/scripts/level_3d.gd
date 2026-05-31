@@ -2749,6 +2749,17 @@ const WEAPON_HERO := {
 const CLIP_BY_MODE := {
 	FireMode.CANDY: 6, FireMode.RIFLE: 4, FireMode.FROSTBITE: 5, FireMode.FRENZY: 8,
 }
+# Per-weapon rate of fire (seconds between shots) — lower = faster.
+const FIRE_INTERVAL_BY_MODE := {
+	FireMode.CANDY: 0.18, FireMode.RIFLE: 0.34, FireMode.FROSTBITE: 0.26, FireMode.FRENZY: 0.07,
+}
+# Per-weapon range: the z a bullet travels to before despawning (more negative
+# = longer reach; outlaws spawn at z=-24, so the rifle reaches them, the
+# short-range frostbite only hits close).
+const RANGE_Z_BY_MODE := {
+	FireMode.CANDY: -10.0, FireMode.RIFLE: -26.0, FireMode.FROSTBITE: -6.0, FireMode.FRENZY: -13.0,
+}
+var _bullet_despawn_z: float = -10.0   # current weapon's bullet range (set on weapon change)
 
 func _build_quake_bar() -> void:
 	var ui: Node = get_node_or_null("UI")
@@ -2940,6 +2951,10 @@ func _update_weapon_label() -> void:
 		var bpath: String = _CANDY_DIR + str(WEAPON_ICONS.get(_fire_mode, "candy_red.png"))
 		if ResourceLoader.exists(bpath):
 			_bullet_icon.texture = load(bpath)
+	# Per-weapon rate of fire + bullet range.
+	if _gun != null:
+		_gun.fire_interval = float(FIRE_INTERVAL_BY_MODE.get(_fire_mode, 0.18))
+	_bullet_despawn_z = float(RANGE_Z_BY_MODE.get(_fire_mode, -10.0))
 	# Resize the magazine to this weapon's clip + give a fresh full mag, then
 	# rebuild the clip pips to match (count + colours).
 	var want: int = int(CLIP_BY_MODE.get(_fire_mode, 6))
@@ -5140,8 +5155,8 @@ func _process(delta: float) -> void:
 		if not (bullet is Node3D):
 			continue
 		bullet.position.z -= BULLET_SPEED * delta
-		# Despawn off the far end.
-		if bullet.position.z < BULLET_DESPAWN_Z:
+		# Despawn at the weapon's range (per-bullet; default const otherwise).
+		if bullet.position.z < float(bullet.get_meta("despawn_z", BULLET_DESPAWN_Z)):
 			bullet.queue_free()
 			continue
 		# Iter 110: gate-vs-bullet collision — bullets count down the
@@ -5297,6 +5312,7 @@ func _spawn_bullet_at(world_x: float, world_z: float) -> void:
 	var world_diam: float = BULLET_PIXEL_SIZE * 2.0 * size_mult * 0.6
 	var bullet: Sprite3D = _make_candy_billboard(paths, world_diam)
 	bullet.position = Vector3(world_x, BULLET_SPAWN_Y, world_z - 0.5)
+	bullet.set_meta("despawn_z", _bullet_despawn_z)  # per-weapon range
 	bullets_root.add_child(bullet)
 
 # Shared candy-sprite factory: a camera-facing Sprite3D sized to world_diam,
