@@ -437,9 +437,7 @@ func _set_zoom() -> void:
 	var cam: Camera3D = get_node_or_null("Terrain3D/SubViewport/Camera3D")
 	if cam != null:
 		cam.fov = clampf(_base_fov / _zoom, 32.0, 95.0)
-		_place_orbs_on_terrain()  # re-scales the cowboy by _fov_mag too
-		if humbug != null:
-			humbug.scale = _humbug_base_scale * _fov_mag()  # 2D guide + canard track the zoom
+		_place_orbs_on_terrain()  # re-scales the cowboy + Humbug (both _fov_mag-aware)
 
 # Magnification a camera-FOV zoom applies to on-screen size, so 2D overlays
 # (cowboy, Humbug) match the 3D billboards that zoom through the projection.
@@ -553,6 +551,33 @@ func _place_orbs_on_terrain() -> void:
 		btn.scale = base * clampf(ORB_NEAR_DIST / dist, 0.3, 1.05) * ORB_SIZE_MULT * _fov_mag()
 		btn.position = center - btn.size * 0.5
 	_place_cowboy_marker(cam, terrain, gnd)
+	_place_humbug_marker(cam, terrain, gnd)
+
+# Iter 345: Professor Humbug bound to the terrain at the welcome sign's
+# left-front (was a fixed bottom-left button that read as "floating"). Driven
+# like the cowboy marker — projected, distance+zoom scaled, pans with the map.
+# CanardZone is his child so it follows; the chroma-key flourish video is
+# re-homed over his current rect in _play_flourish.
+const HUMBUG_ARC_S: float = 7.2   # just in front of the sign (sign is at arc 7.5)
+const HUMBUG_SIDE: float = 5.2    # screen-left of the sign (higher side = further screen-left)
+
+func _place_humbug_marker(cam: Camera3D, terrain, gnd: Node3D) -> void:
+	if humbug == null:
+		return
+	var a: Vector2 = _prop_local(HUMBUG_ARC_S, HUMBUG_SIDE)
+	var world: Vector3 = gnd.global_transform * Vector3(a.x, float(terrain.call("height_at", a.x, a.y)), a.y)
+	if cam.is_position_behind(world):
+		humbug.visible = false
+		return
+	if not (_flourish_video != null and _flourish_video.visible):
+		humbug.visible = true   # don't un-hide mid video-flourish
+	var c: Vector2 = cam.unproject_position(world)
+	var sc: float = clampf(ORB_NEAR_DIST / cam.global_position.distance_to(world), 0.3, 1.05) * ORB_SIZE_MULT * 0.62 * _fov_mag()
+	_humbug_base_scale = Vector2(sc, sc)
+	_humbug_base_pos = Vector2(c.x - humbug.size.x * 0.5, c.y - humbug.size.y * 0.5 * sc - humbug.size.y * 0.5)
+	if _humbug_flourish == null or not _humbug_flourish.is_valid():
+		humbug.position = _humbug_base_pos
+		humbug.scale = _humbug_base_scale
 
 # Iter 339: the welcome sign + larger-than-life Western props, dotted along the
 # trail. Each is a swaying breathing-shader billboard on the terrain (child of
@@ -1122,18 +1147,18 @@ func _reset_humbug_transform() -> void:
 	if _humbug_flourish != null:
 		_humbug_flourish.kill()
 	humbug.position = _humbug_base_pos
-	humbug.scale = Vector2.ONE
+	humbug.scale = _humbug_base_scale  # rest = his terrain-projected scale (not 1)
 	humbug.rotation = 0.0
 
 func _humbug_tip_flourish() -> void:
 	_reset_humbug_transform()
 	var t := create_tween()
 	t.set_parallel(true)
-	t.tween_property(humbug, "scale", Vector2(1.06, 0.90), 0.12) \
+	t.tween_property(humbug, "scale", _humbug_base_scale * Vector2(1.06, 0.90), 0.12) \
 		.set_trans(Tween.TRANS_QUAD)
 	t.tween_property(humbug, "position", _humbug_base_pos + Vector2(0, 14), 0.12) \
 		.set_trans(Tween.TRANS_QUAD)
-	t.chain().tween_property(humbug, "scale", Vector2.ONE, 0.32) \
+	t.chain().tween_property(humbug, "scale", _humbug_base_scale, 0.32) \
 		.set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
 	t.parallel().tween_property(humbug, "position", _humbug_base_pos, 0.32) \
 		.set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
@@ -1169,6 +1194,12 @@ func _play_flourish(kind: String) -> bool:
 	if path == "" or not ResourceLoader.exists(path):
 		return false
 	_flourish_video.stream = load(path)
+	# Iter 345: re-home the clip over Humbug's CURRENT terrain-projected rect
+	# (he's no longer a fixed bottom-left button), a touch larger for clip margin.
+	var vsize: Vector2 = humbug.size * humbug.scale * 1.25
+	var center: Vector2 = humbug.position + humbug.size * 0.5
+	_flourish_video.position = center - vsize * 0.5
+	_flourish_video.size = vsize
 	_flourish_video.visible = true
 	_flourish_video.play()
 	humbug.visible = false  # iter 172: hide the static PNG so it doesn't double the video
