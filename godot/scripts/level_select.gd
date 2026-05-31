@@ -109,7 +109,7 @@ const _BREATHING_SHADER: Shader = preload("res://shaders/breathing_prop.gdshader
 const _CREAK_SFX: AudioStream = preload("res://assets/sfx/sign_creak.ogg")
 var _props: Array = []                  # [{node, anchor, h}] — swaying, tappable props
 var _prop_player: AudioStreamPlayer
-var _cowboy_sprite: AnimatedSprite2D    # idle-looping marker on the cowboy's level
+var _cowboy_sprite: VideoStreamPlayer   # idle-looping marker on the cowboy's level (chroma-keyed Veo clip)
 var _cowboy_s: float = 0.0              # the cowboy's arc-length position along the path
 var _walking: bool = false              # true while the cowboy strides to a selected orb
 var _cowboy_half_h: float = 128.0       # half the idle texture height (for grounding his feet)
@@ -607,19 +607,27 @@ func _place_cowboy() -> void:
 	var old := get_node_or_null("Cowboy")
 	if old != null:
 		old.set("visible", false)  # retire the tiny fixed 2D cowboy
-	var frames := SpriteFrames.new()
-	frames.set_animation_loop("default", true)
-	frames.set_animation_speed("default", 2.5)
-	var f0: Texture2D = load("res://assets/sprites/posse_idle_00.png")
-	_cowboy_half_h = float(f0.get_height()) * 0.5
-	frames.add_frame("default", f0)
-	frames.add_frame("default", load("res://assets/sprites/posse_idle_01.png"))
-	_cowboy_sprite = AnimatedSprite2D.new()
+	# Iter 346: a Veo-rendered 24fps idle loop (breathe + weight-shift + wave),
+	# chroma-keyed live off its #00B140 green plate — same technique as the
+	# gameplay cowboy + Humbug's flourish clips. One small ogv, no frame dump.
+	_cowboy_sprite = VideoStreamPlayer.new()
 	_cowboy_sprite.name = "CowboyMarker"
-	_cowboy_sprite.sprite_frames = frames
-	_cowboy_sprite.centered = true
+	_cowboy_sprite.expand = true
+	_cowboy_sprite.loop = true
+	_cowboy_sprite.volume_db = -80.0  # mute any Veo-generated audio
+	_cowboy_sprite.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	var ck := ShaderMaterial.new()
+	ck.shader = CHROMAKEY_SHADER
+	ck.set_shader_parameter("chroma_color", Color(0.0, 0.694, 0.251))  # Veo green #00B140
+	ck.set_shader_parameter("similarity", 0.40)
+	ck.set_shader_parameter("blend_amount", 0.10)
+	ck.set_shader_parameter("black_threshold", 0.0)
+	_cowboy_sprite.material = ck
+	var clip := load("res://assets/videos/cowboy/cowboy_idle.ogv")
+	if clip != null:
+		_cowboy_sprite.stream = clip
 	add_child(_cowboy_sprite)
-	_cowboy_sprite.play("default")
+	_cowboy_sprite.play()
 
 func _place_cowboy_marker(cam: Camera3D, terrain, gnd: Node3D) -> void:
 	if _cowboy_sprite == null:
@@ -632,8 +640,13 @@ func _place_cowboy_marker(cam: Camera3D, terrain, gnd: Node3D) -> void:
 	_cowboy_sprite.visible = true
 	var c: Vector2 = cam.unproject_position(world)
 	var sc: float = clampf(ORB_NEAR_DIST / cam.global_position.distance_to(world), 0.3, 1.05) * ORB_SIZE_MULT * 0.62 * _fov_mag()
-	_cowboy_sprite.scale = Vector2(sc, sc)
-	_cowboy_sprite.position = c - Vector2(0.0, _cowboy_half_h * sc)  # feet on the ground
+	# The clip is 720×1280 with the cowboy's feet at ~0.953 down the frame.
+	# Size to match the old sprite's on-screen height (~559·sc), feet at c.
+	var dh: float = 559.0 * sc
+	var dw: float = dh * (720.0 / 1280.0)
+	_cowboy_sprite.size = Vector2(dw, dh)
+	_cowboy_sprite.pivot_offset = Vector2(dw, dh) * 0.5  # tap-pops scale around his middle
+	_cowboy_sprite.position = Vector2(c.x - dw * 0.5, c.y - 0.953 * dh)  # feet on the ground
 
 # Iter 339: rendered orbs as 3D breathing billboards on the terrain (depth-sort
 # with the sign/props — fixes the old 2D-orb-over-3D-sign layering), each with a
@@ -810,14 +823,8 @@ func _set_bonk(v: float, mat: ShaderMaterial) -> void:
 func _try_tap_cowboy(pos: Vector2) -> bool:
 	if _cowboy_sprite == null or not _cowboy_sprite.visible or _walking:
 		return false
-	var frames := _cowboy_sprite.sprite_frames
-	if frames == null:
-		return false
-	var tex := frames.get_frame_texture("default", 0)
-	if tex == null:
-		return false
-	var sz: Vector2 = tex.get_size() * _cowboy_sprite.scale
-	var rect := Rect2(_cowboy_sprite.position - sz * 0.5, sz)  # centered sprite
+	# VideoStreamPlayer is a Control: position is top-left, size is its rect.
+	var rect := Rect2(_cowboy_sprite.position, _cowboy_sprite.size * _cowboy_sprite.scale)
 	if not rect.has_point(pos):
 		return false
 	_react_cowboy()
