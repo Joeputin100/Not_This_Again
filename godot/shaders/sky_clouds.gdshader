@@ -32,6 +32,7 @@ uniform float mtn_az_half = 0.62;   // half azimuth span (rad) the range covers
 uniform float mtn_base = -0.26;     // bottom of band (below true horizon, ≈ the
                                     // terrain far-edge elevation, so bases sit on it)
 uniform float mtn_top = 0.19;       // top elevation (rad) of the mountain band (peaks) — iter339: raised so peaks clear the hilly terrain
+uniform float mtn_pan = 0.0;        // iter343: horizontal UV shift driven by path panning → slight mountain parallax
 
 void sky() {
 	// Height factor: 0 at the horizon, 1 straight up.
@@ -77,7 +78,7 @@ void sky() {
 		float az = atan(EYEDIR.x, -EYEDIR.z);
 		if (abs(az) < mtn_az_half) {
 			float v = (mtn_top - EYEDIR.y) / (mtn_top - mtn_base);
-			vec4 m = texture(mountains_tex, vec2(0.5 + az / (2.0 * mtn_az_half), v));
+			vec4 m = texture(mountains_tex, vec2(0.5 + az / (2.0 * mtn_az_half) + mtn_pan, v));
 			result = mix(result, m.rgb, m.a);
 		}
 	}

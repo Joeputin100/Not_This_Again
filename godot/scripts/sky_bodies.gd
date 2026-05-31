@@ -120,6 +120,18 @@ func apply_preset(preset: Dictionary, shadow_offset: Vector3) -> void:
 
 	_push_cloud_uniforms(preset)
 
+# Iter 343: slight horizontal parallax of the baked horizon mountains, driven
+# by the level-select path pan. Small factor — "slight but noticeable".
+func set_mountain_pan(v: float) -> void:
+	var we: Node = get_node_or_null("WorldEnvironment")
+	if we == null:
+		we = get_parent().get_node_or_null("WorldEnvironment")
+	if we == null or we.environment == null or we.environment.sky == null:
+		return
+	var cm: ShaderMaterial = we.environment.sky.sky_material
+	if cm != null:
+		cm.set_shader_parameter("mtn_pan", v)
+
 func _push_cloud_uniforms(preset: Dictionary) -> void:
 	# Clouds are the WorldEnvironment sky shader — a sibling under Viewport3D
 	# (SP1) or a child of this node (procedural build).

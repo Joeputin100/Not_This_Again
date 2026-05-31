@@ -401,6 +401,7 @@ func _ready() -> void:
 		info_label.text = "iter97 RDY-5 followers ok"
 	info_label.text = "iter97 OK · build %s · top-left to exit" % BuildInfo.SHA
 	_build_weapon_indicator()
+	_build_quake_bar()
 	DebugLog.add("level_3d _ready (build=%s)" % BuildInfo.SHA)
 	# Iter 124: honor DebugPreview.pending_test_range flag.
 	if get_node_or_null("/root/DebugPreview") != null and DebugPreview.pending_test_range:
@@ -2719,6 +2720,159 @@ func _build_weapon_indicator() -> void:
 	ui.add_child(_weapon_label)
 	_update_weapon_label()
 
+# ── Iter 343: Quake bottom bar (Layout A) ──────────────────────────────────
+# One consolidated strip: weapon hero + name footnote · 4-colour jelly-bean
+# ammo clip · hearts · posse counter (pulses on change) · Slippery Pete end
+# badge (dim→lit→spent). Reuses the existing weapon icon/label + HeartRow,
+# reparented into the bar; the old scattered POSSE label is hidden.
+var _quake_bar: Control = null
+var _ammo_pips: Array = []
+var _posse_bar_label: Label = null
+var _pete_badge: TextureRect = null
+var _levelname_label: Label = null
+var _last_ammo_shown: int = -1
+var _last_posse_shown: int = -1
+
+func _build_quake_bar() -> void:
+	var ui: Node = get_node_or_null("UI")
+	if ui == null:
+		return
+	var bar := Control.new()
+	bar.name = "QuakeBar"
+	bar.set_anchors_preset(Control.PRESET_BOTTOM_WIDE)
+	bar.offset_top = -200.0
+	bar.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	ui.add_child(bar)
+	_quake_bar = bar
+	var bg := ColorRect.new()
+	bg.set_anchors_preset(Control.PRESET_FULL_RECT)
+	bg.color = Color(0.16, 0.09, 0.06, 0.88)
+	bg.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	bar.add_child(bg)
+	var accent := ColorRect.new()
+	accent.set_anchors_preset(Control.PRESET_TOP_WIDE)
+	accent.offset_bottom = 8.0
+	accent.color = Color(1.0, 0.45, 0.62, 1.0)  # candy-pink top rail
+	accent.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	bar.add_child(accent)
+	_levelname_label = Label.new()
+	_levelname_label.set_anchors_preset(Control.PRESET_TOP_WIDE)
+	_levelname_label.offset_top = 12.0
+	_levelname_label.offset_bottom = 50.0
+	_levelname_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	_levelname_label.add_theme_font_size_override("font_size", 30)
+	_levelname_label.add_theme_color_override("font_color", Color(1, 0.95, 0.8))
+	_levelname_label.add_theme_constant_override("outline_size", 6)
+	_levelname_label.add_theme_color_override("font_outline_color", Color(0.1, 0.04, 0.03))
+	_levelname_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	bar.add_child(_levelname_label)
+	# 4-colour jelly-bean ammo clip
+	var ammo_box := HBoxContainer.new()
+	ammo_box.name = "AmmoPips"
+	ammo_box.position = Vector2(286, 58)
+	ammo_box.add_theme_constant_override("separation", 8)
+	ammo_box.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	bar.add_child(ammo_box)
+	var clip: int = 6
+	if _gun != null:
+		clip = int(_gun.clip_size)
+	for i in clip:
+		var pip := TextureRect.new()
+		pip.custom_minimum_size = Vector2(44, 44)
+		pip.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+		pip.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+		pip.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		ammo_box.add_child(pip)
+		_ammo_pips.append(pip)
+	_recolor_ammo_pips()
+	# posse counter (pulses on change)
+	_posse_bar_label = Label.new()
+	_posse_bar_label.position = Vector2(700, 52)
+	_posse_bar_label.add_theme_font_size_override("font_size", 54)
+	_posse_bar_label.add_theme_color_override("font_color", Color(1, 0.9, 0.5))
+	_posse_bar_label.add_theme_constant_override("outline_size", 8)
+	_posse_bar_label.add_theme_color_override("font_outline_color", Color(0.1, 0.04, 0.03))
+	_posse_bar_label.pivot_offset = Vector2(90, 34)
+	_posse_bar_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	bar.add_child(_posse_bar_label)
+	# Slippery Pete end badge
+	_pete_badge = TextureRect.new()
+	_pete_badge.position = Vector2(944, 38)
+	_pete_badge.size = Vector2(120, 150)
+	_pete_badge.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	_pete_badge.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+	_pete_badge.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	if ResourceLoader.exists("res://assets/sprites/slippery_pete.png"):
+		_pete_badge.texture = load("res://assets/sprites/slippery_pete.png")
+	_pete_badge.modulate = Color(0.5, 0.5, 0.55, 0.8)  # dim until the boss arrives
+	bar.add_child(_pete_badge)
+	# reparent the weapon hero + name + hearts into the bar (top of the z-order)
+	_reparent_into_bar(_weapon_icon, Vector2(14, 52), Vector2(124, 124))
+	if _weapon_label != null:
+		_weapon_label.add_theme_font_size_override("font_size", 24)
+		_weapon_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		_reparent_into_bar(_weapon_label, Vector2(2, 168), Vector2(280, 32))
+	_reparent_into_bar(hearts_label, Vector2(286, 124), Vector2(330, 58))
+	if posse_label != null:
+		posse_label.visible = false  # absorbed into the bar
+
+func _reparent_into_bar(node: Control, pos: Vector2, sz: Vector2) -> void:
+	if node == null or _quake_bar == null:
+		return
+	var par := node.get_parent()
+	if par != null:
+		par.remove_child(node)
+	_quake_bar.add_child(node)
+	node.anchor_left = 0.0
+	node.anchor_top = 0.0
+	node.anchor_right = 0.0
+	node.anchor_bottom = 0.0
+	node.offset_left = pos.x
+	node.offset_top = pos.y
+	node.offset_right = pos.x + sz.x
+	node.offset_bottom = pos.y + sz.y
+	node.size = sz
+
+func _recolor_ammo_pips() -> void:
+	if _ammo_pips.is_empty():
+		return
+	var cols: Array = CANDY_BULLET_TEX.get(_fire_mode, CANDY_BULLET_TEX[FireMode.CANDY])
+	for i in _ammo_pips.size():
+		var cp: String = _CANDY_DIR + str(cols[i % cols.size()])
+		if ResourceLoader.exists(cp):
+			(_ammo_pips[i] as TextureRect).texture = load(cp)
+
+func _level_display_name() -> String:
+	var lv: int = 1
+	if get_node_or_null("/root/GameState"):
+		lv = GameState.current_level
+	var names := {1: "PEPPERMINT FRONTIER TOWN"}
+	return names.get(lv, "LEVEL %d" % lv)
+
+func _refresh_quake_bar() -> void:
+	if _quake_bar == null:
+		return
+	var ammo: int = _gun_state.ammo() if _gun_state != null else _ammo_pips.size()
+	for i in _ammo_pips.size():
+		(_ammo_pips[i] as TextureRect).modulate.a = 1.0 if i < ammo else 0.20
+	_last_ammo_shown = ammo
+	if _posse_bar_label != null:
+		_posse_bar_label.text = "POSSE %d" % _posse_count_3d
+		if _last_posse_shown >= 0 and _posse_count_3d != _last_posse_shown:
+			var t := create_tween()
+			t.tween_property(_posse_bar_label, "scale", Vector2(1.3, 1.3), 0.08)
+			t.tween_property(_posse_bar_label, "scale", Vector2.ONE, 0.16).set_trans(Tween.TRANS_BACK)
+		_last_posse_shown = _posse_count_3d
+	if _levelname_label != null:
+		_levelname_label.text = _level_display_name()
+	if _pete_badge != null:
+		if _pete_defeated:
+			_pete_badge.modulate = Color(0.3, 0.3, 0.3, 0.5)
+		elif _pete_spawned:
+			_pete_badge.modulate = Color(1, 1, 1, 1)
+		else:
+			_pete_badge.modulate = Color(0.5, 0.5, 0.55, 0.8)
+
 func _update_weapon_label() -> void:
 	if _weapon_label == null:
 		return
@@ -2728,6 +2882,7 @@ func _update_weapon_label() -> void:
 		var icon_path: String = _CANDY_DIR + str(WEAPON_ICONS.get(_fire_mode, "candy_red.png"))
 		if ResourceLoader.exists(icon_path):
 			_weapon_icon.texture = load(icon_path)
+	_recolor_ammo_pips()
 
 # ── Iter 179: bonus-crate auras (ported from glitz_picker.gd) ─────────────
 # A bonus's glitz config (GlitzPrefs.BONUS_GLITZ) can carry an aura behind
@@ -3319,6 +3474,7 @@ func _refresh_hud() -> void:
 		posse_label.text = "POSSE: %d" % _posse_count_3d
 	if hits_label:
 		hits_label.text = "HITS: %d" % _hits
+	_refresh_quake_bar()
 
 # Iter 78: trigger the FAIL flow on posse=0. Deduct a heart, pop the
 # FailOverlay, freeze the game (skip _process via _failed flag).
@@ -4496,6 +4652,9 @@ func _process(delta: float) -> void:
 	if not _process_first_tick_logged:
 		_process_first_tick_logged = true
 		DebugLog.add("_process first tick — game loop is running, state=%d" % _level_state)
+	# Iter 343: keep the Quake bar's ammo/posse live without hunting every mutation.
+	if _quake_bar != null and _gun_state != null and _gun_state.ammo() != _last_ammo_shown:
+		_refresh_quake_bar()
 	# Swap the cowboy + crowd video clips to match the level state.
 	_update_cowboy_anim()
 	# Iter 179: animate the bonus-crate electric auras.

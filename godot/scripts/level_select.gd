@@ -334,6 +334,9 @@ func _set_focus_s(s: float) -> void:
 	var pp: Vector2 = _path_point_at_length(_path_s, _path_pts, _path_cum)
 	gnd.position = Vector3(-pp.x, 0.0, VIEW_FOCUS_Z - pp.y)
 	_place_orbs_on_terrain()
+	var sky := get_node_or_null("Terrain3D/SubViewport/SkyBodies")
+	if sky != null and sky.has_method("set_mountain_pan"):
+		sky.set_mountain_pan(_path_s * 0.012)  # slight horizon parallax as you pan
 
 # --- Swipe-to-pan along the trail, snapping back to the cowboy's level --------
 # Reset the drag accumulator on every press (in _input so it always fires, even
@@ -662,7 +665,7 @@ func _add_prop(tex_path: String, arc_s: float, side: float, w: float, sway_amp: 
 	var prop := _make_prop(tex, w, h, sway_amp)
 	prop.position = Vector3(local.x, float(terrain.call("height_at", local.x, local.y)) + h * 0.5, local.y)
 	gnd.add_child(prop)
-	_props.append({"node": prop, "anchor": local, "h": h})
+	_props.append({"node": prop, "anchor": local, "h": h, "kind": _prop_kind(tex_path)})
 
 func _make_prop(tex: Texture2D, w: float, h: float, sway_amp: float) -> MeshInstance3D:
 	var mesh := MeshInstance3D.new()
@@ -701,20 +704,65 @@ func _try_tap_prop(pos: Vector2) -> void:
 		var c: Vector2 = cam.unproject_position(world)
 		var top: Vector2 = cam.unproject_position(world + Vector3(0, p["h"] * 0.5, 0))
 		if pos.distance_to(c) < maxf(c.distance_to(top), 55.0):
-			_bounce_prop(node)
+			_bounce_prop(node, p.get("kind", "sign"))
 			return
 
-func _bounce_prop(node: MeshInstance3D) -> void:
+# Per-prop tap reactions — each kind moves + sounds differently. Sounds fall
+# back to the sign creak until the per-prop SFX are generated (iter344).
+const _PROP_SFX := {
+	"sign": "res://assets/sfx/sign_creak.ogg",
+	"cactus": "res://assets/sfx/prop_cactus.ogg",
+	"wagon": "res://assets/sfx/prop_wagon.ogg",
+	"rock": "res://assets/sfx/prop_rock.ogg",
+	"tumbleweed": "res://assets/sfx/prop_tumbleweed.ogg",
+}
+
+func _prop_kind(tex_path: String) -> String:
+	var f: String = tex_path.get_file()
+	for k in ["sign", "wagon", "rock", "tumbleweed", "cactus"]:
+		if f.begins_with(k):
+			return k
+	return "sign"
+
+func _bounce_prop(node: MeshInstance3D, kind: String) -> void:
 	var mat: ShaderMaterial = node.material_override
 	if mat == null:
 		return
 	if _prop_player != null:
-		_prop_player.stream = _CREAK_SFX
+		var path: String = _PROP_SFX.get(kind, "")
+		var s: AudioStream = load(path) if (path != "" and ResourceLoader.exists(path)) else _CREAK_SFX
+		_prop_player.stream = s
+		_prop_player.pitch_scale = randf_range(0.94, 1.07)  # subtle per-tap variation
 		_prop_player.play()
 	var tw := create_tween()
-	tw.tween_method(_set_bonk.bind(mat), 1.0, 0.62, 0.07)
-	tw.tween_method(_set_bonk.bind(mat), 0.62, 1.12, 0.12).set_trans(Tween.TRANS_BACK)
-	tw.tween_method(_set_bonk.bind(mat), 1.12, 1.0, 0.20).set_ease(Tween.EASE_OUT)
+	match kind:
+		"cactus":  # stiff & rigid — a small quick quiver + spine shudder
+			tw.tween_method(_set_bonk.bind(mat), 1.0, 0.90, 0.05)
+			tw.tween_method(_set_bonk.bind(mat), 0.90, 1.04, 0.08).set_trans(Tween.TRANS_BACK)
+			tw.tween_method(_set_bonk.bind(mat), 1.04, 1.0, 0.14).set_ease(Tween.EASE_OUT)
+			_damage_pulse(mat, 0.5)
+		"wagon":  # heavy — a big slow squash + a rattling shake
+			tw.tween_method(_set_bonk.bind(mat), 1.0, 0.80, 0.10)
+			tw.tween_method(_set_bonk.bind(mat), 0.80, 1.07, 0.16).set_trans(Tween.TRANS_BACK)
+			tw.tween_method(_set_bonk.bind(mat), 1.07, 1.0, 0.26).set_ease(Tween.EASE_OUT)
+			_damage_pulse(mat, 0.85)
+		"rock":  # barely budges — a tiny dull nudge
+			tw.tween_method(_set_bonk.bind(mat), 1.0, 0.93, 0.05)
+			tw.tween_method(_set_bonk.bind(mat), 0.93, 1.0, 0.12).set_ease(Tween.EASE_OUT)
+		"tumbleweed":  # light & springy — a big bouncy overshoot
+			tw.tween_method(_set_bonk.bind(mat), 1.0, 0.55, 0.06)
+			tw.tween_method(_set_bonk.bind(mat), 0.55, 1.25, 0.14).set_trans(Tween.TRANS_BACK)
+			tw.tween_method(_set_bonk.bind(mat), 1.25, 0.92, 0.12).set_trans(Tween.TRANS_SINE)
+			tw.tween_method(_set_bonk.bind(mat), 0.92, 1.0, 0.16).set_ease(Tween.EASE_OUT)
+		_:  # sign — the original gentle swing-bonk
+			tw.tween_method(_set_bonk.bind(mat), 1.0, 0.62, 0.07)
+			tw.tween_method(_set_bonk.bind(mat), 0.62, 1.12, 0.12).set_trans(Tween.TRANS_BACK)
+			tw.tween_method(_set_bonk.bind(mat), 1.12, 1.0, 0.20).set_ease(Tween.EASE_OUT)
+
+func _damage_pulse(mat: ShaderMaterial, strength: float) -> void:
+	# quick crinkle/shake via the breathing shader's damage_strength uniform
+	var dt := create_tween()
+	dt.tween_method(func(v: float): mat.set_shader_parameter("damage_strength", v), strength, 0.0, 0.35)
 
 func _set_bonk(v: float, mat: ShaderMaterial) -> void:
 	mat.set_shader_parameter("bonk_squash", v)
