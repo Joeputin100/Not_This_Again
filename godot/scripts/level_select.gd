@@ -114,6 +114,14 @@ var _cowboy_s: float = 0.0              # the cowboy's arc-length position along
 var _walking: bool = false              # true while the cowboy strides to a selected orb
 var _cowboy_half_h: float = 128.0       # half the idle texture height (for grounding his feet)
 const COWBOY_SIDE: float = -1.9         # he stands this far to the side of the path/orb
+# Iter 344: tap the cowboy → a random one of 6 warm Murderbot reactions; after
+# COWBOY_QUICK_TAPS taps inside COWBOY_QUICK_WINDOW he gets abrasively annoyed.
+var _cowboy_vo_player: AudioStreamPlayer
+var _cowboy_tap_stamps: Array[float] = []
+const COWBOY_TAP_LINES: int = 6
+const COWBOY_ANNOYED_LINES: int = 6
+const COWBOY_QUICK_TAPS: int = 8
+const COWBOY_QUICK_WINDOW: float = 2.5
 const ORB_NODE_NAMES: Array[String] = [
 	"LevelNode1", "LevelNode2", "LevelNode3Locked", "LevelNode4Locked",
 	"LevelNode5Locked", "LevelNode6Locked", "LevelNode7Locked", "LevelNode8Locked",
@@ -208,6 +216,9 @@ func _ready() -> void:
 	_prop_player = AudioStreamPlayer.new()
 	_prop_player.bus = "Master"
 	add_child(_prop_player)
+	_cowboy_vo_player = AudioStreamPlayer.new()
+	_cowboy_vo_player.bus = "Master"
+	add_child(_cowboy_vo_player)
 	var _cam := get_node_or_null("Terrain3D/SubViewport/Camera3D") as Camera3D
 	if _cam != null:
 		_base_fov = _cam.fov
@@ -362,7 +373,8 @@ func _input(event: InputEvent) -> void:
 				if _was_pinch:
 					_snap_zoom()
 				elif _drag_dist <= 30.0:
-					_try_tap_prop(pos)
+					if not _try_tap_cowboy(pos):
+						_try_tap_prop(pos)
 				_arm_snap()  # let it settle, then drift back to the cowboy
 	elif event is InputEventScreenDrag:
 		_touches[event.index] = event.position
@@ -376,7 +388,8 @@ func _input(event: InputEvent) -> void:
 			_drag_dist = 0.0
 		else:
 			if _drag_dist <= 30.0:
-				_try_tap_prop(event.position)
+				if not _try_tap_cowboy(event.position):
+					_try_tap_prop(event.position)
 			_arm_snap()
 	elif event is InputEventMouseMotion and (event.button_mask & MOUSE_BUTTON_MASK_LEFT) != 0:
 		_pan(event.relative.y)
@@ -766,6 +779,89 @@ func _damage_pulse(mat: ShaderMaterial, strength: float) -> void:
 
 func _set_bonk(v: float, mat: ShaderMaterial) -> void:
 	mat.set_shader_parameter("bonk_squash", v)
+
+# Tap the cowboy → a reaction. Returns true if the tap hit him (so the caller
+# doesn't also fall through to a prop tap).
+func _try_tap_cowboy(pos: Vector2) -> bool:
+	if _cowboy_sprite == null or not _cowboy_sprite.visible or _walking:
+		return false
+	var frames := _cowboy_sprite.sprite_frames
+	if frames == null:
+		return false
+	var tex := frames.get_frame_texture("default", 0)
+	if tex == null:
+		return false
+	var sz: Vector2 = tex.get_size() * _cowboy_sprite.scale
+	var rect := Rect2(_cowboy_sprite.position - sz * 0.5, sz)  # centered sprite
+	if not rect.has_point(pos):
+		return false
+	_react_cowboy()
+	return true
+
+func _react_cowboy() -> void:
+	var now: float = Time.get_ticks_msec() / 1000.0
+	_cowboy_tap_stamps.append(now)
+	_cowboy_tap_stamps = _cowboy_tap_stamps.filter(func(t: float) -> bool: return now - t <= COWBOY_QUICK_WINDOW)
+	var annoyed: bool = _cowboy_tap_stamps.size() >= COWBOY_QUICK_TAPS
+	if _cowboy_vo_player != null:
+		var n: int = COWBOY_ANNOYED_LINES if annoyed else COWBOY_TAP_LINES
+		var path: String = "res://assets/sfx/cowboy_%s_%d.ogg" % ["annoyed" if annoyed else "tap", randi() % n]
+		if ResourceLoader.exists(path):
+			_cowboy_vo_player.stream = load(path)
+			_cowboy_vo_player.play()
+	if annoyed:
+		_cowboy_anim_annoyed()
+		_cowboy_tap_stamps.clear()  # reset so the next burst can re-trigger
+	else:
+		_cowboy_anim(randi() % 6)
+
+# Six procedural tap pops on the 2D cowboy sprite (centered → pivots at his
+# middle). Each self-resets to rest, so a pan's re-projection isn't fought.
+func _cowboy_anim(i: int) -> void:
+	var s := _cowboy_sprite
+	if s == null:
+		return
+	var bs: Vector2 = s.scale
+	var bp: Vector2 = s.position
+	var t := create_tween()
+	match i:
+		0:  # tip-hat nod forward
+			t.tween_property(s, "rotation", -0.14, 0.10)
+			t.tween_property(s, "rotation", 0.0, 0.24).set_trans(Tween.TRANS_BACK)
+		1:  # little jump + land squash
+			t.tween_property(s, "position", bp + Vector2(0, -34), 0.13).set_trans(Tween.TRANS_SINE)
+			t.parallel().tween_property(s, "scale", bs * Vector2(0.94, 1.08), 0.13)
+			t.tween_property(s, "position", bp, 0.15).set_ease(Tween.EASE_IN)
+			t.tween_property(s, "scale", bs * Vector2(1.1, 0.86), 0.05)
+			t.tween_property(s, "scale", bs, 0.14).set_trans(Tween.TRANS_BACK)
+		2:  # squash & spring
+			t.tween_property(s, "scale", bs * Vector2(1.16, 0.84), 0.07)
+			t.tween_property(s, "scale", bs * Vector2(0.93, 1.10), 0.10).set_trans(Tween.TRANS_BACK)
+			t.tween_property(s, "scale", bs, 0.14).set_ease(Tween.EASE_OUT)
+		3:  # lean back
+			t.tween_property(s, "rotation", 0.16, 0.12)
+			t.tween_property(s, "rotation", 0.0, 0.26).set_trans(Tween.TRANS_BACK)
+		4:  # double-take pop
+			t.tween_property(s, "scale", bs * 1.12, 0.06)
+			t.tween_property(s, "scale", bs, 0.08)
+			t.tween_property(s, "scale", bs * 1.08, 0.06)
+			t.tween_property(s, "scale", bs, 0.10).set_trans(Tween.TRANS_BACK)
+		_:  # wiggle
+			t.tween_property(s, "rotation", -0.10, 0.07)
+			t.tween_property(s, "rotation", 0.10, 0.10)
+			t.tween_property(s, "rotation", 0.0, 0.12).set_trans(Tween.TRANS_BACK)
+
+func _cowboy_anim_annoyed() -> void:
+	var s := _cowboy_sprite
+	if s == null:
+		return
+	var bs: Vector2 = s.scale
+	var t := create_tween()
+	t.tween_property(s, "scale", bs * Vector2(0.9, 1.12), 0.05)  # sharp recoil
+	t.tween_property(s, "scale", bs, 0.10)
+	for k in 4:  # irritated shake
+		t.tween_property(s, "rotation", 0.09 if k % 2 == 0 else -0.09, 0.045)
+	t.tween_property(s, "rotation", 0.0, 0.08).set_trans(Tween.TRANS_BACK)
 
 # Iter 339: the candy path ribbon. A Line2D drawn under the orb tiles (above
 # the terrain), tapering with distance via its width_curve. Inserted right
