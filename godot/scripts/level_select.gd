@@ -676,11 +676,9 @@ func _build_orb_visuals() -> void:
 		var orb := _make_prop(tex, w, h, 0.04)  # gentle breathe via breathing_prop
 		orb.position = Vector3(a.x, gy + h * 0.5, a.y)
 		_orb_local_centers.append(orb.position)  # for aligned tap targets
-		# Silver light halo BEHIND the last unlocked (current) level's orb — a
-		# soft additive glow sprite, not the shader silhouette-halo (which would
-		# fill the orb's translucent glass dome).
+		# Current (last-unlocked) orb: xyz breathe + silver water ripple.
 		if i == _focus_level:
-			_add_orb_halo(gnd, orb.position, h)
+			_add_orb_ripple(gnd, orb, h)
 		gnd.add_child(orb)
 		# stylized level number floating above, breathing on a looping tween
 		var num := Label3D.new()
@@ -711,29 +709,56 @@ func _build_orb_visuals() -> void:
 		if node != null:
 			node.set("visible", false)
 
-# Soft silver glow behind the current-level orb (a billboard, drawn under the
-# orb so its radial edges read as a halo ring), gently pulsing.
-func _add_orb_halo(gnd: Node3D, orb_center: Vector3, orb_h: float) -> void:
-	var glow := MeshInstance3D.new()
+var _ripple_gnd: Node3D = null    # where ripple rings are parented (the orb's Ground)
+var _ripple_center: Vector3 = Vector3.ZERO
+var _ripple_h: float = 1.1
+
+# Current-level orb treatment: (1) a pronounced xyz breathe, and (2) silver
+# water ripples — expanding ring billboards spawned on a timer, each growing
+# outward from the orb's edge and fading, like wave crests lapping away. Built
+# from a stock StandardMaterial3D (NO custom shader — a custom spatial shader
+# rendered as a white rectangle on the mobile renderer; built-ins are safe).
+func _add_orb_ripple(gnd: Node3D, orb: MeshInstance3D, orb_h: float) -> void:
+	# (1) pronounced xyz breathe — clearly bigger than the other orbs' idle bob.
+	var bt := create_tween().set_loops()
+	bt.tween_property(orb, "scale", Vector3.ONE * 1.16, 0.95).set_trans(Tween.TRANS_SINE)
+	bt.tween_property(orb, "scale", Vector3.ONE * 0.88, 0.95).set_trans(Tween.TRANS_SINE)
+	# (2) ripple emitter — a looping timer spawns one expanding ring every 0.55s.
+	_ripple_gnd = gnd
+	_ripple_center = orb.position
+	_ripple_h = orb_h
+	var t := Timer.new()
+	t.wait_time = 0.55
+	t.autostart = true
+	t.timeout.connect(_spawn_orb_ring)
+	add_child(t)
+	_spawn_orb_ring()  # one immediately so it's not blank for the first beat
+
+func _spawn_orb_ring() -> void:
+	if _ripple_gnd == null or not is_instance_valid(_ripple_gnd):
+		return
+	var ring := MeshInstance3D.new()
 	var q := QuadMesh.new()
-	var sz: float = orb_h * 2.8
-	q.size = Vector2(sz, sz)
-	glow.mesh = q
+	var base: float = _ripple_h * 3.0
+	q.size = Vector2(base, base)
+	ring.mesh = q
 	var m := StandardMaterial3D.new()
 	m.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
-	m.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA  # soft alpha (orb shader uses a hard cutoff)
-	m.blend_mode = BaseMaterial3D.BLEND_MODE_ADD        # additive silver light
+	m.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA  # alpha blend (additive washed out)
 	m.billboard_mode = BaseMaterial3D.BILLBOARD_ENABLED
-	m.albedo_texture = load("res://assets/sprites/props/silver_glow.png")
-	m.albedo_color = Color(1.0, 1.05, 1.3)  # bright silver-blue (additive)
+	m.albedo_texture = load("res://assets/sprites/props/silver_ring.png")
+	m.albedo_color = Color(0.85, 0.90, 1.0)
 	m.cull_mode = BaseMaterial3D.CULL_DISABLED
-	m.render_priority = -2  # behind the orb billboard
-	glow.material_override = m
-	glow.position = orb_center  # added before the orb → drawn behind it
-	gnd.add_child(glow)
-	var pt := create_tween().set_loops()
-	pt.tween_property(glow, "scale", Vector3.ONE * 1.12, 1.1).set_trans(Tween.TRANS_SINE)
-	pt.tween_property(glow, "scale", Vector3.ONE, 1.1).set_trans(Tween.TRANS_SINE)
+	ring.material_override = m
+	ring.position = _ripple_center
+	ring.scale = Vector3.ONE * 0.30  # start at ~the orb's edge
+	_ripple_gnd.add_child(ring)
+	# grow outward + fade away (a crest lapping out), then free.
+	var tw := create_tween()
+	tw.set_parallel(true)
+	tw.tween_property(ring, "scale", Vector3.ONE * 1.0, 1.5).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_OUT)
+	tw.tween_property(ring, "transparency", 1.0, 1.5).set_trans(Tween.TRANS_SINE)
+	tw.chain().tween_callback(ring.queue_free)
 
 # Plane-local (x, z) a perpendicular `side` distance off the path at arc-length
 # `arc_s` — so props sit just beside the trail and stay on-screen when scrolled to.
