@@ -222,7 +222,7 @@ func _ready() -> void:
 	var _cam := get_node_or_null("Terrain3D/SubViewport/Camera3D") as Camera3D
 	if _cam != null:
 		_base_fov = _cam.fov
-	_build_tuning_sliders()
+	# iter347: pan/snap values are baked (0.021 / 1.60 / 5.0) — debug sliders removed.
 	_snap_timer = Timer.new()
 	_snap_timer.one_shot = true
 	_snap_timer.timeout.connect(_snap_to_focus)
@@ -572,7 +572,7 @@ func _place_humbug_marker(cam: Camera3D, terrain, gnd: Node3D) -> void:
 	if not (_flourish_video != null and _flourish_video.visible):
 		humbug.visible = true   # don't un-hide mid video-flourish
 	var c: Vector2 = cam.unproject_position(world)
-	var sc: float = clampf(ORB_NEAR_DIST / cam.global_position.distance_to(world), 0.3, 1.05) * ORB_SIZE_MULT * 0.62 * _fov_mag()
+	var sc: float = clampf(ORB_NEAR_DIST / cam.global_position.distance_to(world), 0.08, 1.6) * ORB_SIZE_MULT * 0.62 * _fov_mag()
 	_humbug_base_scale = Vector2(sc, sc)
 	_humbug_base_pos = Vector2(c.x - humbug.size.x * 0.5, c.y - humbug.size.y * 0.5 * sc - humbug.size.y * 0.5)
 	if _humbug_flourish == null or not _humbug_flourish.is_valid():
@@ -639,7 +639,7 @@ func _place_cowboy_marker(cam: Camera3D, terrain, gnd: Node3D) -> void:
 		return
 	_cowboy_sprite.visible = true
 	var c: Vector2 = cam.unproject_position(world)
-	var sc: float = clampf(ORB_NEAR_DIST / cam.global_position.distance_to(world), 0.3, 1.05) * ORB_SIZE_MULT * 0.62 * _fov_mag()
+	var sc: float = clampf(ORB_NEAR_DIST / cam.global_position.distance_to(world), 0.08, 1.6) * ORB_SIZE_MULT * 0.62 * _fov_mag()
 	# The clip is 720×1280 with the cowboy's feet at ~0.953 down the frame.
 	# Size to match the old sprite's on-screen height (~559·sc), feet at c.
 	var dh: float = 559.0 * sc
