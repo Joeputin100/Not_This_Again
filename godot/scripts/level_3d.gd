@@ -129,6 +129,7 @@ var obstacles_root: Node3D
 var bullets_root: Node3D
 var gates_root: Node3D
 var outlaws_root: Node3D
+var holes_root: Node3D   # SP2 slice3: pits/cliffs that posse + outlaws fall into
 var outlaw_bullets_root: Node3D
 var boss_root: Node3D
 # Iter 69: terrain_3d.gd script wasn't attached to the inline Terrain3D
@@ -507,6 +508,7 @@ func _build_3d_content() -> void:
 	bullets_root = _make_lvl3d_container("Bullets")
 	gates_root = _make_lvl3d_container("Gates")
 	outlaws_root = _make_lvl3d_container("Outlaws")
+	holes_root = _make_lvl3d_container("Holes")
 	outlaw_bullets_root = _make_lvl3d_container("OutlawBullets")
 	boss_root = _make_lvl3d_container("Boss")
 	popups_root = _make_lvl3d_container("Popups")
@@ -3209,6 +3211,8 @@ func _dispatch_level_event(ev: LevelEvent) -> void:
 					exit_id = LevelDirector.ApproachExit.EVENT
 				_director.enter_zone(exit_id, float(ev.params.get("timeout", 12.0)))
 				DebugLog.add("SP2: approach zone (%s) at dist %.1f" % [exit_name, ev.distance])
+		LevelEvent.EventKind.HOLE:
+			_spawn_hole(ev.params)
 
 # SP2: live (non-captive) enemy count — drives the director's reactive damping
 # + the CLEAR approach-zone exit. Mirrors the dynamic-camera threat count.
@@ -3218,6 +3222,44 @@ func _live_enemy_count() -> int:
 		if is_instance_valid(c) and not c.get_meta("is_captive", false):
 			n += 1
 	return n
+
+# SP2 slice3: a pit/cliff the posse + outlaws fall into. A flat dark decal on
+# the ground that scrolls in with the world; its (x,z) extent is the fall zone.
+func _spawn_hole(params: Dictionary) -> void:
+	if holes_root == null:
+		return
+	var hole := Node3D.new()
+	hole.position = Vector3(float(params.get("x", 0.0)), 0.02, OBSTACLE_SPAWN_Z)
+	hole.set_meta("x_half", float(params.get("x_half", 1.2)))
+	hole.set_meta("z_half", float(params.get("z_half", 1.6)))
+	var mi := MeshInstance3D.new()
+	var pm := PlaneMesh.new()  # PlaneMesh lies flat on XZ (normal up)
+	pm.size = Vector2(hole.get_meta("x_half") * 2.0, hole.get_meta("z_half") * 2.0)
+	mi.mesh = pm
+	var m := StandardMaterial3D.new()
+	m.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	m.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	m.albedo_texture = load("res://assets/sprites/props/pit_hole.png")
+	m.cull_mode = BaseMaterial3D.CULL_DISABLED
+	mi.material_override = m
+	hole.add_child(mi)
+	holes_root.add_child(hole)
+	DebugLog.add("SP2: hole x=%.1f xh=%.1f zh=%.1f" % [hole.position.x, hole.get_meta("x_half"), hole.get_meta("z_half")])
+
+func _in_box(px: float, pz: float, cx: float, cz: float, half_x: float, half_z: float) -> bool:
+	return absf(px - cx) <= half_x and absf(pz - cz) <= half_z
+
+# Drop an entity into a pit: fall + shrink, then free. Marked "falling" so the
+# regular loops skip it.
+func _fall_entity(node: Node3D) -> void:
+	if not is_instance_valid(node):
+		return
+	node.set_meta("falling", true)
+	var t := node.create_tween()
+	t.set_parallel(true)
+	t.tween_property(node, "position:y", node.position.y - 6.0, 0.55).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_IN)
+	t.tween_property(node, "scale", node.scale * 0.15, 0.55)
+	t.chain().tween_callback(node.queue_free)
 
 
 func _spawn_pete() -> void:
@@ -4949,6 +4991,29 @@ func _process(delta: float) -> void:
 			child.position.z += OBSTACLE_SPEED * motion_delta
 			if child.position.z > OBSTACLE_DESPAWN_Z:
 				child.queue_free()
+	# SP2 slice3: scroll holes; drop posse followers + outlaws that wander over one.
+	for hole in holes_root.get_children():
+		if not (hole is Node3D):
+			continue
+		hole.position.z += OBSTACLE_SPEED * motion_delta
+		if hole.position.z > OBSTACLE_DESPAWN_Z + 3.0:
+			hole.queue_free()
+			continue
+		var hx: float = hole.get_meta("x_half", 1.2)
+		var hz: float = hole.get_meta("z_half", 1.6)
+		for f in _followers.duplicate():
+			if is_instance_valid(f) and not f.get_meta("falling", false) \
+			and _in_box(f.position.x, f.position.z, hole.position.x, hole.position.z, hx, hz):
+				_followers.erase(f)
+				_posse_count_3d = maxi(0, _posse_count_3d - 1)
+				_fall_entity(f)
+				_refresh_hud()
+				if _posse_count_3d <= 0:
+					_show_fail()
+		for o in outlaws_root.get_children():
+			if is_instance_valid(o) and not o.get_meta("falling", false) and not o.get_meta("is_captive", false) \
+			and not o.get_meta("dying", false) and _in_box(o.position.x, o.position.z, hole.position.x, hole.position.z, hx, hz):
+				_fall_entity(o)
 	# Iter 75: gates scroll like obstacles + check trigger when crossing z plane
 	_gate_spawn_timer -= delta
 	if _gate_spawn_timer <= 0.0:
@@ -4978,6 +5043,8 @@ func _process(delta: float) -> void:
 	for outlaw in outlaws_root.get_children():
 		if not (outlaw is Node3D):
 			continue
+		if outlaw.get_meta("falling", false):
+			continue  # SP2 slice3: being dropped into a pit; tween owns it
 		# Iter 120: dying outlaws skip movement + fire + collision and
 		# just tick their death timer. queue_free when the death.ogv
 		# animation has played out.
