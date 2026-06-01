@@ -40,4 +40,5 @@ params = {
 script = ExtResource("1_def")
 display_name = "FRONTIER STANDOFF"
 seed = 1
+start_posse = 20
 events = Array[ExtResource("1_sfdh2")]([SubResource("Resource_yc005"), SubResource("Resource_sfdh2"), SubResource("Resource_117ja"), SubResource("Resource_8dpr2")])

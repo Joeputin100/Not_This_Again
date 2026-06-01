@@ -35,5 +35,6 @@ enum Goal { REACH_END, DEFEAT_BOSS, SURVIVE }
 @export var goal: int = Goal.DEFEAT_BOSS
 @export var goal_param: float = 0.0   # REACH_END: end-distance · SURVIVE: seconds
 @export var length: float = 0.0       # total path distance (world units)
+@export var start_posse: int = 5      # posse size the level begins with
 @export var events: Array[LevelEvent] = []
 

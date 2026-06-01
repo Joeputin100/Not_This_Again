@@ -403,9 +403,11 @@ func _ready() -> void:
 	DebugLog.add("level_3d: gun state initialized (clip=%d, fire=%.2fs, reload=%.1fs)" % [
 		_gun.clip_size, _gun.fire_interval, _gun.reload_time,
 	])
+	# iter357: top build-id removed (it's in the debug log). info_label is kept
+	# only for transient gate/boss messages. Add the debug speed + pause controls.
 	if info_label != null:
-		info_label.text = "iter97 RDY-5 followers ok"
-	info_label.text = "iter97 OK · build %s · top-left to exit" % BuildInfo.SHA
+		info_label.text = ""
+	_build_top_debug()
 	_build_weapon_indicator()
 	_build_quake_bar()
 	# SP2: load the data-driven level definition for the current level + play
@@ -414,6 +416,11 @@ func _ready() -> void:
 	var _def_path := "res://resources/levels/level_%d.tres" % _lvl
 	if ResourceLoader.exists(_def_path):
 		_level_def = load(_def_path)
+	# SP2: starting posse size from the level definition (default 5).
+	if _level_def != null and _level_def.start_posse > 0 and _level_def.start_posse != _posse_count_3d:
+		_posse_count_3d = _level_def.start_posse
+		_sync_followers_to_count(_posse_count_3d)
+		_refresh_hud()
 	if _level_def != null and not _level_def.events.is_empty():
 		_level_player = LevelPlayer.new(_level_def.events)
 		_director = LevelDirector.new()  # SP2 slice2: drives variable scroll + approach zones
@@ -2751,6 +2758,9 @@ var _pete_badge: TextureRect = null
 var _levelname_label: Label = null
 var _bullet_icon: TextureRect = null   # footnote: the bullet TYPE (candy) under the weapon hero
 var _boss_fill: ColorRect = null       # level-progress fill leading to the boss badge
+var _reload_label: Label = null        # iter357: RELOADING indicator on the bar (was top info_label)
+var _speed_label: Label = null         # iter357: debug scroll-speed readout (top)
+var _pause_btn: Button = null          # iter357: debug pause/resume (top)
 var _last_ammo_shown: int = -1
 var _last_posse_shown: int = -1
 const _RYE3D := preload("res://assets/fonts/Rye-Regular.ttf")
@@ -2821,6 +2831,16 @@ func _build_quake_bar() -> void:
 	_ammo_box.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	bar.add_child(_ammo_box)
 	_rebuild_ammo_pips()
+	# RELOADING indicator (over the ammo clip; hidden until a reload).
+	_reload_label = Label.new()
+	_reload_label.position = Vector2(286, 18)
+	_reload_label.add_theme_font_size_override("font_size", 30)
+	_reload_label.add_theme_color_override("font_color", Color(1.0, 0.55, 0.25))
+	_reload_label.add_theme_constant_override("outline_size", 6)
+	_reload_label.add_theme_color_override("font_outline_color", Color(0.1, 0.04, 0.03))
+	_reload_label.visible = false
+	_reload_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	bar.add_child(_reload_label)
 	# posse counter (pulses on change)
 	_posse_bar_label = Label.new()
 	_posse_bar_label.position = Vector2(632, 40)
@@ -2874,6 +2894,41 @@ func _build_quake_bar() -> void:
 	_reparent_into_bar(hearts_label, Vector2(286, 124), Vector2(330, 58))
 	if posse_label != null:
 		posse_label.visible = false  # absorbed into the bar
+
+# iter357: top debug controls — a scroll-speed readout (SP2 pacing) + a
+# pause/resume button. The button uses PROCESS_MODE_ALWAYS so it stays
+# clickable while the tree is paused.
+func _build_top_debug() -> void:
+	var ui: Node = get_node_or_null("UI")
+	if ui == null:
+		return
+	_speed_label = Label.new()
+	_speed_label.position = Vector2(24, 22)
+	_speed_label.add_theme_font_size_override("font_size", 30)
+	_speed_label.add_theme_color_override("font_color", Color(0.55, 1.0, 0.7))
+	_speed_label.add_theme_constant_override("outline_size", 5)
+	_speed_label.add_theme_color_override("font_outline_color", Color(0.1, 0.04, 0.03))
+	_speed_label.text = "spd —"
+	_speed_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	ui.add_child(_speed_label)
+	_pause_btn = Button.new()
+	_pause_btn.text = "PAUSE"  # text, not ⏸/▶ — the theme font has no emoji glyphs (tofu)
+	_pause_btn.add_theme_font_size_override("font_size", 26)
+	_pause_btn.anchor_left = 1.0
+	_pause_btn.anchor_right = 1.0
+	_pause_btn.offset_left = -150.0
+	_pause_btn.offset_right = -16.0
+	_pause_btn.offset_top = 16.0
+	_pause_btn.offset_bottom = 84.0
+	_pause_btn.process_mode = Node.PROCESS_MODE_ALWAYS
+	_pause_btn.pressed.connect(_toggle_pause)
+	ui.add_child(_pause_btn)
+
+func _toggle_pause() -> void:
+	var p: bool = not get_tree().paused
+	get_tree().paused = p
+	if _pause_btn != null:
+		_pause_btn.text = "PLAY" if p else "PAUSE"
 
 func _reparent_into_bar(node: Control, pos: Vector2, sz: Vector2) -> void:
 	if node == null or _quake_bar == null:
@@ -3587,17 +3642,17 @@ func _render_countdown() -> void:
 #   reloading      → "RELOADING ▰▰▱▱▱▱"  (pips fill as reload progresses)
 #   ready-to-fire  → "AMMO ▰▰▰▰▱▱"        (pips empty as ammo drains)
 func _refresh_ammo_label_3d() -> void:
-	if info_label == null or _gun_state == null:
+	# iter357: ammo lives on the Quake bar (pips); the top label is gone. This
+	# now only drives the bar's RELOADING indicator.
+	if _reload_label == null or _gun_state == null:
 		return
-	var clip: int = _gun.clip_size
 	if _gun_state.is_reloading():
+		var clip: int = int(_gun.clip_size) if _gun != null else 6
 		var filled: int = int(round(float(clip) * _gun_state.reload_progress()))
-		info_label.text = "RELOADING " + "▰".repeat(filled) + "▱".repeat(clip - filled)
-		info_label.modulate = Color(1.0, 0.55, 0.25, 1)  # amber
+		_reload_label.visible = true
+		_reload_label.text = "RELOADING " + "▰".repeat(filled) + "▱".repeat(maxi(clip - filled, 0))
 	else:
-		var ammo: int = _gun_state.ammo()
-		info_label.text = "AMMO " + "▰".repeat(ammo) + "▱".repeat(clip - ammo)
-		info_label.modulate = Color(1.0, 0.92, 0.55, 1)  # gold
+		_reload_label.visible = false
 
 func _refresh_hud() -> void:
 	if hearts_label:
@@ -4870,6 +4925,8 @@ func _process(delta: float) -> void:
 	if _director != null:
 		_director.update(delta, _live_enemy_count())
 	var _sf: float = _director.speed_factor() if _director != null else 1.0
+	if _speed_label != null:
+		_speed_label.text = "spd %.2f%s" % [_sf, "  HELD" if (_director != null and _director.world_held()) else ""]
 	var motion_delta: float = (delta * _sf) if (_level_state == LevelState.PLAYING and not _cart_encounter) else 0.0
 	# SP2: advance the data timeline by the scrolled distance + dispatch crossings.
 	if _level_player != null:
