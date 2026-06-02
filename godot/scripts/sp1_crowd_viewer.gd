@@ -264,6 +264,27 @@ var _member_initial_clip := {}   # id -> the variety clip the member spawned wit
 var _direction := "idle"
 var _move := Vector3.ZERO
 
+# iter366: area-of-effect firing testbed. Bullets are sampled from across the
+# crowd's breadth + depth (member origins), batched into ONE MultiMesh, and fly
+# forward (-z). Rate scales with crowd size (capped). An indestructible gate sits
+# ahead so we can watch the fire interact with it (bullets absorbed, gate stays).
+const FIRE_BULLET_SPEED := 18.0
+const FIRE_PER_MEMBER := 1.2        # shots/sec per member ...
+const FIRE_MAX_RATE := 450.0        # ... capped so 1000+ doesn't melt the CPU
+const FIRE_FAR_Z := -40.0           # bullets despawn past here
+const FIRE_CHEST_Y := 1.1
+const BULLET_TEX_PATH := "res://assets/sprites/props/bullet_jellybean.png"
+const TEST_GATE_TEX := "res://assets/sprites/props/gate_fence_red.png"
+const TEST_GATE_Z := -9.0
+const TEST_GATE_X_HALF := 5.0
+const TEST_GATE_HEIGHT := 3.0
+var _firing := true                 # default on so the testbed shows fire immediately
+var _bullet_pos := PackedVector3Array()
+var _bullet_mmi: MultiMeshInstance3D = null
+var _fire_accum := 0.0
+var _test_gate: Node3D = null
+var _fire_toggle: CheckButton = null
+
 @onready var viewport_3d: SubViewport = $ViewportContainer/Viewport3D
 @onready var camera_3d: Camera3D = $ViewportContainer/Viewport3D/Camera3D
 @onready var key_light: DirectionalLight3D = $ViewportContainer/Viewport3D/KeyLight
@@ -330,6 +351,9 @@ func _ready() -> void:
 	_set_count(_target_count)
 	if count_label:
 		_update_count_label()
+	_build_test_gate()
+	_build_bullet_mmi()
+	_build_fire_toggle()
 	DebugLog.add("sp1_crowd_viewer: _ready done")
 
 func _populate_character_options() -> void:
@@ -623,6 +647,12 @@ func _process(dt: float) -> void:
 		new_pos.x = clampf(new_pos.x, -GRASS_HALF, GRASS_HALF)
 		new_pos.z = clampf(new_pos.z, -GRASS_HALF, GRASS_HALF)
 		_crowd.position = new_pos
+	# iter366: crowd firing (emit only while toggled on; in-flight bullets always
+	# advance + render so they finish after a toggle-off).
+	if _firing and _crowd != null:
+		_emit_bullets(dt)
+	_advance_bullets(dt)
+	_update_bullet_mmi()
 	if perf:
 		perf.text = "FPS %d  draws %d  VRAM %.0f MB  dir %s" % [
 			Engine.get_frames_per_second(),
@@ -636,3 +666,112 @@ func _on_back_pressed() -> void:
 	if get_node_or_null("/root/AudioBus"):
 		AudioBus.play_tap()
 	get_tree().change_scene_to_file("res://scenes/debug_menu.tscn")
+
+# ---- iter366: AoE crowd-firing testbed -------------------------------------
+func _build_test_gate() -> void:
+	_test_gate = Node3D.new()
+	_test_gate.name = "TestGate"
+	_test_gate.position = Vector3(0, TEST_GATE_HEIGHT * 0.5, TEST_GATE_Z)
+	var mi := MeshInstance3D.new()
+	var qm := QuadMesh.new()
+	qm.size = Vector2(TEST_GATE_X_HALF * 2.0, TEST_GATE_HEIGHT)
+	mi.mesh = qm
+	var mat := StandardMaterial3D.new()
+	if ResourceLoader.exists(TEST_GATE_TEX):
+		mat.albedo_texture = load(TEST_GATE_TEX)
+	mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	mat.cull_mode = BaseMaterial3D.CULL_DISABLED
+	mi.material_override = mat
+	_test_gate.add_child(mi)
+	var lbl := Label3D.new()
+	lbl.text = "INDESTRUCTIBLE"
+	lbl.position = Vector3(0, TEST_GATE_HEIGHT * 0.5 + 0.6, 0)
+	lbl.font_size = 64
+	lbl.outline_size = 10
+	lbl.billboard = BaseMaterial3D.BILLBOARD_ENABLED
+	_test_gate.add_child(lbl)
+	viewport_3d.add_child(_test_gate)
+
+func _build_bullet_mmi() -> void:
+	_bullet_mmi = MultiMeshInstance3D.new()
+	_bullet_mmi.name = "CrowdBullets"
+	var mm := MultiMesh.new()
+	mm.transform_format = MultiMesh.TRANSFORM_3D
+	var qm := QuadMesh.new()
+	qm.size = Vector2(0.45, 0.45)
+	mm.mesh = qm
+	var mat := StandardMaterial3D.new()
+	if ResourceLoader.exists(BULLET_TEX_PATH):
+		mat.albedo_texture = load(BULLET_TEX_PATH)
+	mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	mat.billboard_mode = BaseMaterial3D.BILLBOARD_ENABLED
+	mat.render_priority = 12
+	_bullet_mmi.material_override = mat
+	mm.instance_count = 0
+	_bullet_mmi.multimesh = mm
+	viewport_3d.add_child(_bullet_mmi)
+
+# Sample muzzle points from across the crowd (breadth + depth) at a rate that
+# scales with crowd size (capped). This is the area-of-effect: fire originates
+# diffusely from the whole mob, not one point.
+func _emit_bullets(dt: float) -> void:
+	var n: int = _crowd.member_count()
+	if n <= 0:
+		return
+	var rate: float = clampf(float(n) * FIRE_PER_MEMBER, 0.0, FIRE_MAX_RATE)
+	_fire_accum += rate * dt
+	var origins: PackedVector3Array = _crowd.member_origins()
+	if origins.is_empty():
+		return
+	var cpos := _crowd.position
+	while _fire_accum >= 1.0:
+		_fire_accum -= 1.0
+		var o: Vector3 = origins[randi() % origins.size()]
+		_bullet_pos.append(Vector3(cpos.x + o.x, FIRE_CHEST_Y, cpos.z + o.z))
+
+func _advance_bullets(dt: float) -> void:
+	if _bullet_pos.is_empty():
+		return
+	var step: float = FIRE_BULLET_SPEED * dt
+	var keep := PackedVector3Array()
+	for p in _bullet_pos:
+		var prev_z: float = p.z
+		p.z -= step
+		# Indestructible gate: absorb the bullet if it swept across the gate
+		# plane within its x-span (the gate itself never changes).
+		if prev_z >= TEST_GATE_Z and p.z <= TEST_GATE_Z and absf(p.x) <= TEST_GATE_X_HALF:
+			continue
+		if p.z < FIRE_FAR_Z:
+			continue
+		keep.append(p)
+	_bullet_pos = keep
+
+func _update_bullet_mmi() -> void:
+	if _bullet_mmi == null:
+		return
+	var mm: MultiMesh = _bullet_mmi.multimesh
+	mm.instance_count = _bullet_pos.size()
+	for i in _bullet_pos.size():
+		mm.set_instance_transform(i, Transform3D(Basis(), _bullet_pos[i]))
+
+func _build_fire_toggle() -> void:
+	# Place it at the top, over the 3D view (clear of BACK at top-left and the
+	# perf readout at top-right), so it's always visible/reachable.
+	var ui: Node = get_node_or_null("UI")
+	if ui == null:
+		return
+	_fire_toggle = CheckButton.new()
+	_fire_toggle.text = "FIRE"
+	_fire_toggle.button_pressed = _firing
+	_fire_toggle.position = Vector2(250, 16)   # right of the BACK button, over the sky
+	_fire_toggle.custom_minimum_size = Vector2(190, 64)
+	_fire_toggle.add_theme_font_size_override("font_size", 32)
+	if back_button != null and back_button.theme != null:
+		_fire_toggle.theme = back_button.theme
+	_fire_toggle.toggled.connect(_on_fire_toggled)
+	ui.add_child(_fire_toggle)
+
+func _on_fire_toggled(on: bool) -> void:
+	_firing = on

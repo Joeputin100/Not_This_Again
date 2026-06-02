@@ -90,6 +90,14 @@ func clip_of(id: int) -> String:
 func member_count() -> int:
 	return _member_clip.size()
 
+# iter366: crowd-local origins of every member, for sampling muzzle points
+# across the mob's breadth + depth (area-of-effect firing).
+func member_origins() -> PackedVector3Array:
+	var out := PackedVector3Array()
+	for id in _member_clip:
+		out.append(_member_xform[id].origin)
+	return out
+
 func member_ids() -> Array:
 	return _member_clip.keys()
 
