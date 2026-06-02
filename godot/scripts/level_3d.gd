@@ -346,6 +346,12 @@ func _ready() -> void:
 	# seed (6464) was only useful for early reproduction; now we want
 	# variety across runs.
 	_rng.randomize()
+	# iter359: the SP2 director owns world scroll speed now. Neutralise the legacy
+	# finger-position WorldSpeed multiplier (terrain_3d still reads it) so a stale
+	# value carried over from the dead 2D prototype (level.gd sets it to 0.0 on its
+	# freeze) can't desync — or freeze — the terrain scroll vs the director props.
+	if get_node_or_null("/root/WorldSpeed") != null:
+		WorldSpeed.set_mult(1.0)
 	# Iter 130: prepare the breathing-prop placeholder texture for any
 	# props the user hasn't yet authored. Idempotent.
 	_ensure_placeholder_prop_tex()
@@ -2807,12 +2813,23 @@ func _build_quake_bar() -> void:
 	bg.color = Color(0.16, 0.09, 0.06, 0.88)
 	bg.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	bar.add_child(bg)
-	var accent := ColorRect.new()
-	accent.set_anchors_preset(Control.PRESET_TOP_WIDE)
-	accent.offset_bottom = 8.0
-	accent.color = Color(1.0, 0.45, 0.62, 1.0)  # candy-pink top rail
-	accent.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	bar.add_child(accent)
+	# iter359: organic candy-Western top edge (was a perfectly straight pink rail).
+	# A wavy dark-candy lip with a pink rim, baked into quakebar_edge.png (1080×52:
+	# the bar-colour body sits below an undulating boundary, a candy-pink rim runs
+	# along it, transparent above). Anchored full-width and lifted so the crests
+	# rise ~30px above the bar's old straight top into the game — soft, not a ruler line.
+	var edge := TextureRect.new()
+	edge.set_anchors_preset(Control.PRESET_TOP_WIDE)
+	edge.offset_top = -40.0
+	edge.offset_bottom = 12.0
+	edge.stretch_mode = TextureRect.STRETCH_SCALE
+	var _edge_tex := "res://assets/sprites/props/quakebar_edge.png"
+	if ResourceLoader.exists(_edge_tex):
+		edge.texture = load(_edge_tex)
+	else:
+		edge.self_modulate = Color(1.0, 0.45, 0.62, 1.0)  # fallback flat rail
+	edge.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	bar.add_child(edge)
 	_levelname_label = Label.new()
 	_levelname_label.set_anchors_preset(Control.PRESET_TOP_WIDE)
 	_levelname_label.offset_top = 12.0
@@ -2833,12 +2850,18 @@ func _build_quake_bar() -> void:
 	_ammo_box.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	bar.add_child(_ammo_box)
 	_rebuild_ammo_pips()
-	# RELOADING indicator (over the ammo clip; hidden until a reload).
+	# RELOADING caption — a compact word in the gap directly UNDER the clip row
+	# (pips at y58..102, hearts at y124). The clip itself refills (the pips fill
+	# back up as the reload progresses, see _refresh_ammo_label_3d) so the reload
+	# reads as part of the ammo clip, not a separate floating bar over it.
 	_reload_label = Label.new()
-	_reload_label.position = Vector2(286, 18)
-	_reload_label.add_theme_font_size_override("font_size", 30)
-	_reload_label.add_theme_color_override("font_color", Color(1.0, 0.55, 0.25))
-	_reload_label.add_theme_constant_override("outline_size", 6)
+	_reload_label.position = Vector2(286, 99)
+	_reload_label.size = Vector2(320.0, 26.0)
+	_reload_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	_reload_label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	_reload_label.add_theme_font_size_override("font_size", 18)
+	_reload_label.add_theme_color_override("font_color", Color(1.0, 0.62, 0.32))
+	_reload_label.add_theme_constant_override("outline_size", 4)
 	_reload_label.add_theme_color_override("font_outline_color", Color(0.1, 0.04, 0.03))
 	_reload_label.visible = false
 	_reload_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
@@ -3684,15 +3707,20 @@ func _render_countdown() -> void:
 #   reloading      → "RELOADING ▰▰▱▱▱▱"  (pips fill as reload progresses)
 #   ready-to-fire  → "AMMO ▰▰▰▰▱▱"        (pips empty as ammo drains)
 func _refresh_ammo_label_3d() -> void:
-	# iter357: ammo lives on the Quake bar (pips); the top label is gone. This
-	# now only drives the bar's RELOADING indicator.
+	# iter357: ammo lives on the Quake bar (pips); the top label is gone.
+	# iter359: integrate the reload into the clip itself — the candy pips refill
+	# (empty → full) as the reload progresses, with a small "RELOADING" caption in
+	# the gap under them. Runs every frame (called from _process) so the fill
+	# animates; _refresh_quake_bar restores the ammo-based fill once reload ends.
 	if _reload_label == null or _gun_state == null:
 		return
 	if _gun_state.is_reloading():
-		var clip: int = int(_gun.clip_size) if _gun != null else 6
-		var filled: int = int(round(float(clip) * _gun_state.reload_progress()))
+		var filled: int = int(round(float(_ammo_pips.size()) * _gun_state.reload_progress()))
+		for i in _ammo_pips.size():
+			(_ammo_pips[i] as TextureRect).modulate.a = 1.0 if i < filled else 0.20
+		_last_ammo_shown = -1  # force _refresh_quake_bar to repaint pips when reload ends
 		_reload_label.visible = true
-		_reload_label.text = "RELOADING " + "▰".repeat(filled) + "▱".repeat(maxi(clip - filled, 0))
+		_reload_label.text = "RELOADING…"
 	else:
 		_reload_label.visible = false
 
@@ -3782,16 +3810,12 @@ func _gold_rush_salute_3d() -> void:
 		await get_tree().create_timer(SALUTE_STAGGER_S).timeout
 		if not is_inside_tree():
 			return
-		# Salute bullet — fired straight up, bright yellow.
-		var b := CSGSphere3D.new()
-		b.radius = 0.4
-		b.radial_segments = 8
-		b.rings = 6
-		var mat := StandardMaterial3D.new()
-		mat.albedo_color = Color(1.0, 0.9, 0.3, 1)
-		mat.emission_enabled = true
-		mat.emission = Color(0.8, 0.6, 0.1, 1)
-		b.material = mat
+		# Salute bullet — a bright jelly-bean fired straight up. iter359: was a
+		# faceted CSGSphere3D (radial_segments 8 / rings 6) — the last raw polygon
+		# visible in gameplay, popping up during PERFECT_VOLLEY. Swapped to the same
+		# candy billboard the migrated bursts use (_burst_at / _drop_bonus_at) so
+		# the volley reads as candy, not low-poly geometry.
+		var b: Sprite3D = _make_candy_billboard(CANDY_BULLET_TEX[FireMode.CANDY], 0.8)
 		b.position = pos + Vector3(0, 1.0, 0)
 		bullets_root.add_child(b)
 		# Tween straight up + fade
@@ -4970,6 +4994,12 @@ func _process(delta: float) -> void:
 	if _speed_label != null:
 		_speed_label.text = "spd %.2f%s" % [_sf, "  HELD" if (_director != null and _director.world_held()) else ""]
 	var motion_delta: float = (delta * _sf) if (_level_state == LevelState.PLAYING and not _cart_encounter) else 0.0
+	# SP2 slice3b-fix: anchor the TERRAIN scroll to the same variable speed as
+	# the props/gates (was a fixed 0.1667/s, so the ground slid out of sync when
+	# the director sped up / slowed / halted). scroll_speed in UV-V/s = base × factor.
+	if terrain_3d_node != null and "scroll_speed" in terrain_3d_node:
+		var _scroll_fac: float = _sf if (_level_state == LevelState.PLAYING and not _cart_encounter) else 0.0
+		terrain_3d_node.scroll_speed = (OBSTACLE_SPEED / 15.0) * _scroll_fac
 	# SP2: advance the data timeline by the scrolled distance + dispatch crossings.
 	if _level_player != null:
 		_level_distance += OBSTACLE_SPEED * motion_delta
