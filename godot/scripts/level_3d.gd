@@ -1112,14 +1112,21 @@ const GATE_BULLET_Z_RANGE: float = 0.5
 const GATE_BULLET_X_HALF: float = 2.0  # half door width (= GATE_WIDTH * 0.5 * 0.5 = 1.0)
 const GATE_HITS_PER_STEP: int = 3  # iter 113: armor — 3 bullets per value decrement
 
-func _check_bullet_gate_collision(bullet: Node3D) -> bool:
+func _check_bullet_gate_collision(bullet: Node3D, prev_z: float = INF) -> bool:
 	for gate_node in gates_root.get_children():
 		if not (gate_node is Node3D):
 			continue
 		var gate: Node3D = gate_node
 		if gate.get_meta("triggered", false):
 			continue
-		if absf(bullet.position.z - gate.position.z) > GATE_BULLET_Z_RANGE:
+		# iter364: swept z-crossing so fast bullets can't TUNNEL through the gate
+		# between frames (BULLET_SPEED 28/s ≈ 0.5-0.9 units/frame can exceed the
+		# proximity band, letting shots pass through and hit outlaws beyond). Hit
+		# if the bullet's path this frame (prev_z -> z, moving -z) spanned the gate
+		# plane; otherwise fall back to the in-band test for slow/stationary cases.
+		var gz: float = gate.position.z
+		var crossed: bool = prev_z != INF and prev_z >= gz and bullet.position.z <= gz
+		if not crossed and absf(bullet.position.z - gz) > GATE_BULLET_Z_RANGE:
 			continue
 		# Which door? Bullet x relative to gate center.
 		var side: String = "left" if bullet.position.x < gate.position.x else "right"
@@ -5389,6 +5396,7 @@ func _process(delta: float) -> void:
 	for bullet in bullets_root.get_children():
 		if not (bullet is Node3D):
 			continue
+		var _prev_z: float = bullet.position.z   # iter364: for swept gate collision
 		bullet.position.z -= BULLET_SPEED * delta
 		# Despawn at the weapon's range (per-bullet; default const otherwise).
 		if bullet.position.z < float(bullet.get_meta("despawn_z", BULLET_DESPAWN_Z)):
@@ -5397,7 +5405,7 @@ func _process(delta: float) -> void:
 		# Iter 110: gate-vs-bullet collision — bullets count down the
 		# gate door's value (moving toward 0). For multiplicative gates,
 		# degrade the multiplier toward 2 then collapse to additive 0.
-		if _check_bullet_gate_collision(bullet):
+		if _check_bullet_gate_collision(bullet, _prev_z):
 			bullet.queue_free()
 			continue
 		# Collision check: any obstacle within BULLET_COLLISION_DIST_SQ.
