@@ -35,6 +35,7 @@ WorldSpeed="*res://scripts/world_speed.gd"
 DebugPreview="*res://scripts/debug_preview.gd"
 GlitzPrefs="*res://scripts/glitz_prefs.gd"
 SwayPrefs="*res://scripts/sway_prefs.gd"
+MusicPlayer="*res://scripts/music_player.gd"
 
 [audio]
 

@@ -82,6 +82,11 @@ func _ready() -> void:
 			BuildInfo.SHA, BuildInfo.SHORT_DATE, BuildInfo.ITER,
 		]
 	DebugLog.add("main_menu _ready (build=%s) iter=%s" % [BuildInfo.SHA, BuildInfo.ITER])
+	# iter361: kick off Peppermint Rodeo on the splash. It carries through into the
+	# level selector WITHOUT restarting (MusicPlayer is an autoload; same track = no
+	# restart). ~50% volume so it sits under the SFX.
+	if get_node_or_null("/root/MusicPlayer") != null:
+		MusicPlayer.play_splash()
 	# Belt-and-suspenders runtime call; project.godot also sets this to false.
 	get_tree().set_quit_on_go_back(false)
 	# Iter 65 breadcrumb #1: back signal hookup.

@@ -194,6 +194,10 @@ func _ready() -> void:
 	get_tree().set_quit_on_go_back(false)
 	get_window().go_back_requested.connect(_on_back_requested)
 	DebugLog.add("level_select _ready (build=%s)" % BuildInfo.SHA)
+	# iter361: continue Peppermint Rodeo from the splash — same track, so MusicPlayer
+	# does NOT restart it (the user asked for no restart on entering the selector).
+	if get_node_or_null("/root/MusicPlayer") != null:
+		MusicPlayer.play_splash()
 	level_1_button.pressed.connect(_on_level_1_pressed)
 	level_2_button.pressed.connect(_on_level_2_pressed)
 	back_button.pressed.connect(_on_back_pressed)

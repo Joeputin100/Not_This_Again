@@ -352,6 +352,11 @@ func _ready() -> void:
 	# freeze) can't desync — or freeze — the terrain scroll vs the director props.
 	if get_node_or_null("/root/WorldSpeed") != null:
 		WorldSpeed.set_mult(1.0)
+	# iter361: per-level music — L1 "Running From The Clock", L2 "High Noon at the
+	# Glass Saloon" (splash track as fallback). MusicPlayer is an autoload, so a
+	# retry of the same level keeps the track playing (same stream = no restart).
+	if get_node_or_null("/root/MusicPlayer") != null:
+		MusicPlayer.play_level(GameState.current_level if get_node_or_null("/root/GameState") != null else 1)
 	# Iter 130: prepare the breathing-prop placeholder texture for any
 	# props the user hasn't yet authored. Idempotent.
 	_ensure_placeholder_prop_tex()
