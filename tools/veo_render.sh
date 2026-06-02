@@ -31,6 +31,7 @@ ASPECT="9:16"
 DURATION=4
 RESOLUTION="720p"
 IMAGE=""
+LAST_IMAGE=""
 PROMPT=""
 LOOP=false
 OUT_NAME=""
@@ -42,6 +43,7 @@ POLL_INTERVAL=8
 while [[ $# -gt 0 ]]; do
 	case $1 in
 		--image)        IMAGE="$2"; shift 2 ;;
+		--last-image)   LAST_IMAGE="$2"; shift 2 ;;
 		--prompt)       PROMPT="$2"; shift 2 ;;
 		--loop)         LOOP=true; shift ;;
 		--out-name)     OUT_NAME="$2"; shift 2 ;;
@@ -54,7 +56,7 @@ while [[ $# -gt 0 ]]; do
 done
 
 if [[ -z "$IMAGE" || -z "$PROMPT" || -z "$OUT_NAME" || -z "$OUT_DIR" ]]; then
-	echo "Usage: $0 --image PATH --prompt TEXT --out-name NAME --out-dir DIR [--loop] [--duration N] [--keep-mp4]"
+	echo "Usage: $0 --image PATH --prompt TEXT --out-name NAME --out-dir DIR [--last-image PATH] [--loop] [--duration N] [--keep-mp4]"
 	exit 2
 fi
 
@@ -76,7 +78,25 @@ base64 -w 0 "$IMAGE" > "$B64_FILE"
 MIME_TYPE=$(file -b --mime-type "$IMAGE")
 
 INSTANCE_JSON="$WORK_DIR/instance.json"
-if $LOOP; then
+# lastFrame priority: an explicit --last-image (distinct end frame, for shots
+# that interpolate start->end) takes precedence; otherwise --loop pins the last
+# frame to the first (seamless loop); otherwise no lastFrame (free-running clip).
+if [[ -n "$LAST_IMAGE" ]]; then
+	if [[ ! -f "$LAST_IMAGE" ]]; then
+		echo "FATAL: last image not found: $LAST_IMAGE"; exit 2
+	fi
+	LB64_FILE="$WORK_DIR/last.b64"
+	base64 -w 0 "$LAST_IMAGE" > "$LB64_FILE"
+	LMIME=$(file -b --mime-type "$LAST_IMAGE")
+	jq -n \
+		--arg p "$PROMPT" \
+		--rawfile b "$B64_FILE" \
+		--arg m "$MIME_TYPE" \
+		--rawfile lb "$LB64_FILE" \
+		--arg lm "$LMIME" \
+		'{prompt: $p, image: {bytesBase64Encoded: $b, mimeType: $m}, lastFrame: {bytesBase64Encoded: $lb, mimeType: $lm}}' \
+		> "$INSTANCE_JSON"
+elif $LOOP; then
 	jq -n \
 		--arg p "$PROMPT" \
 		--rawfile b "$B64_FILE" \

@@ -31,6 +31,9 @@ const BuildInfo = preload("res://scripts/build_info.gd")
 @onready var humbug_rect: TextureRect = $UI/Humbug
 @onready var pete_rect: TextureRect = $UI/Pete
 @onready var rustler_tap: Control = $UI/RustlerTap
+
+# iter362: settings panel (built in code) — sprocket button next to PLAY.
+var _settings_overlay: ColorRect = null
 const PETE_REACTS: int = 3      # pete_react_0..2
 const RUSTLER_REACTS: int = 3   # candy_rustler_react_0..2 (short grunts, NOT the full boss taunts)
 const RUSTLER_BASE_SCALE := Vector2(0.72, 0.72)  # must match RustlerRig.scale in main_menu.tscn
@@ -87,6 +90,8 @@ func _ready() -> void:
 	# restart). ~50% volume so it sits under the SFX.
 	if get_node_or_null("/root/MusicPlayer") != null:
 		MusicPlayer.play_splash()
+	# iter362: wooden settings sprocket next to PLAY → a small settings panel.
+	_build_settings_ui()
 	# Belt-and-suspenders runtime call; project.godot also sets this to false.
 	get_tree().set_quit_on_go_back(false)
 	# Iter 65 breadcrumb #1: back signal hookup.
@@ -476,3 +481,94 @@ func _kill_idle_tweens() -> void:
 		_hearts_idle_tween = null
 		if hearts_label:
 			hearts_label.scale = Vector2.ONE
+
+
+# iter362: build the wooden settings sprocket + a small settings panel in code
+# (avoids hand-editing main_menu.tscn). The panel currently exposes music
+# volume; it can grow later. Wired to the MusicPlayer autoload.
+func _build_settings_ui() -> void:
+	var ui: Node = get_node_or_null("UI")
+	if ui == null:
+		return
+	# Sprocket button, just right of the PLAY button (bottom-centre).
+	var spr := TextureButton.new()
+	spr.name = "SettingsSprocket"
+	var tex_path := "res://assets/sprites/ui/settings_sprocket.png"
+	if ResourceLoader.exists(tex_path):
+		spr.texture_normal = load(tex_path)
+	spr.ignore_texture_size = true
+	spr.stretch_mode = TextureButton.STRETCH_KEEP_ASPECT_CENTERED
+	spr.anchor_left = 0.5
+	spr.anchor_right = 0.5
+	spr.anchor_top = 1.0
+	spr.anchor_bottom = 1.0
+	spr.offset_left = 300.0
+	spr.offset_right = 412.0
+	spr.offset_top = -496.0
+	spr.offset_bottom = -384.0
+	spr.pressed.connect(_on_settings_pressed)
+	ui.add_child(spr)
+	# Dim overlay + centred panel, hidden until the sprocket is tapped.
+	var overlay := ColorRect.new()
+	overlay.name = "SettingsOverlay"
+	overlay.set_anchors_preset(Control.PRESET_FULL_RECT)
+	overlay.color = Color(0, 0, 0, 0.6)
+	overlay.visible = false
+	overlay.mouse_filter = Control.MOUSE_FILTER_STOP
+	ui.add_child(overlay)
+	_settings_overlay = overlay
+	var panel := ColorRect.new()
+	panel.color = Color(0.16, 0.09, 0.06, 0.98)
+	panel.position = Vector2(180, 720)
+	panel.size = Vector2(720, 480)
+	overlay.add_child(panel)
+	var vb := VBoxContainer.new()
+	vb.set_anchors_preset(Control.PRESET_FULL_RECT)
+	vb.offset_left = 48.0
+	vb.offset_top = 40.0
+	vb.offset_right = -48.0
+	vb.offset_bottom = -40.0
+	vb.add_theme_constant_override("separation", 30)
+	panel.add_child(vb)
+	var title := Label.new()
+	title.text = "SETTINGS"
+	title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	title.add_theme_font_size_override("font_size", 52)
+	if title_label != null and title_label.get_theme_font("font") != null:
+		title.add_theme_font_override("font", title_label.get_theme_font("font"))
+	vb.add_child(title)
+	var mlabel := Label.new()
+	mlabel.text = "Music volume"
+	mlabel.add_theme_font_size_override("font_size", 34)
+	vb.add_child(mlabel)
+	var slider := HSlider.new()
+	slider.min_value = 0.0
+	slider.max_value = 1.0
+	slider.step = 0.05
+	slider.value = 0.5  # matches MusicPlayer.MUSIC_LINEAR
+	slider.custom_minimum_size = Vector2(0, 64)
+	slider.value_changed.connect(_on_music_slider)
+	vb.add_child(slider)
+	var close := Button.new()
+	close.text = "CLOSE"
+	close.custom_minimum_size = Vector2(0, 96)
+	if play_button != null and play_button.theme != null:
+		close.theme = play_button.theme
+	close.pressed.connect(_on_settings_close)
+	vb.add_child(close)
+
+func _on_settings_pressed() -> void:
+	if get_node_or_null("/root/AudioBus") != null and AudioBus.has_method("play_tap"):
+		AudioBus.play_tap()
+	if _settings_overlay != null:
+		_settings_overlay.visible = true
+
+func _on_settings_close() -> void:
+	if get_node_or_null("/root/AudioBus") != null and AudioBus.has_method("play_tap"):
+		AudioBus.play_tap()
+	if _settings_overlay != null:
+		_settings_overlay.visible = false
+
+func _on_music_slider(value: float) -> void:
+	if get_node_or_null("/root/MusicPlayer") != null and MusicPlayer.has_method("set_music_linear"):
+		MusicPlayer.set_music_linear(value)
