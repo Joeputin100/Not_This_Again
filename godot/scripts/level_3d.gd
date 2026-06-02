@@ -1178,8 +1178,8 @@ func _check_bullet_gate_collision(bullet: Node3D, prev_z: float = INF) -> bool:
 		var lbl: Label3D = gate.get_meta(side + "_label")
 		if lbl != null and is_instance_valid(lbl):
 			lbl.text = "%s%d" % [op, value]
-		if door is CSGBox3D and (door as CSGBox3D).material is StandardMaterial3D:
-			(((door as CSGBox3D).material) as StandardMaterial3D).albedo_color = _gate_color_for(value, op)
+		if door is MeshInstance3D and (door as MeshInstance3D).material_override is StandardMaterial3D:
+			(((door as MeshInstance3D).material_override) as StandardMaterial3D).albedo_texture = _gate_texture_for(value, op)
 		# Step-popup at impact: shows the new value so player sees the change.
 		_spawn_popup_3d(bullet.position + Vector3(0, 0.5, 0),
 			"%s%d" % [op, value], Color(1.0, 0.92, 0.3, 1), 40)
@@ -2307,24 +2307,14 @@ func _spawn_gate() -> void:
 	# pummels every gate to 0 before the player can choose a side.
 	gate.set_meta("left_hits", 0)
 	gate.set_meta("right_hits", 0)
-	# Left door (red if value would shrink, blue if grow)
-	var left_door := CSGBox3D.new()
-	left_door.size = Vector3(GATE_WIDTH * 0.5, GATE_HEIGHT, 0.15)
+	# Left door — authored gate PNG (blue grow / red shrink).
+	var left_door := _make_gate_door(values[0], operators[0])
 	left_door.position = Vector3(-GATE_WIDTH * 0.25, 0, 0)
-	var lmat := StandardMaterial3D.new()
-	lmat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
-	lmat.albedo_color = _gate_color_for(values[0], operators[0])
-	left_door.material = lmat
 	gate.add_child(left_door)
 	gate.set_meta("left_door", left_door)  # iter 110: bullets find door via meta
 	# Right door
-	var right_door := CSGBox3D.new()
-	right_door.size = Vector3(GATE_WIDTH * 0.5, GATE_HEIGHT, 0.15)
+	var right_door := _make_gate_door(values[1], operators[1])
 	right_door.position = Vector3(GATE_WIDTH * 0.25, 0, 0)
-	var rmat := StandardMaterial3D.new()
-	rmat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
-	rmat.albedo_color = _gate_color_for(values[1], operators[1])
-	right_door.material = rmat
 	gate.add_child(right_door)
 	gate.set_meta("right_door", right_door)
 	# Math value labels (Label3D billboards above each door)
@@ -2354,6 +2344,29 @@ func _gate_color_for(value: int, op: String) -> Color:
 	else:
 		growing = value > 0
 	return Color(0.25, 0.55, 1.0, 0.6) if growing else Color(1.0, 0.30, 0.30, 0.6)
+
+# iter365: gate doors now render as the authored blue/red gate PNGs (they were
+# CSGBox3D colour panes — the PNGs existed in assets but were never wired in).
+# Blue = growing (good), red = shrinking (bad), matching _gate_color_for.
+const GATE_TEX_GROW: Texture2D = preload("res://assets/sprites/props/gate_fence_blue.png")
+const GATE_TEX_SHRINK: Texture2D = preload("res://assets/sprites/props/gate_fence_red.png")
+
+func _gate_texture_for(value: int, op: String) -> Texture2D:
+	var growing: bool = (value >= 2) if op == "×" else (value > 0)
+	return GATE_TEX_GROW if growing else GATE_TEX_SHRINK
+
+func _make_gate_door(value: int, op: String) -> MeshInstance3D:
+	var door := MeshInstance3D.new()
+	var qm := QuadMesh.new()
+	qm.size = Vector2(GATE_WIDTH * 0.5, GATE_HEIGHT)
+	door.mesh = qm
+	var mat := StandardMaterial3D.new()
+	mat.albedo_texture = _gate_texture_for(value, op)
+	mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	mat.cull_mode = BaseMaterial3D.CULL_DISABLED
+	door.material_override = mat
+	return door
 
 # Iter 75: check whether the cowboy has crossed the gate's z plane.
 # When triggered, apply the side's effect based on cowboy.x.
