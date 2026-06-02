@@ -99,6 +99,11 @@ func _build_sections() -> void:
 	sp3_btn.disabled = true
 	content.add_child(sp3_btn)
 
+	_add_section_header("SPLASH")
+	var reset_splash_btn := _make_button("RESET FULL SPLASH CINEMATIC")
+	reset_splash_btn.pressed.connect(_on_reset_splash)
+	content.add_child(reset_splash_btn)
+
 	_add_section_header("GOLD RUSH PREVIEWS")
 	for rush_id in RUSH_IDS:
 		var btn := _make_button(
@@ -316,6 +321,17 @@ func _on_reset_bounty() -> void:
 	AudioBus.play_tap()
 	GameState.bounty = 0
 	DebugLog.add("debug: bounty reset to 0")
+
+func _on_reset_splash() -> void:
+	if get_node_or_null("/root/AudioBus"):
+		AudioBus.play_tap()
+	# Clear the persisted "full intro seen" flag so the full ~48s cinematic
+	# plays again on next launch (splash.gd reads user://splash.cfg).
+	var cfg := ConfigFile.new()
+	cfg.load("user://splash.cfg")
+	cfg.set_value("splash", "full_intro_seen", false)
+	cfg.save("user://splash.cfg")
+	DebugLog.add("debug: reset full splash cinematic — plays on next launch")
 
 func _on_back_pressed() -> void:
 	AudioBus.play_tap()

@@ -273,11 +273,20 @@ const FIRE_PER_MEMBER := 1.2        # shots/sec per member ...
 const FIRE_MAX_RATE := 450.0        # ... capped so 1000+ doesn't melt the CPU
 const FIRE_FAR_Z := -40.0           # bullets despawn past here
 const FIRE_CHEST_Y := 1.1
-const BULLET_TEX_PATH := "res://assets/sprites/props/bullet_jellybean.png"
+# iter367: the game's clean transparent candy bullet (512², not the 1408x768
+# jellybean STRIP, which showed as gray-bordered rectangles).
+const BULLET_TEX_PATH := "res://assets/sprites/candy/candy_red.png"
 const TEST_GATE_TEX := "res://assets/sprites/props/gate_fence_red.png"
 const TEST_GATE_Z := -9.0
-const TEST_GATE_X_HALF := 5.0
-const TEST_GATE_HEIGHT := 3.0
+const TEST_GATE_H := 4.5
+const TEST_GATE_W := 6.7            # = 4.5 * 1264/848, matches the PNG aspect (no clip)
+const TEST_GATE_X_HALF := 1.7       # blocking span = the door, not the full sticker margin
+# iter367: while firing, members play their shoot clip; idle when off.
+const SHOOT_CLIPS := {
+	"cowboy": "cowboy_stand_shoot",
+	"pete": "pete_shoots_at_player",
+	"vagrant": "vagrant_shoot_down",
+}
 var _firing := true                 # default on so the testbed shows fire immediately
 var _bullet_pos := PackedVector3Array()
 var _bullet_mmi: MultiMeshInstance3D = null
@@ -354,6 +363,7 @@ func _ready() -> void:
 	_build_test_gate()
 	_build_bullet_mmi()
 	_build_fire_toggle()
+	_apply_direction_to_crowd()   # reflect the default firing state in the clips
 	DebugLog.add("sp1_crowd_viewer: _ready done")
 
 func _populate_character_options() -> void:
@@ -633,7 +643,11 @@ func _apply_direction_to_crowd() -> void:
 	for id in _ids:
 		var clip: String
 		if _direction == "idle":
-			clip = _member_initial_clip.get(id, "")
+			# iter367: firing in place → shoot clip; otherwise spawn-variety clip.
+			if _firing and SHOOT_CLIPS.has(_character):
+				clip = SHOOT_CLIPS[_character]
+			else:
+				clip = _member_initial_clip.get(id, "")
 		else:
 			clip = dir_map.get(_direction, "")
 		if clip != "":
@@ -671,22 +685,25 @@ func _on_back_pressed() -> void:
 func _build_test_gate() -> void:
 	_test_gate = Node3D.new()
 	_test_gate.name = "TestGate"
-	_test_gate.position = Vector3(0, TEST_GATE_HEIGHT * 0.5, TEST_GATE_Z)
+	_test_gate.position = Vector3(0, TEST_GATE_H * 0.5, TEST_GATE_Z)
 	var mi := MeshInstance3D.new()
 	var qm := QuadMesh.new()
-	qm.size = Vector2(TEST_GATE_X_HALF * 2.0, TEST_GATE_HEIGHT)
+	qm.size = Vector2(TEST_GATE_W, TEST_GATE_H)   # PNG aspect — no vertical clip
 	mi.mesh = qm
 	var mat := StandardMaterial3D.new()
 	if ResourceLoader.exists(TEST_GATE_TEX):
 		mat.albedo_texture = load(TEST_GATE_TEX)
-	mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	# Scissor, not blend — discards the transparent sticker margin (was a gray
+	# checkerboard rectangle around the gate on the device).
+	mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA_SCISSOR
+	mat.alpha_scissor_threshold = 0.5
 	mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
 	mat.cull_mode = BaseMaterial3D.CULL_DISABLED
 	mi.material_override = mat
 	_test_gate.add_child(mi)
 	var lbl := Label3D.new()
 	lbl.text = "INDESTRUCTIBLE"
-	lbl.position = Vector3(0, TEST_GATE_HEIGHT * 0.5 + 0.6, 0)
+	lbl.position = Vector3(0, TEST_GATE_H * 0.5 + 0.6, 0)
 	lbl.font_size = 64
 	lbl.outline_size = 10
 	lbl.billboard = BaseMaterial3D.BILLBOARD_ENABLED
@@ -704,7 +721,10 @@ func _build_bullet_mmi() -> void:
 	var mat := StandardMaterial3D.new()
 	if ResourceLoader.exists(BULLET_TEX_PATH):
 		mat.albedo_texture = load(BULLET_TEX_PATH)
-	mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	# Alpha SCISSOR (hard cutout), not blend — the device's alpha-blend dithered
+	# the transparent surround into gray rectangles. Scissor discards it.
+	mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA_SCISSOR
+	mat.alpha_scissor_threshold = 0.5
 	mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
 	mat.billboard_mode = BaseMaterial3D.BILLBOARD_ENABLED
 	mat.render_priority = 12
@@ -775,3 +795,4 @@ func _build_fire_toggle() -> void:
 
 func _on_fire_toggled(on: bool) -> void:
 	_firing = on
+	_apply_direction_to_crowd()   # swap members to shoot / idle clips
