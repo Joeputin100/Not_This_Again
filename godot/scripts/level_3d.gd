@@ -3822,7 +3822,12 @@ func _gold_rush_salute_3d() -> void:
 		# the volley reads as candy, not low-poly geometry.
 		var b: Sprite3D = _make_candy_billboard(CANDY_BULLET_TEX[FireMode.CANDY], 0.8)
 		b.position = pos + Vector3(0, 1.0, 0)
-		bullets_root.add_child(b)
+		# iter363: parent to popups_root, NOT bullets_root. The bullet _process
+		# loop moves every bullets_root child downrange at BULLET_SPEED and
+		# despawns it — which rocketed the salute away instantly (invisible).
+		# popups_root is tween-only (same container _burst_at uses), so the
+		# salute now actually rises straight up and is seen.
+		popups_root.add_child(b)
 		# Tween straight up + fade
 		var t := create_tween().set_parallel(true)
 		t.tween_property(b, "position:y", pos.y + 5.0, 0.6) \
