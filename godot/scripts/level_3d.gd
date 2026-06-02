@@ -2820,7 +2820,7 @@ func _build_quake_bar() -> void:
 	# rise ~30px above the bar's old straight top into the game — soft, not a ruler line.
 	var edge := TextureRect.new()
 	edge.set_anchors_preset(Control.PRESET_TOP_WIDE)
-	edge.offset_top = -40.0
+	edge.offset_top = -44.0
 	edge.offset_bottom = 12.0
 	edge.stretch_mode = TextureRect.STRETCH_SCALE
 	var _edge_tex := "res://assets/sprites/props/quakebar_edge.png"

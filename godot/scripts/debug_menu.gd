@@ -16,7 +16,7 @@ const FlourishBanner = preload("res://scripts/flourish_banner.gd")
 # All Gold Rush IDs the player can preview. Order = display order in UI.
 const RUSH_IDS: Array[String] = ["A", "B", "D", "E", "F", "G", "H"]
 const RUSH_NAMES: Dictionary = {
-	"A": "Six-Shooter Salute (Easy)",
+	"A": "Perfect Volley — Six-Shooter Salute (Easy)",
 	"B": "Jelly Jar Cascade (Hard, Mine)",
 	"D": "Tumbleweed Bonus Roll (Medium, Farm)",
 	"E": "Candy Cart Chain (Extreme, Frontier)",
