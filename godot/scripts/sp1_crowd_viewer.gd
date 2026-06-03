@@ -104,6 +104,16 @@ const MOVE_SPEED := 4.0
 const SPAWN_RADIUS := 5.0
 const GRASS_HALF := 25.0    # crowd clamp bound — keeps members on the visible grass
 
+# iter368: bounded-density formation for the hybrid crowd. A wide, shallow box
+# kept in front of the camera (at z=8). Up to 1000 members pack densely inside it
+# — density scales with count while the footprint stays bounded + on-screen
+# (never marching off-world). Per-index seeded positions so members stay put as
+# the count changes.
+const FORMATION_HALF_X := 9.0
+const FORMATION_Z_BACK := -13.0
+const FORMATION_Z_FRONT := 2.0
+const MAX_CROWD := 1000
+
 # Per-character world-y offset to put feet at ground level. Each character's
 # figure occupies a different vertical fraction of its 9:16 cell — the value
 # below is that fraction (which is also the position.y needed because the
@@ -340,6 +350,9 @@ func _ready() -> void:
 	else:
 		_populate_character_options()
 		_populate_lighting_options()
+		slider.min_value = 1
+		slider.max_value = MAX_CROWD   # iter368: up to 1000
+		slider.value = _target_count   # set before connecting so it doesn't fire
 		slider.value_changed.connect(_on_slider_changed)
 		char_select.item_selected.connect(_on_character_selected)
 		if light_select:
@@ -596,20 +609,29 @@ func _build_crowd(character: String) -> void:
 			mat.set_shader_parameter("mill_freq", CROWD_MILL_FREQ)
 
 func _set_count(n: int) -> void:
+	if _crowd == null:
+		return
 	var clips: Array = CHARACTERS[_character]
-	while _ids.size() < n:
-		var clip: String = clips[_ids.size() % clips.size()]
-		var foot_y: float = CHARACTER_FOOT_Y.get(_character, 0.57)
-		var x := Transform3D(Basis(), Vector3(
-			randf_range(-SPAWN_RADIUS, SPAWN_RADIUS), foot_y,
-			randf_range(-SPAWN_RADIUS, SPAWN_RADIUS)))
-		var id: int = _crowd.add_member(clip, x)
-		_ids.append(id)
-		_member_initial_clip[id] = clip
-	while _ids.size() > n:
-		var id: int = _ids.pop_back()
-		_member_initial_clip.erase(id)
-		_crowd.remove_member(id)
+	var foot_y: float = CHARACTER_FOOT_Y.get(_character, 0.57)
+	var rng := RandomNumberGenerator.new()
+	var specs: Array = []
+	for i in range(n):
+		# Per-index seed → member i always lands in the same spot, so the crowd
+		# doesn't reshuffle as the slider changes; density rises with count.
+		rng.seed = i * 2654435761 + 12345
+		var x: float = rng.randf_range(-FORMATION_HALF_X, FORMATION_HALF_X)
+		var z: float = rng.randf_range(FORMATION_Z_BACK, FORMATION_Z_FRONT)
+		specs.append({
+			"clip": clips[i % clips.size()],
+			"xform": Transform3D(Basis(), Vector3(x, foot_y, z)),
+		})
+	_crowd.set_population(specs)
+	# Resync bookkeeping: member ids are assigned in spec order.
+	_ids = _crowd.member_ids()
+	_member_initial_clip.clear()
+	for i in range(mini(_ids.size(), specs.size())):
+		_member_initial_clip[_ids[i]] = specs[i]["clip"]
+	_apply_direction_to_crowd()   # apply current fire/direction state to the new set
 
 func _update_direction() -> void:
 	# Poll d-pad buttons. First button checked in priority order wins —

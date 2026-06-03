@@ -66,6 +66,21 @@ func add_member(clip: String, xform := Transform3D.IDENTITY) -> int:
 	_rebuild_shadows()
 	return id
 
+# iter368: replace the WHOLE population in one rebuild per clip (not one rebuild
+# per add — O(n) total, not O(n^2)). specs = [{clip:String, xform:Transform3D}].
+# Lets the crowd scale to 1000+ without a build hitch.
+func set_population(specs: Array) -> void:
+	_member_clip.clear()
+	_member_xform.clear()
+	for s in specs:
+		var id := _next_id
+		_next_id += 1
+		_member_clip[id] = s["clip"]
+		_member_xform[id] = s["xform"]
+	for clip in _meshes:
+		_rebuild(clip)
+	_rebuild_shadows()
+
 func remove_member(id: int) -> void:
 	if not _member_clip.has(id):
 		return
