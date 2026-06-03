@@ -144,6 +144,7 @@ const HILL_AMP1: float = 1.1           # rolling-hill amplitudes (periods 70 & 3
 const HILL_AMP2: float = 0.55
 const HOLE_DEPTH: float = 4.0
 const POSSE_BASE_Y: float = 0.45
+const OUTLAW_BASE_Y: float = 1.0   # outlaws spawn at this foot height (see _spawn_outlaw)
 # Authored features within one 140u period (the designer will place these later):
 const _HOLES: Array = [
 	{"d0": 38.0, "d1": 46.0, "x0": -3.5, "x1": 0.5},
@@ -348,7 +349,22 @@ const POSSE_FORMATION_OFFSETS: Array[Vector3] = [
 ]
 # Per-follower x-lerp speed (lower = more lag behind leader for crowd feel)
 const FOLLOWER_LERP_SPEED: float = 5.5
-var _followers: Array[Sprite3D] = []
+var _followers: Array[Sprite3D] = []   # iter401: now always empty — posse renders via _posse_crowd
+
+# iter401: posse crowd port. The video-clip follower pool capped the visible posse
+# (MAX_VISIBLE_FOLLOWERS) because Android can't run many video decoders. The posse
+# now renders as a FlipbookCrowd MultiMesh mob (the SP1 system) behind the leader,
+# scaling to the full _posse_count_3d. The formation is frame-fitted to the LIVE
+# camera pitch (which eases CALM↔busy), so the mob rearranges to stay on-screen.
+const FlipbookCrowdScript = preload("res://scripts/flipbook_crowd.gd")
+const POSSE_CROWD_CLIPS: Array = [
+	"cowboy_run_shoot_fwd", "cowboy_idle_a", "cowboy_idle_b", "cowboy_idle_c",
+]
+const POSSE_CROWD_DEPTH: float = 1.5   # how far back the mob extends behind the leader
+var _posse_crowd: Node3D = null
+var _crowd_built_count: int = -1
+var _crowd_built_pitch: float = 999.0
+var _hole_lose_accum: float = 0.0
 
 # Iter 85: subtle y-bob animation gives life to the otherwise-static
 # billboards. Sine wave on position.y at each frame; followers get a
@@ -749,11 +765,65 @@ func _spawn_powerup_flourish(member: Sprite3D) -> void:
 
 # Iter 72: posse followers behind the leader in a trapezoid formation.
 func _spawn_posse_followers() -> void:
+	# iter401: instead of video-billboard followers, build the FlipbookCrowd mob.
+	# The leader stays the video cowboy_3d; the crowd is everyone behind him.
 	if cowboy_3d == null:
 		return
-	_build_posse_pool()
-	for i in range(POSSE_FORMATION_OFFSETS.size()):
-		_followers.append(_make_follower(i))
+	_posse_crowd = FlipbookCrowdScript.new()
+	_posse_crowd.name = "PosseCrowd"
+	subviewport.add_child(_posse_crowd)
+	_posse_crowd.position = Vector3(0.0, POSSE_BASE_Y, COWBOY_Z)
+	_posse_crowd.call("configure", "cowboy", POSSE_CROWD_CLIPS)
+	_build_posse_formation(maxi(0, _posse_count_3d - 1))
+
+# iter401: count is the single source of truth; the crowd re-syncs from it each
+# frame in _update_posse_crowd, so this is now a no-op kept for its many callers.
+func _sync_followers_to_count(_target: int) -> void:
+	pass
+
+# Horizontal half-width on screen at the mob's depth, from the LIVE camera (pos +
+# eased pitch). fov=50 KEEP_WIDTH → horizontal half-FOV = fov/2, no aspect factor.
+func _crowd_frame_halfwidth() -> float:
+	if camera == null or _posse_crowd == null:
+		return 4.0
+	var pitch: float = camera.rotation.x
+	var fwd_y: float = sin(pitch)
+	var fwd_z: float = -cos(pitch)
+	var mz: float = _posse_crowd.position.z + POSSE_CROWD_DEPTH * 0.5
+	var d: float = (0.6 - camera.position.y) * fwd_y + (mz - camera.position.z) * fwd_z
+	return maxf(0.8, d * tan(deg_to_rad(camera.fov * 0.5)) - 0.7)
+
+# Build the mob formation behind the leader, frame-fitted to the current pitch.
+func _build_posse_formation(want: int) -> void:
+	if _posse_crowd == null:
+		return
+	var halfw: float = _crowd_frame_halfwidth()
+	var rng := RandomNumberGenerator.new()
+	var specs: Array = []
+	for i in range(want):
+		rng.seed = i * 2654435761 + 777   # stable per index → no reshuffle on rebuild
+		var depth: float = 0.5 + rng.randf() * POSSE_CROWD_DEPTH   # behind leader (toward camera)
+		var x: float = halfw * tanh(rng.randfn(0.0, 0.72))         # frame-fitted, centre-dense
+		specs.append({
+			"clip": POSSE_CROWD_CLIPS[i % POSSE_CROWD_CLIPS.size()],
+			"xform": Transform3D(Basis(), Vector3(x, 0.0, depth)),
+		})
+	_posse_crowd.call("set_population", specs)
+	_crowd_built_count = want
+	_crowd_built_pitch = _cam_pitch
+
+# Each frame: follow the leader (x lag), ride the hills (y), and rebuild the
+# formation when the count changes or the camera pitch eases enough to need
+# reframing (the dynamic in-frame fit).
+func _update_posse_crowd(delta: float) -> void:
+	if _posse_crowd == null or cowboy_3d == null:
+		return
+	_posse_crowd.position.x = lerpf(_posse_crowd.position.x, cowboy_3d.position.x,
+		clampf(FOLLOWER_LERP_SPEED * delta, 0.0, 1.0))
+	_posse_crowd.position.y = POSSE_BASE_Y + _hill_y(_level_distance)
+	var want: int = maxi(0, _posse_count_3d - 1)
+	if want != _crowd_built_count or absf(_cam_pitch - _crowd_built_pitch) > 2.0:
+		_build_posse_formation(want)
 
 # Iter 111: spawn a single roadside scenery item. Weighted pick from
 # 5 categories so the world feels lived-in but not chaotic. Each item
@@ -2518,24 +2588,6 @@ func _spawn_frenzy_candy_rain() -> void:
 # Sprite3Ds and tank the framerate.
 const MAX_VISIBLE_FOLLOWERS: int = 24
 
-func _sync_followers_to_count(target: int) -> void:
-	var want: int = clampi(target - 1, 0, MAX_VISIBLE_FOLLOWERS)
-	# Trim excess from tail.
-	while _followers.size() > want:
-		var f: Sprite3D = _followers.pop_back()
-		if is_instance_valid(f):
-			f.queue_free()
-	# Grow up to want — clone leader sprite, place at trapezoid offset
-	# computed from index.
-	if cowboy_3d == null or not is_instance_valid(cowboy_3d):
-		return
-	while _followers.size() < want:
-		var new_follower: Sprite3D = _make_follower(_followers.size())
-		_followers.append(new_follower)
-		# Iter 335: golden power-up flourish on gate-joined members (initial
-		# level-start posse spawns via _spawn_posse_followers, which doesn't
-		# hit this grow path, so they don't flourish).
-		_spawn_powerup_flourish(new_follower)
 
 # ---- Iter 149: special posse members (rescued heroes) ----------------------
 # Rescued heroes persist as distinct units: own PNG, a hero skill on a timer,
@@ -5043,6 +5095,8 @@ func _process(delta: float) -> void:
 	# Iter 85: y-bob animation overlays on top of the base 0.45 anchor.
 	_bob_time += delta
 	cowboy_3d.position.y = 0.45 + sin(_bob_time * BOB_FREQUENCY) * BOB_AMPLITUDE
+	_update_posse_crowd(delta)   # iter401: posse mob follows + reframes
+	_check_authored_holes(delta)
 	for i in range(_followers.size()):
 		var f := _followers[i]
 		if not is_instance_valid(f):
@@ -5199,9 +5253,10 @@ func _process(delta: float) -> void:
 		outlaw.position.x = lerpf(outlaw.position.x, target_x,
 			clampf(1.5 * delta, 0.0, 1.0))
 		# iter400: ride the hilly terrain (sit on the ground, not float over it).
-		# Skip the pushed-wagon set-piece (it owns its own y).
+		# Skip the pushed-wagon set-piece (it owns its own y). iter401: outlaws spawn
+		# at y=1.0 (their foot offset) — use that, not POSSE_BASE_Y, or their feet clip.
 		if not outlaw.get_meta("is_pushed", false) and not outlaw.get_meta("is_pusher", false):
-			outlaw.position.y = POSSE_BASE_Y + _hill_y(_level_distance + (cowboy_3d.position.z - outlaw.position.z))
+			outlaw.position.y = OUTLAW_BASE_Y + _hill_y(_level_distance + (cowboy_3d.position.z - outlaw.position.z))
 		var ft: float = outlaw.get_meta("fire_timer", 0.0)
 		ft -= delta
 		if ft <= 0.0:
@@ -5659,27 +5714,32 @@ func _update_world_root() -> void:
 	for f in _followers:
 		if is_instance_valid(f) and not f.get_meta("falling", false):
 			f.position.y = POSSE_BASE_Y + hy
-	_check_authored_holes()
 
 # Posse members that stray over an authored pit (the hole passing under the posse)
 # fall in — a two-way hazard once outlaws are placed in the world too.
-func _check_authored_holes() -> void:
-	if _level_state != LevelState.PLAYING:
+func _check_authored_holes(delta: float) -> void:
+	# iter401: the posse is a crowd now (no per-follower nodes), so losing members to
+	# a hole = decrementing the count while the leader's lane overlaps the pit. The
+	# mob shrinks to match; lose ~2/sec so a brush with a hole costs a few members.
+	if _level_state != LevelState.PLAYING or _posse_count_3d <= 1:
 		return
 	var dd: float = fposmod(_level_distance, PATH_PATTERN_LEN)
+	var over: bool = false
 	for h in _HOLES:
-		if dd < h["d0"] or dd > h["d1"]:
-			continue
-		for f in _followers.duplicate():
-			if is_instance_valid(f) and not f.get_meta("falling", false) \
-			and f.position.x >= h["x0"] and f.position.x <= h["x1"]:
-				_followers.erase(f)
-				_posse_count_3d = maxi(0, _posse_count_3d - 1)
-				_fall_entity(f)
-				_refresh_hud()
-				if _posse_count_3d <= 0:
-					_show_fail()
+		if dd >= h["d0"] and dd <= h["d1"] \
+		and cowboy_3d.position.x >= h["x0"] and cowboy_3d.position.x <= h["x1"]:
+			over = true
+			break
+	if not over:
+		_hole_lose_accum = 0.0
 		return
+	_hole_lose_accum += delta * 2.0
+	while _hole_lose_accum >= 1.0 and _posse_count_3d > 1:
+		_hole_lose_accum -= 1.0
+		_posse_count_3d = maxi(0, _posse_count_3d - 1)
+		_refresh_hud()
+		if _posse_count_3d <= 0:
+			_show_fail()
 
 func _input(event: InputEvent) -> void:
 	# Translate drag x to cowboy world-x via the screen-to-plane mapping.
