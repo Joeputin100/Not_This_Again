@@ -106,6 +106,18 @@ const OBSTACLE_DESPAWN_Z: float = 3.5   # past the cowboy
 const OBSTACLE_SPEED: float = 2.5    # iter 144: 8→5→0.5 → iter 153: 0.5→2.5 (0.5 was non-functional — gates took ~56s to arrive while Pete spawned at 18s; 2.5 is ~31% of the original, slow but playable)
 const OBSTACLE_SPAWN_INTERVAL: float = 1.2
 
+# SP2 slice3 (curves): the path bends left/right as it recedes. Implemented per
+# the spec's (distance, lateral) mechanism — every scrolling entity's world x is
+# offset by the path's lateral curve at ITS distance-along-path, minus the curve
+# at the PLAYER's distance, so the player's lane stays centred while the road
+# ahead snakes. No terrain-mesh rebuild needed; the road furniture + outlaws
+# define the visible bend. PATH_AMP = max lateral swing (world units), PATH_WAVELEN
+# = distance for one full S. A data-driven PathProfile can replace _path_lateral later.
+const PATH_AMP: float = 4.0
+const PATH_WAVELEN: float = 34.0
+const PATH_CAM_YAW_MAX: float = 10.0   # camera yaws up to this many ° into the bend
+const PATH_LOOKAHEAD: float = 14.0     # distance ahead the camera yaws toward
+
 # Iter 66: 3D bullets — small bright spheres that travel from cowboy
 # along -z axis (away from camera toward the far end of the plane).
 # Auto-fire at FIRE_INTERVAL while game is active. Collision: simple
@@ -5137,8 +5149,11 @@ func _process(delta: float) -> void:
 		# Each outlaw heads for cowboy.x + their personal offset so the
 		# group reads as a crowd, not a column. Clamped to road bounds.
 		var ox: float = outlaw.get_meta("track_offset_x", 0.0)
-		var target_x: float = clampf(cowboy_3d.position.x + ox,
-			-COWBOY_X_BOUND, COWBOY_X_BOUND)
+		# SP2 slice3: include the path bend at the outlaw's depth so distant outlaws
+		# arrive along the curving road (the offset fades to ~0 as they near the player).
+		var curve_ox: float = _path_offset_at_z(outlaw.position.z, _path_lateral(_level_distance))
+		var target_x: float = clampf(cowboy_3d.position.x + ox + curve_ox,
+			-COWBOY_X_BOUND - PATH_AMP, COWBOY_X_BOUND + PATH_AMP)
 		# Iter 164: the set-piece doesn't x-track the posse — the wagon
 		# "tracking the posse" was this lerp. Pushers move it instead.
 		if outlaw.get_meta("is_pushed", false) or outlaw.get_meta("is_pusher", false):
@@ -5437,6 +5452,43 @@ func _process(delta: float) -> void:
 				_hits += 1
 				_refresh_hud()
 				break
+	# SP2 slice3: bend the road by the path curve (after all z-updates this frame).
+	_apply_path_curve()
+
+# ---- SP2 slice3: curved path ------------------------------------------------
+# Lateral world-x offset of the path centreline at a given distance-along-path.
+# A gentle serpentine for now; a data-driven PathProfile.lateral Curve can drop
+# in here later without touching callers.
+func _path_lateral(dist: float) -> float:
+	return PATH_AMP * sin(dist * TAU / PATH_WAVELEN)
+
+# The bend an entity at world-z should show: its distance-along-path is the
+# player's scrolled distance plus how far AHEAD it still is (cowboy_z − z).
+# Subtracting the player's own lateral keeps the player lane at x≈0.
+func _path_offset_at_z(z: float, base_lat: float) -> float:
+	var d: float = _level_distance + (cowboy_3d.position.z - z)
+	return _path_lateral(d) - base_lat
+
+func _apply_path_curve() -> void:
+	if cowboy_3d == null:
+		return
+	var base_lat: float = _path_lateral(_level_distance)
+	# Non-tracking scrollers: x = their spawn lane + the bend at their depth.
+	for root in [obstacles_root, scenery_root, gates_root, bonuses_root, holes_root]:
+		if root == null:
+			continue
+		for c in root.get_children():
+			if not (c is Node3D):
+				continue
+			if not c.has_meta("lane_x"):
+				c.set_meta("lane_x", c.position.x)
+			c.position.x = c.get_meta("lane_x") + _path_offset_at_z(c.position.z, base_lat)
+	# Camera yaws toward the upcoming bend so the player sees the turn coming.
+	if camera != null:
+		var lat_ahead: float = _path_lateral(_level_distance + PATH_LOOKAHEAD) - base_lat
+		var yaw: float = clampf(-lat_ahead * (PATH_CAM_YAW_MAX / PATH_AMP), \
+			-PATH_CAM_YAW_MAX, PATH_CAM_YAW_MAX)
+		camera.rotation_degrees.y = lerpf(camera.rotation_degrees.y, yaw, 0.1)
 
 func _input(event: InputEvent) -> void:
 	# Translate drag x to cowboy world-x via the screen-to-plane mapping.
