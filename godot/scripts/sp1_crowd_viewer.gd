@@ -300,7 +300,7 @@ const SHOOT_CLIPS := {
 var _firing := true                 # default on so the testbed shows fire immediately
 # iter369: 4 candy colours, one MultiMesh per colour (MultiMesh = one texture each).
 const BULLET_COLORS := ["candy_red.png", "candy_green.png", "candy_blue.png", "candy_amber.png"]
-const BLAST_TEX := "res://assets/sprites/candy/candy_amber.png"
+const BLAST_TEX := "res://assets/sprites/ui/blast.png"   # iter374: a 💥 starburst
 var _bullet_pos: Array = []          # one PackedVector3Array per colour
 var _bullet_mmi: Array = []          # one MultiMeshInstance3D per colour
 var _fire_accum := 0.0
@@ -622,12 +622,14 @@ func _set_count(n: int) -> void:
 		# Per-index seed → member i always lands in the same spot, so the crowd
 		# doesn't reshuffle as the slider changes; density rises with count.
 		rng.seed = i * 2654435761 + 12345
-		# iter372: gaussian distribution → an organic blob (denser centre, soft
-		# fuzzy edges) instead of a hard rectangle. Clamp catches rare outliers.
+		# iter374: gaussian with NO clamp — the tail fades softly at the edges
+		# (organic blob). Clamping piled outliers into a flat line at the boundary;
+		# letting the tail run just thins the crowd out smoothly (rare strays at
+		# the far edge are fine / off-screen).
 		var zc: float = (FORMATION_Z_BACK + FORMATION_Z_FRONT) * 0.5
 		var zr: float = (FORMATION_Z_FRONT - FORMATION_Z_BACK) * 0.5
-		var x: float = clampf(rng.randfn(0.0, FORMATION_HALF_X * 0.5), -FORMATION_HALF_X, FORMATION_HALF_X)
-		var z: float = clampf(zc + rng.randfn(0.0, zr * 0.5), FORMATION_Z_BACK, FORMATION_Z_FRONT)
+		var x: float = rng.randfn(0.0, FORMATION_HALF_X * 0.55)
+		var z: float = zc + rng.randfn(0.0, zr * 0.6)
 		specs.append({
 			"clip": clips[i % clips.size()],
 			"xform": Transform3D(Basis(), Vector3(x, foot_y, z)),
@@ -800,7 +802,7 @@ func _advance_bullets(dt: float) -> void:
 			# Indestructible gate: absorb the bullet if it swept across the gate
 			# plane within its x-span, with a small candy blast (the gate persists).
 			if prev_z >= TEST_GATE_Z and p.z <= TEST_GATE_Z and absf(p.x) <= TEST_GATE_X_HALF:
-				if randf() < 0.22:   # throttle so high fire rates don't spam blasts
+				if randf() < 0.32:   # throttle so high fire rates don't spam blasts
 					_spawn_gate_blast(Vector3(p.x, p.y, TEST_GATE_Z))
 				continue
 			if p.z < FIRE_FAR_Z:
@@ -822,15 +824,15 @@ func _spawn_gate_blast(pos: Vector3) -> void:
 		s.texture = load(BLAST_TEX)
 	s.billboard = BaseMaterial3D.BILLBOARD_ENABLED
 	s.shaded = false
-	s.pixel_size = 0.0009            # iter372: jellybean-sized, not a fireball
-	s.modulate = Color(1.0, 1.0, 0.7, 1.0)
+	s.pixel_size = 0.0018            # iter374: ~bullet-sized 💥 starburst
+	s.modulate = Color(1.0, 1.0, 1.0, 1.0)
 	s.scale = Vector3(0.5, 0.5, 0.5)
 	s.position = pos
 	viewport_3d.add_child(s)
 	var t := create_tween().set_parallel(true)
-	t.tween_property(s, "scale", Vector3(1.3, 1.3, 1.3), 0.14) \
-		.set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
-	t.tween_property(s, "modulate:a", 0.0, 0.14)
+	t.tween_property(s, "scale", Vector3(1.15, 1.15, 1.15), 0.18) \
+		.set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
+	t.tween_property(s, "modulate:a", 0.0, 0.18)
 	t.chain().tween_callback(s.queue_free)
 
 func _build_fire_toggle() -> void:
