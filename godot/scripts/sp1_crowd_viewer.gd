@@ -110,9 +110,10 @@ const GRASS_HALF := 25.0    # crowd clamp bound — keeps members on the visible
 # (never marching off-world). Per-index seeded positions so members stay put as
 # the count changes.
 const FORMATION_HALF_X := 10.0
-const X_SOFT := 9.5                 # iter395: tanh soft-bound on |x| so the crowd
-                                    # stays fully in frame at any density (≈ the
-                                    # camera's horizontal half-extent at the crowd)
+const CAM_Z := 8.0                  # camera world z (see scene Camera3D)
+const X_NEAR := 5.8                 # iter396: soft x half-width at the FRONT row;
+                                    # scales up with depth (frustum wedge) so the
+                                    # whole crowd stays in frame at any density
 const FORMATION_Z_BACK := -8.0      # compact band in the lower third of the 3D view
 const FORMATION_Z_FRONT := -1.0     # (above the UI panel), gate above it
 const MAX_CROWD := 1000
@@ -634,8 +635,13 @@ func _set_count(n: int) -> void:
 		var zc: float = (FORMATION_Z_BACK + FORMATION_Z_FRONT) * 0.5
 		var zr: float = (FORMATION_Z_FRONT - FORMATION_Z_BACK) * 0.5
 		var raw_x: float = rng.randfn(0.0, FORMATION_HALF_X * 0.55)
-		var x: float = X_SOFT * tanh(raw_x / X_SOFT)
 		var z: float = zc + rng.randfn(0.0, zr * 0.6)
+		# iter396: the soft x-bound now scales with depth so it follows the camera's
+		# perspective wedge — narrower at the front (closer = smaller visible width +
+		# bigger sprites) widening toward the back. A uniform bound clipped the front
+		# row at the screen edges. Half-width ∝ distance-from-camera (cam at z=CAM_Z).
+		var halfw: float = X_NEAR * (CAM_Z - z) / (CAM_Z - FORMATION_Z_FRONT)
+		var x: float = halfw * tanh(raw_x / halfw)
 		specs.append({
 			"clip": clips[i % clips.size()],
 			"xform": Transform3D(Basis(), Vector3(x, foot_y, z)),

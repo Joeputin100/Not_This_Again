@@ -501,19 +501,21 @@ func _build_settings_ui() -> void:
 		spr.texture_normal = load(tex_path)
 	spr.ignore_texture_size = true
 	spr.stretch_mode = TextureButton.STRETCH_KEEP_ASPECT_CENTERED
+	# iter396: match the PLAY button's vertical span (offset_top -540 .. -340 = 200px
+	# tall) so the sprocket reads as a peer control, sitting just right of PLAY.
 	spr.anchor_left = 0.5
 	spr.anchor_right = 0.5
 	spr.anchor_top = 1.0
 	spr.anchor_bottom = 1.0
 	spr.offset_left = 300.0
-	spr.offset_right = 412.0
-	spr.offset_top = -496.0
-	spr.offset_bottom = -384.0
+	spr.offset_right = 500.0
+	spr.offset_top = -540.0
+	spr.offset_bottom = -340.0
 	spr.pressed.connect(_on_settings_pressed)
 	ui.add_child(spr)
 	# iter395: idle "breathe + rotate-rock" so the sprocket feels alive / invites a
 	# tap. Pivot at the button's centre so scale + rotation pulse about the middle.
-	spr.pivot_offset = Vector2(56, 56)   # button is 112×112
+	spr.pivot_offset = Vector2(100, 100)   # button is 200×200
 	var breathe := create_tween().set_loops()
 	breathe.tween_property(spr, "scale", Vector2(1.06, 1.06), 1.3) \
 		.set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN_OUT)
