@@ -109,9 +109,9 @@ const GRASS_HALF := 25.0    # crowd clamp bound — keeps members on the visible
 # — density scales with count while the footprint stays bounded + on-screen
 # (never marching off-world). Per-index seeded positions so members stay put as
 # the count changes.
-const FORMATION_HALF_X := 9.0
-const FORMATION_Z_BACK := -13.0
-const FORMATION_Z_FRONT := 2.0
+const FORMATION_HALF_X := 10.0
+const FORMATION_Z_BACK := -8.0      # compact band in the lower third of the 3D view
+const FORMATION_Z_FRONT := -1.0     # (above the UI panel), gate above it
 const MAX_CROWD := 1000
 
 # Per-character world-y offset to put feet at ground level. Each character's
@@ -287,10 +287,10 @@ const FIRE_CHEST_Y := 1.1
 # jellybean STRIP, which showed as gray-bordered rectangles).
 const BULLET_TEX_PATH := "res://assets/sprites/candy/candy_red.png"
 const TEST_GATE_TEX := "res://assets/sprites/props/gate_fence_red.png"
-const TEST_GATE_Z := -9.0
+const TEST_GATE_Z := -15.0          # ahead of + above the crowd band
 const TEST_GATE_H := 4.5
 const TEST_GATE_W := 6.7            # = 4.5 * 1264/848, matches the PNG aspect (no clip)
-const TEST_GATE_X_HALF := 1.7       # blocking span = the door, not the full sticker margin
+const TEST_GATE_X_HALF := 2.6       # blocking span ≈ the visible door + frame
 # iter367: while firing, members play their shoot clip; idle when off.
 const SHOOT_CLIPS := {
 	"cowboy": "cowboy_stand_shoot",
@@ -298,8 +298,11 @@ const SHOOT_CLIPS := {
 	"vagrant": "vagrant_shoot_down",
 }
 var _firing := true                 # default on so the testbed shows fire immediately
-var _bullet_pos := PackedVector3Array()
-var _bullet_mmi: MultiMeshInstance3D = null
+# iter369: 4 candy colours, one MultiMesh per colour (MultiMesh = one texture each).
+const BULLET_COLORS := ["candy_red.png", "candy_green.png", "candy_blue.png", "candy_amber.png"]
+const BLAST_TEX := "res://assets/sprites/candy/candy_amber.png"
+var _bullet_pos: Array = []          # one PackedVector3Array per colour
+var _bullet_mmi: Array = []          # one MultiMeshInstance3D per colour
 var _fire_accum := 0.0
 var _test_gate: Node3D = null
 var _fire_toggle: CheckButton = null
@@ -733,27 +736,33 @@ func _build_test_gate() -> void:
 	viewport_3d.add_child(_test_gate)
 
 func _build_bullet_mmi() -> void:
-	_bullet_mmi = MultiMeshInstance3D.new()
-	_bullet_mmi.name = "CrowdBullets"
-	var mm := MultiMesh.new()
-	mm.transform_format = MultiMesh.TRANSFORM_3D
-	var qm := QuadMesh.new()
-	qm.size = Vector2(0.45, 0.45)
-	mm.mesh = qm
-	var mat := StandardMaterial3D.new()
-	if ResourceLoader.exists(BULLET_TEX_PATH):
-		mat.albedo_texture = load(BULLET_TEX_PATH)
-	# Alpha SCISSOR (hard cutout), not blend — the device's alpha-blend dithered
-	# the transparent surround into gray rectangles. Scissor discards it.
-	mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA_SCISSOR
-	mat.alpha_scissor_threshold = 0.5
-	mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
-	mat.billboard_mode = BaseMaterial3D.BILLBOARD_ENABLED
-	mat.render_priority = 12
-	_bullet_mmi.material_override = mat
-	mm.instance_count = 0
-	_bullet_mmi.multimesh = mm
-	viewport_3d.add_child(_bullet_mmi)
+	_bullet_pos.clear()
+	_bullet_mmi.clear()
+	for tex_name in BULLET_COLORS:
+		var mmi := MultiMeshInstance3D.new()
+		mmi.name = "CrowdBullets_" + str(tex_name)
+		var mm := MultiMesh.new()
+		mm.transform_format = MultiMesh.TRANSFORM_3D
+		var qm := QuadMesh.new()
+		qm.size = Vector2(0.45, 0.45)
+		mm.mesh = qm
+		var mat := StandardMaterial3D.new()
+		var tp: String = "res://assets/sprites/candy/" + str(tex_name)
+		if ResourceLoader.exists(tp):
+			mat.albedo_texture = load(tp)
+		# Alpha SCISSOR (hard cutout), not blend — the device's alpha-blend dithered
+		# the transparent surround into gray rectangles. Scissor discards it.
+		mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA_SCISSOR
+		mat.alpha_scissor_threshold = 0.5
+		mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+		mat.billboard_mode = BaseMaterial3D.BILLBOARD_ENABLED
+		mat.render_priority = 12
+		mmi.material_override = mat
+		mm.instance_count = 0
+		mmi.multimesh = mm
+		viewport_3d.add_child(mmi)
+		_bullet_mmi.append(mmi)
+		_bullet_pos.append(PackedVector3Array())
 
 # Sample muzzle points from across the crowd (breadth + depth) at a rate that
 # scales with crowd size (capped). This is the area-of-effect: fire originates
@@ -771,32 +780,53 @@ func _emit_bullets(dt: float) -> void:
 	while _fire_accum >= 1.0:
 		_fire_accum -= 1.0
 		var o: Vector3 = origins[randi() % origins.size()]
-		_bullet_pos.append(Vector3(cpos.x + o.x, FIRE_CHEST_Y, cpos.z + o.z))
+		var c: int = randi() % _bullet_pos.size()   # random candy colour
+		_bullet_pos[c].append(Vector3(cpos.x + o.x, FIRE_CHEST_Y, cpos.z + o.z))
 
 func _advance_bullets(dt: float) -> void:
-	if _bullet_pos.is_empty():
-		return
 	var step: float = FIRE_BULLET_SPEED * dt
-	var keep := PackedVector3Array()
-	for p in _bullet_pos:
-		var prev_z: float = p.z
-		p.z -= step
-		# Indestructible gate: absorb the bullet if it swept across the gate
-		# plane within its x-span (the gate itself never changes).
-		if prev_z >= TEST_GATE_Z and p.z <= TEST_GATE_Z and absf(p.x) <= TEST_GATE_X_HALF:
+	for c in range(_bullet_pos.size()):
+		var arr: PackedVector3Array = _bullet_pos[c]
+		if arr.is_empty():
 			continue
-		if p.z < FIRE_FAR_Z:
-			continue
-		keep.append(p)
-	_bullet_pos = keep
+		var keep := PackedVector3Array()
+		for p in arr:
+			var prev_z: float = p.z
+			p.z -= step
+			# Indestructible gate: absorb the bullet if it swept across the gate
+			# plane within its x-span, with a small candy blast (the gate persists).
+			if prev_z >= TEST_GATE_Z and p.z <= TEST_GATE_Z and absf(p.x) <= TEST_GATE_X_HALF:
+				if randf() < 0.22:   # throttle so high fire rates don't spam blasts
+					_spawn_gate_blast(Vector3(p.x, p.y, TEST_GATE_Z))
+				continue
+			if p.z < FIRE_FAR_Z:
+				continue
+			keep.append(p)
+		_bullet_pos[c] = keep
 
 func _update_bullet_mmi() -> void:
-	if _bullet_mmi == null:
-		return
-	var mm: MultiMesh = _bullet_mmi.multimesh
-	mm.instance_count = _bullet_pos.size()
-	for i in _bullet_pos.size():
-		mm.set_instance_transform(i, Transform3D(Basis(), _bullet_pos[i]))
+	for c in range(_bullet_mmi.size()):
+		var mm: MultiMesh = (_bullet_mmi[c] as MultiMeshInstance3D).multimesh
+		var arr: PackedVector3Array = _bullet_pos[c]
+		mm.instance_count = arr.size()
+		for i in arr.size():
+			mm.set_instance_transform(i, Transform3D(Basis(), arr[i]))
+
+func _spawn_gate_blast(pos: Vector3) -> void:
+	var s := Sprite3D.new()
+	if ResourceLoader.exists(BLAST_TEX):
+		s.texture = load(BLAST_TEX)
+	s.billboard = BaseMaterial3D.BILLBOARD_ENABLED
+	s.shaded = false
+	s.pixel_size = 0.010
+	s.modulate = Color(1.0, 1.0, 0.7, 1.0)
+	s.position = pos
+	viewport_3d.add_child(s)
+	var t := create_tween().set_parallel(true)
+	t.tween_property(s, "scale", Vector3(2.2, 2.2, 2.2), 0.16) \
+		.set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
+	t.tween_property(s, "modulate:a", 0.0, 0.16)
+	t.chain().tween_callback(s.queue_free)
 
 func _build_fire_toggle() -> void:
 	# Place it at the top, over the 3D view (clear of BACK at top-left and the
