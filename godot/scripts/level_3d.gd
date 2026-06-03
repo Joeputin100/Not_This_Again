@@ -128,10 +128,30 @@ const _PATH_KEYS: Array = [
 	Vector2(120.0, 5.5),                           # sharp right (18u)
 	Vector2(140.0, 0.0),                           # ease back to straight (wrap)
 ]
-const ROAD_HALF: float = 3.4           # road half-width (player bound 3.0 fits on it)
-const ROAD_Z_NEAR: float = 6.0         # ribbon near end (behind the cowboy, off-screen bottom)
-const ROAD_Z_FAR: float = -40.0        # ribbon far end (toward the horizon)
-const ROAD_SEGMENTS: int = 30          # depth samples for the ribbon
+# iter400: STATIC WORLD. Instead of the UV-scroll treadmill, a real curved + hilly
+# terrain mesh is built ONCE in a WorldRoot; the posse "advances" by translating
+# WorldRoot by the INVERSE of its path motion (z = distance, x = -path_lateral) so
+# the curving path stays centred under the fixed camera (no combat rework). The
+# terrain + features are periodic over PATH_PATTERN_LEN so WorldRoot.z wraps
+# seamlessly → an endless static-feeling world. Features (hills/holes/puddles) are
+# authored by distance within one period — the level-designer coordinate model.
+const TERR_HALF_W: float = 16.0        # terrain half-width (covers screen + curve swing)
+const TERR_DX: float = 2.0
+const TERR_Z_BEHIND: float = 12.0      # mesh local-z behind the posse
+const TERR_Z_AHEAD: float = -200.0     # ...and far ahead (≥ window + one period, for seamless wrap)
+const TERR_DZ: float = 2.0
+const HILL_AMP1: float = 1.1           # rolling-hill amplitudes (periods 70 & 35 divide 140 → seamless)
+const HILL_AMP2: float = 0.55
+const HOLE_DEPTH: float = 4.0
+const POSSE_BASE_Y: float = 0.45
+# Authored features within one 140u period (the designer will place these later):
+const _HOLES: Array = [
+	{"d0": 38.0, "d1": 46.0, "x0": -3.5, "x1": 0.5},
+	{"d0": 96.0, "d1": 104.0, "x0": 0.5, "x1": 4.0},
+]
+const _PUDDLES: Array = [   # Vector3(distance, x-from-path-centre, radius)
+	Vector3(22.0, -2.5, 2.2), Vector3(68.0, 2.0, 2.4), Vector3(126.0, 0.0, 2.0),
+]
 
 # Iter 66: 3D bullets — small bright spheres that travel from cowboy
 # along -z axis (away from camera toward the far end of the plane).
@@ -157,7 +177,7 @@ var bullets_root: Node3D
 var gates_root: Node3D
 var outlaws_root: Node3D
 var holes_root: Node3D   # SP2 slice3: pits/cliffs that posse + outlaws fall into
-var _road_mi: MeshInstance3D = null   # SP2 slice3: curving dirt-road ribbon
+var _world_root: Node3D = null   # SP2 slice3/iter400: static curved+hilly terrain the posse advances through
 var outlaw_bullets_root: Node3D
 var boss_root: Node3D
 # Iter 69: terrain_3d.gd script wasn't attached to the inline Terrain3D
@@ -431,7 +451,7 @@ func _ready() -> void:
 	# overloading mobile scene-load — script-side spawn defers texture
 	# upload / shader compile / node tree allocation to post-_ready frames.
 	_build_3d_content()
-	_build_road_node()   # SP2 slice3: the curving dirt road ribbon
+	_build_world_terrain()   # iter400: static curved+hilly terrain the posse advances through
 	if info_label != null:
 		info_label.text = "iter97 RDY-4 3D built"
 	# Iter 72: spawn posse followers at trapezoid offsets behind leader.
@@ -5178,6 +5198,10 @@ func _process(delta: float) -> void:
 		# Iter 136: real delta so x-tracking continues during BOSS state too
 		outlaw.position.x = lerpf(outlaw.position.x, target_x,
 			clampf(1.5 * delta, 0.0, 1.0))
+		# iter400: ride the hilly terrain (sit on the ground, not float over it).
+		# Skip the pushed-wagon set-piece (it owns its own y).
+		if not outlaw.get_meta("is_pushed", false) and not outlaw.get_meta("is_pusher", false):
+			outlaw.position.y = POSSE_BASE_Y + _hill_y(_level_distance + (cowboy_3d.position.z - outlaw.position.z))
 		var ft: float = outlaw.get_meta("fire_timer", 0.0)
 		ft -= delta
 		if ft <= 0.0:
@@ -5497,89 +5521,165 @@ func _apply_path_curve() -> void:
 	if cowboy_3d == null:
 		return
 	var base_lat: float = _path_lateral(_level_distance)
-	# Non-tracking scrollers: x = their spawn lane + the bend at their depth.
+	# Non-tracking scrollers: x = their spawn lane + the bend at their depth. Ground
+	# props/gates also follow the hill height so they sit ON the terrain (bonuses
+	# float, so they keep their own y).
 	for root in [obstacles_root, scenery_root, gates_root, bonuses_root, holes_root]:
 		if root == null:
 			continue
+		var ground_follow: bool = (root == obstacles_root or root == scenery_root or root == gates_root)
 		for c in root.get_children():
 			if not (c is Node3D):
 				continue
 			if not c.has_meta("lane_x"):
 				c.set_meta("lane_x", c.position.x)
-			c.position.x = c.get_meta("lane_x") + _path_offset_at_z(c.position.z, base_lat)
-	_update_road_mesh(base_lat)
+				c.set_meta("lane_y", c.position.y)
+			var d_at: float = _level_distance + (cowboy_3d.position.z - c.position.z)
+			c.position.x = c.get_meta("lane_x") + _path_lateral(d_at) - base_lat
+			if ground_follow:
+				c.position.y = c.get_meta("lane_y") + _hill_y(d_at)
+	_update_world_root()
 
-# Build the road-ribbon node once (added to the gameplay 3D world). Its geometry
-# is rewritten every frame by _update_road_mesh so the curve scrolls toward the
-# player. Dirt-trail texture, unshaded, sits just above the flat ground.
-func _build_road_node() -> void:
-	if subviewport == null or _road_mi != null:
-		return
-	_road_mi = MeshInstance3D.new()
-	_road_mi.name = "PathRoad3D"
-	var mat := StandardMaterial3D.new()
-	if ResourceLoader.exists("res://assets/textures/dirt_path_2k.png"):
-		mat.albedo_texture = load("res://assets/textures/dirt_path_2k.png")
-	mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
-	mat.cull_mode = BaseMaterial3D.CULL_DISABLED
-	mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA_DEPTH_PRE_PASS
-	mat.vertex_color_use_as_albedo = true
-	mat.render_priority = -1   # under props/outlaws, over the flat dirt
-	_road_mi.material_override = mat
-	subviewport.add_child(_road_mi)
+# Rolling hills as a function of distance — periods divide PATH_PATTERN_LEN (140)
+# so the terrain tiles seamlessly when WorldRoot.z wraps.
+func _hill_y(d: float) -> float:
+	return HILL_AMP1 * sin(d * TAU / 70.0) + HILL_AMP2 * sin(d * TAU / 35.0)
 
-# Rebuild the curving road ribbon for the current scroll. Centreline at depth z is
-# the same path offset the entities use, so props/outlaws sit ON the road. Rails are
-# offset perpendicular to the centreline tangent so sharp bends keep their width.
-func _update_road_mesh(base_lat: float) -> void:
-	if _road_mi == null or cowboy_3d == null:
+# Depth a pit drops at (distance d, lateral offset gx from the path centre).
+func _hole_drop(d: float, gx: float) -> float:
+	var dd: float = fposmod(d, PATH_PATTERN_LEN)
+	for h in _HOLES:
+		if dd >= h["d0"] and dd <= h["d1"] and gx >= h["x0"] and gx <= h["x1"]:
+			return HOLE_DEPTH
+	return 0.0
+
+# A terrain vertex: the curve is baked into x, hills + pits into y. lz<0 is ahead;
+# distance d = -lz so it matches the entity offset (_path_offset_at_z) when WorldRoot
+# is translated by (-_path_lateral(dist), 0, dist).
+func _terr_vertex(gx: float, lz: float) -> Vector3:
+	var d: float = -lz
+	return Vector3(gx + _path_lateral(d), _hill_y(d) - _hole_drop(d, gx), lz)
+
+# iter400: build the static curved+hilly terrain (+ puddles) ONCE under WorldRoot,
+# replacing the UV-scroll flat plane. The posse advances by translating WorldRoot.
+func _build_world_terrain() -> void:
+	if subviewport == null or _world_root != null:
 		return
-	var eps: float = 0.03
-	var tile: float = 6.0
-	var n: int = ROAD_SEGMENTS
-	var ctr: Array = []
-	for i in range(n + 1):
-		var z: float = lerpf(ROAD_Z_NEAR, ROAD_Z_FAR, float(i) / float(n))
-		ctr.append(Vector3(_path_offset_at_z(z, base_lat), eps, z))
+	_world_root = Node3D.new()
+	_world_root.name = "WorldRoot"
+	subviewport.add_child(_world_root)
 	var st := SurfaceTool.new()
 	st.begin(Mesh.PRIMITIVE_TRIANGLES)
-	var vscroll: float = _level_distance / tile
-	for i in range(n):
-		var l0: Array = _road_rail(ctr, i)
-		var l1: Array = _road_rail(ctr, i + 1)
-		var v0: float = float(i) / float(n) * (abs(ROAD_Z_FAR - ROAD_Z_NEAR) / tile) - vscroll
-		var v1: float = float(i + 1) / float(n) * (abs(ROAD_Z_FAR - ROAD_Z_NEAR) / tile) - vscroll
-		var a0: float = _road_alpha(i, n)
-		var a1: float = _road_alpha(i + 1, n)
-		_road_v(st, l0[0], Vector2(0, v0), a0); _road_v(st, l0[1], Vector2(1, v0), a0); _road_v(st, l1[1], Vector2(1, v1), a1)
-		_road_v(st, l0[0], Vector2(0, v0), a0); _road_v(st, l1[1], Vector2(1, v1), a1); _road_v(st, l1[0], Vector2(0, v1), a1)
+	var cols: int = int(TERR_HALF_W * 2.0 / TERR_DX)
+	var rows: int = int((TERR_Z_BEHIND - TERR_Z_AHEAD) / TERR_DZ)
+	var tile: float = 6.0
+	for r in range(rows):
+		var lz0: float = TERR_Z_BEHIND - float(r) * TERR_DZ
+		var lz1: float = TERR_Z_BEHIND - float(r + 1) * TERR_DZ
+		for c in range(cols):
+			var gx0: float = -TERR_HALF_W + float(c) * TERR_DX
+			var gx1: float = gx0 + TERR_DX
+			var p00: Vector3 = _terr_vertex(gx0, lz0)
+			var p10: Vector3 = _terr_vertex(gx1, lz0)
+			var p01: Vector3 = _terr_vertex(gx0, lz1)
+			var p11: Vector3 = _terr_vertex(gx1, lz1)
+			var u0: float = (gx0 + TERR_HALF_W) / tile
+			var u1: float = (gx1 + TERR_HALF_W) / tile
+			var v0: float = -lz0 / tile
+			var v1: float = -lz1 / tile
+			st.set_uv(Vector2(u0, v0)); st.add_vertex(p00)
+			st.set_uv(Vector2(u1, v0)); st.add_vertex(p10)
+			st.set_uv(Vector2(u1, v1)); st.add_vertex(p11)
+			st.set_uv(Vector2(u0, v0)); st.add_vertex(p00)
+			st.set_uv(Vector2(u1, v1)); st.add_vertex(p11)
+			st.set_uv(Vector2(u0, v1)); st.add_vertex(p01)
 	st.generate_normals()
-	_road_mi.mesh = st.commit()
+	var mi := MeshInstance3D.new()
+	mi.name = "Terrain"
+	mi.mesh = st.commit()
+	var mat := StandardMaterial3D.new()
+	mat.albedo_color = Color(0.62, 0.45, 0.28)   # dirt fallback if no texture
+	var dirt := _grab_ground_texture()
+	if dirt != null:
+		mat.albedo_texture = dirt
+	mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	mat.cull_mode = BaseMaterial3D.CULL_DISABLED   # ground viewed from above; don't backface-cull
+	mat.uv1_scale = Vector3(1, 1, 1)
+	mi.material_override = mat
+	_world_root.add_child(mi)
+	# Puddles: flat translucent blue discs on the terrain at authored spots.
+	for p in _PUDDLES:
+		_world_root.add_child(_make_puddle(p.x, p.y, p.z))
+	# Retire the UV-scroll "treadmill": hide the flat ground + stop its auto-scroll.
+	var flat := get_node_or_null("Terrain3D/SubViewport/Ground")
+	if flat != null and flat is Node3D:
+		(flat as Node3D).visible = false
+	if terrain_3d_node != null and "auto_scroll" in terrain_3d_node:
+		terrain_3d_node.auto_scroll = false
 
-func _road_rail(ctr: Array, i: int) -> Array:
-	var n: int = ctr.size()
-	var tang: Vector3
-	if i == 0:
-		tang = ctr[1] - ctr[0]
-	elif i >= n - 1:
-		tang = ctr[n - 1] - ctr[n - 2]
-	else:
-		tang = ctr[i + 1] - ctr[i - 1]
-	tang.y = 0.0
-	if tang.length() < 0.001:
-		tang = Vector3(0, 0, -1)
-	tang = tang.normalized()
-	var perp := Vector3(tang.z, 0.0, -tang.x)
-	return [ctr[i] - perp * ROAD_HALF, ctr[i] + perp * ROAD_HALF]
+func _grab_ground_texture() -> Texture2D:
+	var flat := get_node_or_null("Terrain3D/SubViewport/Ground")
+	if flat is MeshInstance3D:
+		var m = (flat as MeshInstance3D).material_override
+		if m is StandardMaterial3D and (m as StandardMaterial3D).albedo_texture != null:
+			return (m as StandardMaterial3D).albedo_texture
+	if ResourceLoader.exists("res://assets/textures/dirt_path_2k.png"):
+		return load("res://assets/textures/dirt_path_2k.png")
+	return null
 
-func _road_alpha(i: int, n: int) -> float:
-	var u: float = float(i) / float(n)
-	return clampf((1.0 - u) / 0.2, 0.0, 1.0) if u > 0.8 else 1.0  # fade the far tail into haze
+func _make_puddle(d: float, gx: float, radius: float) -> MeshInstance3D:
+	var mi := MeshInstance3D.new()
+	var qm := QuadMesh.new()
+	qm.size = Vector2(radius * 2.0, radius * 2.0)
+	qm.orientation = PlaneMesh.FACE_Y
+	mi.mesh = qm
+	var pos: Vector3 = _terr_vertex(gx, -d)
+	mi.position = Vector3(pos.x, pos.y + 0.04, pos.z)
+	var mat := StandardMaterial3D.new()
+	mat.albedo_color = Color(0.35, 0.55, 0.75, 0.6)
+	mat.metallic = 0.6
+	mat.roughness = 0.1
+	mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	mi.material_override = mat
+	return mi
 
-func _road_v(st: SurfaceTool, p: Vector3, uv: Vector2, a: float) -> void:
-	st.set_color(Color(1, 1, 1, a))
-	st.set_uv(uv)
-	st.add_vertex(p)
+# Advance the posse through the static world: translate WorldRoot by the inverse of
+# the path motion (z = distance recedes the world; x = -path_lateral keeps the curve
+# centred under the fixed camera). z wraps by the period so the world is endless.
+# The posse rides the hills via y.
+func _update_world_root() -> void:
+	if _world_root == null:
+		return
+	_world_root.position = Vector3(
+		-_path_lateral(_level_distance), 0.0, fposmod(_level_distance, PATH_PATTERN_LEN))
+	var hy: float = _hill_y(_level_distance)
+	if cowboy_3d != null:
+		cowboy_3d.position.y = POSSE_BASE_Y + hy
+	for f in _followers:
+		if is_instance_valid(f) and not f.get_meta("falling", false):
+			f.position.y = POSSE_BASE_Y + hy
+	_check_authored_holes()
+
+# Posse members that stray over an authored pit (the hole passing under the posse)
+# fall in — a two-way hazard once outlaws are placed in the world too.
+func _check_authored_holes() -> void:
+	if _level_state != LevelState.PLAYING:
+		return
+	var dd: float = fposmod(_level_distance, PATH_PATTERN_LEN)
+	for h in _HOLES:
+		if dd < h["d0"] or dd > h["d1"]:
+			continue
+		for f in _followers.duplicate():
+			if is_instance_valid(f) and not f.get_meta("falling", false) \
+			and f.position.x >= h["x0"] and f.position.x <= h["x1"]:
+				_followers.erase(f)
+				_posse_count_3d = maxi(0, _posse_count_3d - 1)
+				_fall_entity(f)
+				_refresh_hud()
+				if _posse_count_3d <= 0:
+					_show_fail()
+		return
 
 func _input(event: InputEvent) -> void:
 	# Translate drag x to cowboy world-x via the screen-to-plane mapping.
