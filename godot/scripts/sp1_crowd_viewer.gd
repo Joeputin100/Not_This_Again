@@ -110,12 +110,20 @@ const GRASS_HALF := 25.0    # crowd clamp bound — keeps members on the visible
 # (never marching off-world). Per-index seeded positions so members stay put as
 # the count changes.
 const FORMATION_HALF_X := 10.0
-const CAM_Z := 8.0                  # camera world z (see scene Camera3D)
-const X_NEAR := 5.8                 # iter396: soft x half-width at the FRONT row;
-                                    # scales up with depth (frustum wedge) so the
-                                    # whole crowd stays in frame at any density
 const FORMATION_Z_BACK := -8.0      # compact band in the lower third of the 3D view
 const FORMATION_Z_FRONT := -1.0     # (above the UI panel), gate above it
+# iter396: exact camera frustum (matches the scene Camera3D at the default tilt)
+# so the formation's x half-width per depth is the REAL on-screen half-width — the
+# crowd fills the frame edge-to-edge but never past it, at any density. A guessed
+# bound was ~2× too wide because it ignored the camera's downward tilt.
+const CAM_POS_Y := 8.0
+const CAM_POS_Z := 8.0
+const CAM_PITCH_DEG := -20.0        # TiltSlider default (looking down 20°)
+const CAM_FOV_V := 50.0             # vertical fov (KEEP_HEIGHT)
+const VIEW_ASPECT := 1080.0 / 1920.0
+const MEMBER_Y := 0.5               # crowd member centre height
+const EDGE_MARGIN := 0.6            # keep sprite bodies clear of the very edge
+const SPREAD_SIGMA := 0.72          # normalised gaussian spread (× per-depth half-width)
 const MAX_CROWD := 1000
 
 # Per-character world-y offset to put feet at ground level. Each character's
@@ -623,6 +631,10 @@ func _set_count(n: int) -> void:
 	var foot_y: float = CHARACTER_FOOT_Y.get(_character, 0.57)
 	var rng := RandomNumberGenerator.new()
 	var specs: Array = []
+	# Precompute the camera frustum basis for the per-depth half-width (below).
+	var fwd_y: float = sin(deg_to_rad(CAM_PITCH_DEG))    # camera forward, y
+	var fwd_z: float = -cos(deg_to_rad(CAM_PITCH_DEG))   # camera forward, z
+	var tan_h: float = tan(deg_to_rad(CAM_FOV_V * 0.5)) * VIEW_ASPECT
 	for i in range(n):
 		# Per-index seed → member i always lands in the same spot, so the crowd
 		# doesn't reshuffle as the slider changes; density rises with count.
@@ -634,14 +646,15 @@ func _set_count(n: int) -> void:
 		# clamp). |x| never exceeds X_SOFT, so the whole crowd stays in frame.
 		var zc: float = (FORMATION_Z_BACK + FORMATION_Z_FRONT) * 0.5
 		var zr: float = (FORMATION_Z_FRONT - FORMATION_Z_BACK) * 0.5
-		var raw_x: float = rng.randfn(0.0, FORMATION_HALF_X * 0.55)
 		var z: float = zc + rng.randfn(0.0, zr * 0.6)
-		# iter396: the soft x-bound now scales with depth so it follows the camera's
-		# perspective wedge — narrower at the front (closer = smaller visible width +
-		# bigger sprites) widening toward the back. A uniform bound clipped the front
-		# row at the screen edges. Half-width ∝ distance-from-camera (cam at z=CAM_Z).
-		var halfw: float = X_NEAR * (CAM_Z - z) / (CAM_Z - FORMATION_Z_FRONT)
-		var x: float = halfw * tanh(raw_x / halfw)
+		# iter396: x half-width = the REAL on-screen half-width at this depth. Forward
+		# distance to the member along the camera axis, × tan(h-fov/2), minus a margin
+		# for the sprite body. The spread is a NORMALISED gaussian × tanh so the crowd
+		# fills the frame proportionally at every depth (centre-dense, soft edges) and
+		# never exceeds the frame, regardless of count.
+		var fwd_dist: float = (MEMBER_Y - CAM_POS_Y) * fwd_y + (z - CAM_POS_Z) * fwd_z
+		var halfw: float = maxf(0.5, fwd_dist * tan_h - EDGE_MARGIN)
+		var x: float = halfw * tanh(rng.randfn(0.0, SPREAD_SIGMA))
 		specs.append({
 			"clip": clips[i % clips.size()],
 			"xform": Transform3D(Basis(), Vector3(x, foot_y, z)),
