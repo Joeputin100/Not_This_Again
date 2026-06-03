@@ -38,6 +38,10 @@ func _ready() -> void:
 	_player = VideoStreamPlayer.new()
 	_player.set_anchors_preset(Control.PRESET_FULL_RECT)
 	_player.expand = true
+	# iter371: the full-screen video is a Control — its default mouse_filter STOP
+	# was swallowing taps as GUI input, so _unhandled_input never fired (skip
+	# silently failed). Ignore the mouse here; the skip uses _input (pre-GUI) too.
+	_player.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	_player.stream = load(path)
 	_player.finished.connect(_go_to_title)
 	add_child(_player)
@@ -55,7 +59,9 @@ func _process(_delta: float) -> void:
 		_music_cued = true
 		_start_music()
 
-func _unhandled_input(event: InputEvent) -> void:
+func _input(event: InputEvent) -> void:
+	# _input runs BEFORE GUI, so the skip fires even though a full-screen Control
+	# (the video) is on top — fixes "tap to skip" needing many taps / ~10s.
 	var skip: bool = (event is InputEventScreenTouch and event.pressed) \
 		or (event is InputEventMouseButton and event.pressed) \
 		or (event is InputEventKey and event.pressed)
