@@ -85,6 +85,9 @@ func _ready() -> void:
 			BuildInfo.SHA, BuildInfo.SHORT_DATE, BuildInfo.ITER,
 		]
 	DebugLog.add("main_menu _ready (build=%s) iter=%s" % [BuildInfo.SHA, BuildInfo.ITER])
+	# iter373: cohesive title scene (full-bleed hero frame, match-cut from the
+	# cinematic) replaces the flat brown field + scattered cut-outs.
+	_build_title_scene()
 	# iter361: kick off Peppermint Rodeo on the splash. It carries through into the
 	# level selector WITHOUT restarting (MusicPlayer is an autoload; same track = no
 	# restart). ~50% volume so it sits under the SFX.
@@ -572,3 +575,48 @@ func _on_settings_close() -> void:
 func _on_music_slider(value: float) -> void:
 	if get_node_or_null("/root/MusicPlayer") != null and MusicPlayer.has_method("set_music_linear"):
 		MusicPlayer.set_music_linear(value)
+
+
+# iter373: build the cohesive 2D title — the cinematic's final hero-on-horse
+# frame as a full-bleed background (a seamless match-cut from the splash video),
+# with top/bottom legibility scrims, replacing the flat brown ColorRect and the
+# scattered Pete/Humbug/Rustler cut-outs that made the title a hodgepodge.
+func _build_title_scene() -> void:
+	var ui: Node = get_node_or_null("UI")
+	if ui == null:
+		return
+	var bg := TextureRect.new()
+	bg.name = "TitleHero"
+	bg.set_anchors_preset(Control.PRESET_FULL_RECT)
+	var hp := "res://assets/sprites/ui/title_hero.png"
+	if ResourceLoader.exists(hp):
+		bg.texture = load(hp)
+	bg.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	bg.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_COVERED
+	bg.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	ui.add_child(bg)
+	ui.move_child(bg, 0)   # behind everything else in the UI layer
+	# Top + bottom scrims so the title + PLAY + taglines stay legible over the art.
+	var top := ColorRect.new()
+	top.name = "ScrimTop"
+	top.set_anchors_preset(Control.PRESET_TOP_WIDE)
+	top.offset_bottom = 560.0
+	top.color = Color(0.10, 0.04, 0.03, 0.5)
+	top.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	ui.add_child(top)
+	ui.move_child(top, 1)
+	var bot := ColorRect.new()
+	bot.name = "ScrimBottom"
+	bot.set_anchors_preset(Control.PRESET_BOTTOM_WIDE)
+	bot.offset_top = -660.0
+	bot.color = Color(0.10, 0.04, 0.03, 0.58)
+	bot.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	ui.add_child(bot)
+	ui.move_child(bot, 2)
+	# Declutter: the hero scene carries the look now, so hide the loose cut-outs.
+	for n in [pete_rect, humbug_rect, rustler_tap]:
+		if n != null and n is CanvasItem:
+			(n as CanvasItem).visible = false
+	var rig := get_node_or_null("RustlerRig")
+	if rig != null and rig is CanvasItem:
+		(rig as CanvasItem).visible = false
