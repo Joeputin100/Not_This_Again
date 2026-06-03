@@ -596,21 +596,18 @@ func _build_title_scene() -> void:
 	bg.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	ui.add_child(bg)
 	ui.move_child(bg, 0)   # behind everything else in the UI layer
-	# Top + bottom scrims so the title + PLAY + taglines stay legible over the art.
-	var top := ColorRect.new()
-	top.name = "ScrimTop"
+	# iter375: GRADIENT scrims (not flat ColorRects) so the title/PLAY stay legible
+	# over the art WITHOUT the hard-edged "grey box" look the flat rects produced.
+	# Each fades from dark at the frame edge to fully transparent toward centre, so
+	# there's no visible boundary line cutting across the hero.
+	var top := _make_scrim("ScrimTop", true)
 	top.set_anchors_preset(Control.PRESET_TOP_WIDE)
-	top.offset_bottom = 560.0
-	top.color = Color(0.10, 0.04, 0.03, 0.5)
-	top.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	top.offset_bottom = 640.0
 	ui.add_child(top)
 	ui.move_child(top, 1)
-	var bot := ColorRect.new()
-	bot.name = "ScrimBottom"
+	var bot := _make_scrim("ScrimBottom", false)
 	bot.set_anchors_preset(Control.PRESET_BOTTOM_WIDE)
-	bot.offset_top = -660.0
-	bot.color = Color(0.10, 0.04, 0.03, 0.58)
-	bot.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	bot.offset_top = -700.0
 	ui.add_child(bot)
 	ui.move_child(bot, 2)
 	# Declutter: the hero scene carries the look now, so hide the loose cut-outs.
@@ -620,3 +617,25 @@ func _build_title_scene() -> void:
 	var rig := get_node_or_null("RustlerRig")
 	if rig != null and rig is CanvasItem:
 		(rig as CanvasItem).visible = false
+
+# iter375: a vertical gradient scrim — dark candy-brown at one edge fading to fully
+# transparent at the other. `dark_at_top` puts the opaque end at the top (for the
+# title band); false puts it at the bottom (for the PLAY/footer band).
+func _make_scrim(node_name: String, dark_at_top: bool) -> TextureRect:
+	var grad := Gradient.new()
+	var dark := Color(0.10, 0.04, 0.03, 0.78)
+	var clear := Color(0.10, 0.04, 0.03, 0.0)
+	grad.set_color(0, dark if dark_at_top else clear)
+	grad.set_color(1, clear if dark_at_top else dark)
+	var tex := GradientTexture2D.new()
+	tex.gradient = grad
+	tex.width = 8
+	tex.height = 256
+	tex.fill_from = Vector2(0, 0)
+	tex.fill_to = Vector2(0, 1)   # vertical
+	var rect := TextureRect.new()
+	rect.name = node_name
+	rect.texture = tex
+	rect.stretch_mode = TextureRect.STRETCH_SCALE
+	rect.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	return rect

@@ -68,41 +68,45 @@ texture = ExtResource("4_humbug")
 expand_mode = 1
 stretch_mode = 5
 
+[node name="Hearts" type="Control" parent="UI"]
+anchors_preset = -1
+anchor_right = 1.0
+offset_left = 230.0
+offset_top = 36.0
+offset_right = -230.0
+offset_bottom = 150.0
+mouse_filter = 2
+script = ExtResource("7_hearts")
+
 [node name="Title" type="Label" parent="UI"]
 anchors_preset = -1
 anchor_right = 1.0
 offset_left = 60.0
-offset_top = 320.0
+offset_top = 146.0
 offset_right = -60.0
-offset_bottom = 600.0
+offset_bottom = 540.0
 theme = ExtResource("2_theme")
-theme_override_font_sizes/font_size = 144
+theme_override_colors/font_outline_color = Color(0.16, 0.05, 0.04, 1)
+theme_override_constants/outline_size = 16
+theme_override_font_sizes/font_size = 108
 text = "NOT
 THIS
 AGAIN"
 horizontal_alignment = 1
 mouse_filter = 2
 
-[node name="Hearts" type="Control" parent="UI"]
-anchors_preset = -1
-anchor_right = 1.0
-offset_left = 230.0
-offset_top = 150.0
-offset_right = -230.0
-offset_bottom = 270.0
-mouse_filter = 2
-script = ExtResource("7_hearts")
-
 [node name="Subtitle" type="Label" parent="UI"]
 anchors_preset = -1
 anchor_right = 1.0
 offset_left = 60.0
-offset_top = 940.0
+offset_top = 556.0
 offset_right = -60.0
-offset_bottom = 1020.0
+offset_bottom = 630.0
 theme = ExtResource("2_theme")
-theme_override_colors/font_color = Color(0.831, 0.659, 0.341, 0.65)
-theme_override_font_sizes/font_size = 36
+theme_override_colors/font_color = Color(1, 0.93, 0.78, 1)
+theme_override_colors/font_outline_color = Color(0.16, 0.05, 0.04, 1)
+theme_override_constants/outline_size = 12
+theme_override_font_sizes/font_size = 46
 text = "the minigame they kept lying about"
 horizontal_alignment = 1
 mouse_filter = 2
