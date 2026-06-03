@@ -106,17 +106,32 @@ const OBSTACLE_DESPAWN_Z: float = 3.5   # past the cowboy
 const OBSTACLE_SPEED: float = 2.5    # iter 144: 8→5→0.5 → iter 153: 0.5→2.5 (0.5 was non-functional — gates took ~56s to arrive while Pete spawned at 18s; 2.5 is ~31% of the original, slow but playable)
 const OBSTACLE_SPAWN_INTERVAL: float = 1.2
 
-# SP2 slice3 (curves): the path bends left/right as it recedes. Implemented per
-# the spec's (distance, lateral) mechanism — every scrolling entity's world x is
-# offset by the path's lateral curve at ITS distance-along-path, minus the curve
-# at the PLAYER's distance, so the player's lane stays centred while the road
-# ahead snakes. No terrain-mesh rebuild needed; the road furniture + outlaws
-# define the visible bend. PATH_AMP = max lateral swing (world units), PATH_WAVELEN
-# = distance for one full S. A data-driven PathProfile can replace _path_lateral later.
-const PATH_AMP: float = 4.0
-const PATH_WAVELEN: float = 34.0
-const PATH_CAM_YAW_MAX: float = 10.0   # camera yaws up to this many ° into the bend
-const PATH_LOOKAHEAD: float = 14.0     # distance ahead the camera yaws toward
+# SP2 slice3 (curves): the path bends left/right as it recedes. Per the spec's
+# (distance, lateral) mechanism, every scrolling entity's world x is offset by the
+# path's lateral curve at ITS distance-along-path, minus the curve at the PLAYER's
+# distance, so the player's lane stays centred while the road ahead snakes. iter399
+# adds the VISIBLE bend: a dirt-road ribbon mesh (built like the level-select trail)
+# that follows the same curve and scrolls, so the GROUND reads as curving — uniform
+# dirt alone can't show a bend (nothing lateral to deform).
+#
+# _PATH_KEYS = (distance, x-offset) keyframes over one PATH_PATTERN_LEN, smoothstep-
+# interpolated and tiled. This supports BOTH sharp curves (big x-delta over a short
+# distance) and gentle ones (small delta over a long distance). First/last y match
+# for a seamless wrap. PATH_AMP = max |x-offset| in the pattern (used for clamps).
+const PATH_PATTERN_LEN: float = 140.0
+const PATH_AMP: float = 8.0
+const _PATH_KEYS: Array = [
+	Vector2(0.0, 0.0), Vector2(26.0, 0.0),         # straight start
+	Vector2(50.0, 5.0),                            # gentle right (24u → gentle)
+	Vector2(72.0, 0.0),                            # ease back (22u → gentle)
+	Vector2(88.0, -6.0), Vector2(102.0, -6.0),     # sharp left (16u) + hold
+	Vector2(120.0, 5.5),                           # sharp right (18u)
+	Vector2(140.0, 0.0),                           # ease back to straight (wrap)
+]
+const ROAD_HALF: float = 3.4           # road half-width (player bound 3.0 fits on it)
+const ROAD_Z_NEAR: float = 6.0         # ribbon near end (behind the cowboy, off-screen bottom)
+const ROAD_Z_FAR: float = -40.0        # ribbon far end (toward the horizon)
+const ROAD_SEGMENTS: int = 30          # depth samples for the ribbon
 
 # Iter 66: 3D bullets — small bright spheres that travel from cowboy
 # along -z axis (away from camera toward the far end of the plane).
@@ -142,6 +157,7 @@ var bullets_root: Node3D
 var gates_root: Node3D
 var outlaws_root: Node3D
 var holes_root: Node3D   # SP2 slice3: pits/cliffs that posse + outlaws fall into
+var _road_mi: MeshInstance3D = null   # SP2 slice3: curving dirt-road ribbon
 var outlaw_bullets_root: Node3D
 var boss_root: Node3D
 # Iter 69: terrain_3d.gd script wasn't attached to the inline Terrain3D
@@ -415,6 +431,7 @@ func _ready() -> void:
 	# overloading mobile scene-load — script-side spawn defers texture
 	# upload / shader compile / node tree allocation to post-_ready frames.
 	_build_3d_content()
+	_build_road_node()   # SP2 slice3: the curving dirt road ribbon
 	if info_label != null:
 		info_label.text = "iter97 RDY-4 3D built"
 	# Iter 72: spawn posse followers at trapezoid offsets behind leader.
@@ -5457,10 +5474,17 @@ func _process(delta: float) -> void:
 
 # ---- SP2 slice3: curved path ------------------------------------------------
 # Lateral world-x offset of the path centreline at a given distance-along-path.
-# A gentle serpentine for now; a data-driven PathProfile.lateral Curve can drop
-# in here later without touching callers.
+# Smoothstep-interpolated keyframes tiled over PATH_PATTERN_LEN — supports sharp
+# and gentle bends. A data-driven PathProfile.lateral Curve can replace this later.
 func _path_lateral(dist: float) -> float:
-	return PATH_AMP * sin(dist * TAU / PATH_WAVELEN)
+	var w: float = fposmod(dist, PATH_PATTERN_LEN)
+	for i in range(_PATH_KEYS.size() - 1):
+		var k0: Vector2 = _PATH_KEYS[i]
+		var k1: Vector2 = _PATH_KEYS[i + 1]
+		if w >= k0.x and w <= k1.x:
+			var t: float = (w - k0.x) / maxf(0.001, k1.x - k0.x)
+			return lerpf(k0.y, k1.y, smoothstep(0.0, 1.0, t))
+	return 0.0
 
 # The bend an entity at world-z should show: its distance-along-path is the
 # player's scrolled distance plus how far AHEAD it still is (cowboy_z − z).
@@ -5483,12 +5507,79 @@ func _apply_path_curve() -> void:
 			if not c.has_meta("lane_x"):
 				c.set_meta("lane_x", c.position.x)
 			c.position.x = c.get_meta("lane_x") + _path_offset_at_z(c.position.z, base_lat)
-	# Camera yaws toward the upcoming bend so the player sees the turn coming.
-	if camera != null:
-		var lat_ahead: float = _path_lateral(_level_distance + PATH_LOOKAHEAD) - base_lat
-		var yaw: float = clampf(-lat_ahead * (PATH_CAM_YAW_MAX / PATH_AMP), \
-			-PATH_CAM_YAW_MAX, PATH_CAM_YAW_MAX)
-		camera.rotation_degrees.y = lerpf(camera.rotation_degrees.y, yaw, 0.1)
+	_update_road_mesh(base_lat)
+
+# Build the road-ribbon node once (added to the gameplay 3D world). Its geometry
+# is rewritten every frame by _update_road_mesh so the curve scrolls toward the
+# player. Dirt-trail texture, unshaded, sits just above the flat ground.
+func _build_road_node() -> void:
+	if subviewport == null or _road_mi != null:
+		return
+	_road_mi = MeshInstance3D.new()
+	_road_mi.name = "PathRoad3D"
+	var mat := StandardMaterial3D.new()
+	if ResourceLoader.exists("res://assets/textures/dirt_path_2k.png"):
+		mat.albedo_texture = load("res://assets/textures/dirt_path_2k.png")
+	mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	mat.cull_mode = BaseMaterial3D.CULL_DISABLED
+	mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA_DEPTH_PRE_PASS
+	mat.vertex_color_use_as_albedo = true
+	mat.render_priority = -1   # under props/outlaws, over the flat dirt
+	_road_mi.material_override = mat
+	subviewport.add_child(_road_mi)
+
+# Rebuild the curving road ribbon for the current scroll. Centreline at depth z is
+# the same path offset the entities use, so props/outlaws sit ON the road. Rails are
+# offset perpendicular to the centreline tangent so sharp bends keep their width.
+func _update_road_mesh(base_lat: float) -> void:
+	if _road_mi == null or cowboy_3d == null:
+		return
+	var eps: float = 0.03
+	var tile: float = 6.0
+	var n: int = ROAD_SEGMENTS
+	var ctr: Array = []
+	for i in range(n + 1):
+		var z: float = lerpf(ROAD_Z_NEAR, ROAD_Z_FAR, float(i) / float(n))
+		ctr.append(Vector3(_path_offset_at_z(z, base_lat), eps, z))
+	var st := SurfaceTool.new()
+	st.begin(Mesh.PRIMITIVE_TRIANGLES)
+	var vscroll: float = _level_distance / tile
+	for i in range(n):
+		var l0: Array = _road_rail(ctr, i)
+		var l1: Array = _road_rail(ctr, i + 1)
+		var v0: float = float(i) / float(n) * (abs(ROAD_Z_FAR - ROAD_Z_NEAR) / tile) - vscroll
+		var v1: float = float(i + 1) / float(n) * (abs(ROAD_Z_FAR - ROAD_Z_NEAR) / tile) - vscroll
+		var a0: float = _road_alpha(i, n)
+		var a1: float = _road_alpha(i + 1, n)
+		_road_v(st, l0[0], Vector2(0, v0), a0); _road_v(st, l0[1], Vector2(1, v0), a0); _road_v(st, l1[1], Vector2(1, v1), a1)
+		_road_v(st, l0[0], Vector2(0, v0), a0); _road_v(st, l1[1], Vector2(1, v1), a1); _road_v(st, l1[0], Vector2(0, v1), a1)
+	st.generate_normals()
+	_road_mi.mesh = st.commit()
+
+func _road_rail(ctr: Array, i: int) -> Array:
+	var n: int = ctr.size()
+	var tang: Vector3
+	if i == 0:
+		tang = ctr[1] - ctr[0]
+	elif i >= n - 1:
+		tang = ctr[n - 1] - ctr[n - 2]
+	else:
+		tang = ctr[i + 1] - ctr[i - 1]
+	tang.y = 0.0
+	if tang.length() < 0.001:
+		tang = Vector3(0, 0, -1)
+	tang = tang.normalized()
+	var perp := Vector3(tang.z, 0.0, -tang.x)
+	return [ctr[i] - perp * ROAD_HALF, ctr[i] + perp * ROAD_HALF]
+
+func _road_alpha(i: int, n: int) -> float:
+	var u: float = float(i) / float(n)
+	return clampf((1.0 - u) / 0.2, 0.0, 1.0) if u > 0.8 else 1.0  # fade the far tail into haze
+
+func _road_v(st: SurfaceTool, p: Vector3, uv: Vector2, a: float) -> void:
+	st.set_color(Color(1, 1, 1, a))
+	st.set_uv(uv)
+	st.add_vertex(p)
 
 func _input(event: InputEvent) -> void:
 	# Translate drag x to cowboy world-x via the screen-to-plane mapping.
