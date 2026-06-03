@@ -110,6 +110,9 @@ const GRASS_HALF := 25.0    # crowd clamp bound — keeps members on the visible
 # (never marching off-world). Per-index seeded positions so members stay put as
 # the count changes.
 const FORMATION_HALF_X := 10.0
+const X_SOFT := 9.5                 # iter395: tanh soft-bound on |x| so the crowd
+                                    # stays fully in frame at any density (≈ the
+                                    # camera's horizontal half-extent at the crowd)
 const FORMATION_Z_BACK := -8.0      # compact band in the lower third of the 3D view
 const FORMATION_Z_FRONT := -1.0     # (above the UI panel), gate above it
 const MAX_CROWD := 1000
@@ -304,6 +307,7 @@ const BLAST_TEX := "res://assets/sprites/ui/blast.png"   # iter374: a 💥 starb
 var _bullet_pos: Array = []          # one PackedVector3Array per colour
 var _bullet_mmi: Array = []          # one MultiMeshInstance3D per colour
 var _fire_accum := 0.0
+var _last_blast_ms := 0               # iter395: time-based blast cooldown (was a coin-flip)
 var _test_gate: Node3D = null
 var _fire_toggle: CheckButton = null
 
@@ -622,13 +626,15 @@ func _set_count(n: int) -> void:
 		# Per-index seed → member i always lands in the same spot, so the crowd
 		# doesn't reshuffle as the slider changes; density rises with count.
 		rng.seed = i * 2654435761 + 12345
-		# iter374: gaussian with NO clamp — the tail fades softly at the edges
-		# (organic blob). Clamping piled outliers into a flat line at the boundary;
-		# letting the tail run just thins the crowd out smoothly (rare strays at
-		# the far edge are fine / off-screen).
+		# iter375: gaussian with a SOFT (tanh) bound on x — keeps the organic
+		# centre-dense / edge-thin falloff of an unclamped gaussian, but the far
+		# tail is smoothly compressed toward ±X_SOFT instead of either running off
+		# the side of the frame (no clamp) or piling into a hard flat line (hard
+		# clamp). |x| never exceeds X_SOFT, so the whole crowd stays in frame.
 		var zc: float = (FORMATION_Z_BACK + FORMATION_Z_FRONT) * 0.5
 		var zr: float = (FORMATION_Z_FRONT - FORMATION_Z_BACK) * 0.5
-		var x: float = rng.randfn(0.0, FORMATION_HALF_X * 0.55)
+		var raw_x: float = rng.randfn(0.0, FORMATION_HALF_X * 0.55)
+		var x: float = X_SOFT * tanh(raw_x / X_SOFT)
 		var z: float = zc + rng.randfn(0.0, zr * 0.6)
 		specs.append({
 			"clip": clips[i % clips.size()],
@@ -802,8 +808,15 @@ func _advance_bullets(dt: float) -> void:
 			# Indestructible gate: absorb the bullet if it swept across the gate
 			# plane within its x-span, with a small candy blast (the gate persists).
 			if prev_z >= TEST_GATE_Z and p.z <= TEST_GATE_Z and absf(p.x) <= TEST_GATE_X_HALF:
-				if randf() < 0.32:   # throttle so high fire rates don't spam blasts
-					_spawn_gate_blast(Vector3(p.x, p.y, TEST_GATE_Z))
+				# iter395: spawn the blast a touch IN FRONT of the gate (toward the
+				# crowd/camera) — at the gate plane it was coplanar with the opaque
+				# gate quad and got z-occluded, so no blast was ever visible. A short
+				# time cooldown gives a steady visible cadence instead of a coin-flip
+				# that could miss for seconds at low fire rates.
+				var now: int = Time.get_ticks_msec()
+				if now - _last_blast_ms >= 55:
+					_last_blast_ms = now
+					_spawn_gate_blast(Vector3(p.x, p.y, TEST_GATE_Z + 0.4))
 				continue
 			if p.z < FIRE_FAR_Z:
 				continue
@@ -824,15 +837,21 @@ func _spawn_gate_blast(pos: Vector3) -> void:
 		s.texture = load(BLAST_TEX)
 	s.billboard = BaseMaterial3D.BILLBOARD_ENABLED
 	s.shaded = false
-	s.pixel_size = 0.0018            # iter374: ~bullet-sized 💥 starburst
+	# iter395: draw on top of the gate so the 💥 is never z-occluded by the quad.
+	s.no_depth_test = true
+	s.render_priority = 5
 	s.modulate = Color(1.0, 1.0, 1.0, 1.0)
-	s.scale = Vector3(0.5, 0.5, 0.5)
 	s.position = pos
 	viewport_3d.add_child(s)
+	# iter395: animate PIXEL_SIZE, not scale — billboard mode rebuilds the node's
+	# basis each frame and silently discards any `scale`, so a scale tween does
+	# nothing (that's why the blast never "popped" / was invisible). Bullets are
+	# 0.45 units; the burst peaks a touch bigger (0.0026 × 256 ≈ 0.67) so it reads.
+	s.pixel_size = 0.0015
 	var t := create_tween().set_parallel(true)
-	t.tween_property(s, "scale", Vector3(1.15, 1.15, 1.15), 0.18) \
+	t.tween_property(s, "pixel_size", 0.0038, 0.24) \
 		.set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
-	t.tween_property(s, "modulate:a", 0.0, 0.18)
+	t.tween_property(s, "modulate:a", 0.0, 0.24)
 	t.chain().tween_callback(s.queue_free)
 
 func _build_fire_toggle() -> void:

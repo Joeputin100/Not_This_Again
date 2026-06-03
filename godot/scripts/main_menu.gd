@@ -511,6 +511,19 @@ func _build_settings_ui() -> void:
 	spr.offset_bottom = -384.0
 	spr.pressed.connect(_on_settings_pressed)
 	ui.add_child(spr)
+	# iter395: idle "breathe + rotate-rock" so the sprocket feels alive / invites a
+	# tap. Pivot at the button's centre so scale + rotation pulse about the middle.
+	spr.pivot_offset = Vector2(56, 56)   # button is 112×112
+	var breathe := create_tween().set_loops()
+	breathe.tween_property(spr, "scale", Vector2(1.06, 1.06), 1.3) \
+		.set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN_OUT)
+	breathe.tween_property(spr, "scale", Vector2(1.0, 1.0), 1.3) \
+		.set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN_OUT)
+	var rock := create_tween().set_loops()
+	rock.tween_property(spr, "rotation_degrees", 7.0, 1.7) \
+		.set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN_OUT)
+	rock.tween_property(spr, "rotation_degrees", -7.0, 1.7) \
+		.set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN_OUT)
 	# Dim overlay + centred panel, hidden until the sprocket is tapped.
 	var overlay := ColorRect.new()
 	overlay.name = "SettingsOverlay"
