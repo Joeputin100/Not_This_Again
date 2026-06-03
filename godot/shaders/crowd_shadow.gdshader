@@ -6,7 +6,11 @@ shader_type spatial;
 // softness / offset via the spawning script. The shadow's POSITION (and
 // offset from the character) is set per-instance on the MultiMesh.
 
-render_mode unshaded, depth_draw_opaque, cull_disabled, blend_mix, depth_test_disabled;
+// iter372: depth_test ENABLED (was disabled) so opaque geometry in front — e.g.
+// the test gate — occludes shadows behind it (cowboys driven behind the fence no
+// longer cast shadows over it). depth_draw_never so overlapping shadows don't
+// cull each other; the slight feet y-offset keeps them above the ground plane.
+render_mode unshaded, depth_draw_never, cull_disabled, blend_mix;
 // `depth_test_disabled` so the shadow always draws on top of the grass
 // plane without z-fighting at y=0.01.
 
