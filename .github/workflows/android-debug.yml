@@ -66,6 +66,13 @@ jobs:
           GDEOF
           echo "Stamped build_info.gd:"
           cat godot/scripts/build_info.gd
+          # iter370: stamp the Android version with the build number (= ITER, the
+          # commit count, same as BuildInfo.ITER) so Firebase App Tester shows it
+          # instead of a fixed 1.0.0 (1). versionCode must be a monotonic int.
+          sed -i "s|^version/code=.*|version/code=${ITER}|" godot/export_presets.cfg
+          sed -i "s|^version/name=.*|version/name=\"0.0.${ITER}\"|" godot/export_presets.cfg
+          echo "Android version -> code=${ITER} name=0.0.${ITER}"
+          grep -E "^version/(code|name)" godot/export_presets.cfg
 
       - name: Install Godot Android build template into project
         # The custom Android build template (gradle source) ships inside
