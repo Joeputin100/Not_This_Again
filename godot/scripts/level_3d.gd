@@ -507,6 +507,7 @@ func _ready() -> void:
 	# upload / shader compile / node tree allocation to post-_ready frames.
 	_build_3d_content()
 	_build_world_terrain()   # iter400: static curved+hilly terrain the posse advances through
+	_apply_terrain_theme()   # iter415: per-terrain fog
 	_build_frost_bolts()     # iter404: FROSTBITE chain-lightning overlay
 	if info_label != null:
 		info_label.text = "iter97 RDY-4 3D built"
@@ -5733,7 +5734,7 @@ func _check_puddle_splash() -> void:
 # Rolling hills as a function of distance — periods divide PATH_PATTERN_LEN (140)
 # so the terrain tiles seamlessly when WorldRoot.z wraps.
 func _hill_y(d: float) -> float:
-	return HILL_AMP1 * sin(d * TAU / 70.0) + HILL_AMP2 * sin(d * TAU / 35.0)
+	return TerrainThemes.hill_height(d)
 
 # Depth a pit drops at (distance d, lateral offset gx from the path centre).
 func _hole_drop(d: float, gx: float) -> float:
@@ -5752,6 +5753,22 @@ func _terr_vertex(gx: float, lz: float) -> Vector3:
 
 # iter400: build the static curved+hilly terrain (+ puddles) ONCE under WorldRoot,
 # replacing the UV-scroll flat plane. The posse advances by translating WorldRoot.
+# iter415: per-terrain environment look (fog). Ground tex/tint/detail are baked at
+# build time in _build_world_terrain; this adds the atmospheric layer.
+func _apply_terrain_theme() -> void:
+	if subviewport == null:
+		return
+	var theme: Dictionary = TerrainThemes.get_theme(_level_def.terrain if _level_def != null else "frontier")
+	var env := Environment.new()
+	env.background_mode = Environment.BG_CANVAS
+	env.fog_enabled = true
+	env.fog_light_color = theme["fog_color"]
+	env.fog_density = theme["fog_density"]
+	var we := WorldEnvironment.new()
+	we.name = "TerrainEnv"
+	we.environment = env
+	subviewport.add_child(we)
+
 func _build_world_terrain() -> void:
 	if subviewport == null or _world_root != null:
 		return
@@ -5763,6 +5780,11 @@ func _build_world_terrain() -> void:
 	var cols: int = int(TERR_HALF_W * 2.0 / TERR_DX)
 	var rows: int = int((TERR_Z_BEHIND - TERR_Z_AHEAD) / TERR_DZ)
 	var tile: float = 6.0
+	# iter415: bake per-vertex valley/ridge tint from the level's terrain theme.
+	var _theme: Dictionary = TerrainThemes.get_theme(_level_def.terrain if _level_def != null else "frontier")
+	var _tlo: Color = _theme["tint_low"]
+	var _thi: Color = _theme["tint_high"]
+	var _tamp: float = 2.2   # ~max |hill_height|
 	for r in range(rows):
 		var lz0: float = TERR_Z_BEHIND - float(r) * TERR_DZ
 		var lz1: float = TERR_Z_BEHIND - float(r + 1) * TERR_DZ
@@ -5777,12 +5799,12 @@ func _build_world_terrain() -> void:
 			var u1: float = (gx1 + TERR_HALF_W) / tile
 			var v0: float = -lz0 / tile
 			var v1: float = -lz1 / tile
-			st.set_uv(Vector2(u0, v0)); st.add_vertex(p00)
-			st.set_uv(Vector2(u1, v0)); st.add_vertex(p10)
-			st.set_uv(Vector2(u1, v1)); st.add_vertex(p11)
-			st.set_uv(Vector2(u0, v0)); st.add_vertex(p00)
-			st.set_uv(Vector2(u1, v1)); st.add_vertex(p11)
-			st.set_uv(Vector2(u0, v1)); st.add_vertex(p01)
+			st.set_color(TerrainThemes.tint(p00.y, _tlo, _thi, _tamp)); st.set_uv(Vector2(u0, v0)); st.add_vertex(p00)
+			st.set_color(TerrainThemes.tint(p10.y, _tlo, _thi, _tamp)); st.set_uv(Vector2(u1, v0)); st.add_vertex(p10)
+			st.set_color(TerrainThemes.tint(p11.y, _tlo, _thi, _tamp)); st.set_uv(Vector2(u1, v1)); st.add_vertex(p11)
+			st.set_color(TerrainThemes.tint(p00.y, _tlo, _thi, _tamp)); st.set_uv(Vector2(u0, v0)); st.add_vertex(p00)
+			st.set_color(TerrainThemes.tint(p11.y, _tlo, _thi, _tamp)); st.set_uv(Vector2(u1, v1)); st.add_vertex(p11)
+			st.set_color(TerrainThemes.tint(p01.y, _tlo, _thi, _tamp)); st.set_uv(Vector2(u0, v1)); st.add_vertex(p01)
 	st.generate_normals()
 	var mi := MeshInstance3D.new()
 	mi.name = "Terrain"
@@ -5805,6 +5827,10 @@ func _build_world_terrain() -> void:
 			sm.albedo_texture = load("res://assets/textures/dirt_2k.png")
 		sm.cull_mode = BaseMaterial3D.CULL_DISABLED
 		mat = sm
+	# iter415: vertex-color tint + a built-in detail layer for close-up variation.
+	if mat is StandardMaterial3D:
+		var sm3 := mat as StandardMaterial3D
+		sm3.vertex_color_use_as_albedo = true
 	mi.material_override = mat
 	_world_root.add_child(mi)
 	# Puddles: flat translucent blue discs on the terrain at authored spots.

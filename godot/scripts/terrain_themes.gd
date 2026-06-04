@@ -9,8 +9,8 @@ const TERRAIN_THEMES: Dictionary = {
 	"frontier": {
 		"ground_albedo": "res://assets/textures/dirt_2k.png",
 		"ground_detail": "res://assets/textures/ground_detail.png",
-		"tint_low": Color(0.62, 0.50, 0.36),    # compacted valley (darker)
-		"tint_high": Color(1.04, 0.98, 0.86),   # sun-bleached ridge (>1 brightens)
+		"tint_low": Color(0.50, 0.40, 0.28),    # compacted valley (darker)
+		"tint_high": Color(0.86, 0.74, 0.56),   # sun-bleached ridge
 		"fog_color": Color(0.96, 0.78, 0.62),    # warm dusty horizon
 		"fog_density": 0.018,
 	},
