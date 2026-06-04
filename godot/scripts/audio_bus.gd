@@ -82,6 +82,12 @@ func play_flourish(slug: String) -> void:
 	_play_lazy_voice(_flourish_players, slug,
 		"res://assets/audio/flourishes/flourish_%s.mp3" % slug, 12.0)
 
+# iter411: generic creature/impact SFX by slug → res://assets/sfx/creatures/<slug>.mp3
+# (ElevenLabs-generated, committed offline). Lazy-loaded; silent no-op if missing.
+var _sfx_players: Dictionary = {}
+func play_sfx(slug: String) -> void:
+	_play_lazy_voice(_sfx_players, slug, "res://assets/sfx/creatures/%s.mp3" % slug, 8.0)
+
 # Iter 140: same pattern for character banter (Pete + heroes). Slug
 # matches the .mp3 filename: 'pete_intro', 'marshmallow_sheriff_rescue',
 # etc. Each character is voiced by a different ElevenLabs premade voice

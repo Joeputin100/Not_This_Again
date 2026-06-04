@@ -5625,6 +5625,8 @@ func _process(delta: float) -> void:
 						else:
 							_spawn_popup_3d(obstacle.position + Vector3(0, 1.3, 0),
 								"BULL DOWN!", Color(1.0, 0.82, 0.3, 1), 52)
+							if get_node_or_null("/root/AudioBus") and AudioBus.has_method("play_sfx"):
+								AudioBus.play_sfx("bull_bellow")
 						obstacle.queue_free()
 						_hits += 1
 						_refresh_hud()
@@ -5925,6 +5927,8 @@ func _spawn_chicken_coop() -> void:
 # Bust: 8 chickens scatter outward + a cloud of tumbling feathers (the visual
 # distraction). All in popups_root so they aren't treated as bullets/obstacles.
 func _bust_coop(pos: Vector3) -> void:
+	if get_node_or_null("/root/AudioBus") and AudioBus.has_method("play_sfx"):
+		AudioBus.play_sfx("chicken_bust")
 	for i in range(8):
 		var c := Sprite3D.new()
 		c.texture = CHICKEN_TEX[_rng.randi() % CHICKEN_TEX.size()]
@@ -6008,6 +6012,8 @@ func _spawn_obstacle() -> void:
 			obstacle.set_meta("is_bull", true)   # iter410: charging hazard, not a static prop
 			obstacle.set_meta("hp", BULL_HP)
 			obstacle.set_meta("confused", false)
+			if get_node_or_null("/root/AudioBus") and AudioBus.has_method("play_sfx"):
+				AudioBus.play_sfx("bull_snort")   # iter411: angry snort as it charges in
 	obstacles_root.add_child(obstacle)
 
 # Iter 334: build a registry-driven breathing-sprite obstacle, grounded so its
