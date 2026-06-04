@@ -204,8 +204,6 @@ var scenery_root: Node3D
 
 var _spawn_timer: float = 0.0
 var _volley_dmg: int = 1   # iter406: per-bullet damage = the posse's per-member firepower
-var _pete_dbg_t: float = 0.0   # iter407 diagnostic
-var _pete_dbg_hits: int = 0
 var _fire_timer: float = 0.0
 # Iter 115: GunState owns ammo + reload state for the cowboy.
 var _gun: Resource
@@ -1285,6 +1283,7 @@ func _check_bullet_gate_collision(bullet: Node3D, prev_z: float = INF) -> bool:
 		# Always show a small popup so the player gets shot feedback.
 		_spawn_popup_3d(bullet.position + Vector3(0, 0.4, 0),
 			"hit", Color(1.0, 0.92, 0.3, 0.9), 28)
+		_spawn_impact_blast(bullet.position)   # iter409: 💥 on gate hit
 		if hits < GATE_HITS_PER_STEP:
 			return true  # bullet absorbed, but value not yet stepped
 		# Step counter resets. Iter 114: invert direction — bullets
@@ -5431,24 +5430,6 @@ func _process(delta: float) -> void:
 	if _pete_spawned and boss_root.get_child_count() > 0:
 		var pete: Node3D = boss_root.get_child(0)
 		if is_instance_valid(pete) and pete is Node3D and pete.get_meta("boss_kind", "pete") != "rustler":
-			# iter407 DIAGNOSTIC: log Pete state + how many posse bullets are actually
-			# within his hit radius each second, to see WHY hits aren't registering.
-			_pete_dbg_t += delta
-			if _pete_dbg_t >= 1.0:
-				_pete_dbg_t = 0.0
-				var _near: int = 0
-				for _b in bullets_root.get_children():
-					if _b is Node3D:
-						var _bx: float = (_b as Node3D).position.x - pete.position.x
-						var _bz: float = (_b as Node3D).position.z - pete.position.z
-						if _bx * _bx + _bz * _bz < PETE_HIT_RADIUS_SQ:
-							_near += 1
-				DebugLog.add("PETEDBG z=%.1f x=%.1f hp=%d posse=%d dmg=%d bullets=%d near=%d hits1s=%d cowx=%.1f crowdx=%.1f" % [
-					pete.position.z, pete.position.x, pete.get_meta("hp", PETE_HP),
-					_posse_count_3d, _volley_dmg, bullets_root.get_child_count(), _near,
-					_pete_dbg_hits, cowboy_3d.position.x,
-					_posse_crowd.position.x if _posse_crowd != null else 0.0])
-				_pete_dbg_hits = 0
 			# Iter 146: anim revert timer — if running, count down; on
 			# expiry switch Pete back to IDLE.
 			var revert_t: float = pete.get_meta("anim_revert_t", 0.0)
@@ -5512,6 +5493,9 @@ func _process(delta: float) -> void:
 			# break consumed only 1 bullet/frame — excess bullets visually
 			# flew through Pete (user: "bullets pass through him too").
 			for bullet in bullets_root.get_children():
+				# iter409: Pete invulnerable until he's arrived + a brief beat (was one-shot mid-approach).
+				if _pete_stay_elapsed <= 1.0:
+					break
 				if not (bullet is Node3D):
 					continue
 				var dx: float = bullet.position.x - pete.position.x
@@ -5525,7 +5509,6 @@ func _process(delta: float) -> void:
 					_hits += 1
 					_refresh_hud()
 					_refresh_pete_hp(pete)
-					_pete_dbg_hits += 1
 					var has_bus := get_node_or_null("/root/AudioBus") != null \
 						and AudioBus.has_method("play_character_line")
 					if hp <= 0:
@@ -5588,6 +5571,7 @@ func _process(delta: float) -> void:
 			if dx * dx + dz * dz < BULLET_COLLISION_DIST_SQ:
 				_spawn_popup_3d(obstacle.position + Vector3(0, 1, 0),
 					"-1", Color(1, 0.32, 0.22, 1), 56)
+				_spawn_impact_blast(bullet.position)
 				obstacle.queue_free()
 				bullet.queue_free()
 				_hits += 1
@@ -5948,6 +5932,25 @@ func _emit_frost_chain() -> void:
 				pts.append(camera.unproject_position(tp))
 	if pts.size() >= 2:
 		_frost_bolts.call("add_chain", pts, 1.0)
+
+# iter409: impact blast on bullet -> gate/prop collision (was missing in gameplay;
+# ported from the SP1 testbed). Billboard, draws on top, pops via pixel_size + fades.
+const IMPACT_BLAST_TEX := preload("res://assets/sprites/ui/blast.png")
+func _spawn_impact_blast(pos: Vector3) -> void:
+	var s := Sprite3D.new()
+	s.texture = IMPACT_BLAST_TEX
+	s.billboard = BaseMaterial3D.BILLBOARD_ENABLED
+	s.shaded = false
+	s.no_depth_test = true
+	s.render_priority = 6
+	s.pixel_size = 0.0015
+	s.position = pos
+	popups_root.add_child(s)
+	var t := create_tween().set_parallel(true)
+	t.tween_property(s, "pixel_size", 0.0040, 0.22) \
+		.set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
+	t.tween_property(s, "modulate:a", 0.0, 0.22)
+	t.chain().tween_callback(s.queue_free)
 
 func _spawn_bullet() -> void:
 	# Iter 73: gunfire SFX. Single call so multi-dude firing doesn't
