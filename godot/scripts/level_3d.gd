@@ -403,6 +403,7 @@ var _posse_crowd: Node3D = null
 var _crowd_built_count: int = -1
 var _crowd_built_pitch: float = 999.0
 var _hole_lose_accum: float = 0.0
+var _over_hole: bool = false   # iter414b: pit-entry edge for the fall whistle
 
 # Iter 85: subtle y-bob animation gives life to the otherwise-static
 # billboards. Sine wave on position.y at each frame; followers get a
@@ -5261,9 +5262,9 @@ func _process(delta: float) -> void:
 				_fall_entity(o)
 	# Iter 75: gates scroll like obstacles + check trigger when crossing z plane
 	_gate_spawn_timer -= delta
-	if _gate_spawn_timer <= 0.0:
+	if _gate_spawn_timer <= 0.0 and _level_state == LevelState.PLAYING:
 		_gate_spawn_timer = GATE_SPAWN_INTERVAL
-		_spawn_gate()
+		_spawn_gate()   # iter414b: PLAYING only — no new gates to occlude the boss
 	for gate in gates_root.get_children():
 		if gate is Node3D:
 			gate.position.z += OBSTACLE_SPEED * motion_delta
@@ -5484,6 +5485,9 @@ func _process(delta: float) -> void:
 			_spawn_candy_rustler()
 		else:
 			_spawn_pete()
+		# iter414b: clear any gates so the boss isn't hidden behind one.
+		for _g in gates_root.get_children():
+			_g.queue_free()
 		_level_state = LevelState.BOSS
 		DebugLog.add("level state: PLAYING → BOSS (kind=%s)" % _boss_kind())
 	# Iter 77: Pete behavior — approach to PETE_STAY_Z, fire periodically,
@@ -5878,14 +5882,38 @@ func _check_authored_holes(delta: float) -> void:
 			break
 	if not over:
 		_hole_lose_accum = 0.0
+		_over_hole = false
 		return
+	# iter414b: entering a pit — whistle once + show the posse actually tumbling in
+	# (was a silent, invisible count drop, so you heard a fall with nothing visible).
+	if not _over_hole:
+		_over_hole = true
+		if get_node_or_null("/root/AudioBus") and AudioBus.has_method("play_sfx"):
+			AudioBus.play_sfx("hole_fall")
 	_hole_lose_accum += delta * 2.0
 	while _hole_lose_accum >= 1.0 and _posse_count_3d > 1:
 		_hole_lose_accum -= 1.0
 		_posse_count_3d = maxi(0, _posse_count_3d - 1)
+		_spawn_falling_cowboy(cowboy_3d.position + Vector3(_rng.randf_range(-1.0, 1.0), 0.0, 0.0))
 		_refresh_hud()
 		if _posse_count_3d <= 0:
 			_show_fail()
+
+# A posse member tumbling into a pit (visual; the whistle plays once on pit entry).
+func _spawn_falling_cowboy(pos: Vector3) -> void:
+	var c := Sprite3D.new()
+	c.texture = COWBOY_TEXTURE_LVL3D
+	c.billboard = BaseMaterial3D.BILLBOARD_ENABLED
+	c.shaded = false
+	c.pixel_size = COWBOY_PIXEL_SIZE
+	c.position = pos
+	popups_root.add_child(c)
+	var t := c.create_tween()
+	t.set_parallel(true)
+	t.tween_property(c, "position:y", pos.y - 6.0, 0.6).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_IN)
+	t.tween_property(c, "scale", c.scale * 0.1, 0.6)
+	t.tween_property(c, "modulate:a", 0.0, 0.6)
+	t.chain().tween_callback(c.queue_free)
 
 func _input(event: InputEvent) -> void:
 	# Translate drag x to cowboy world-x via the screen-to-plane mapping.
