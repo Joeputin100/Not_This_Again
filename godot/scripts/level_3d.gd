@@ -203,6 +203,7 @@ var bonuses_root: Node3D
 var scenery_root: Node3D
 
 var _spawn_timer: float = 0.0
+var _volley_dmg: int = 1   # iter406: per-bullet damage = the posse's per-member firepower
 var _fire_timer: float = 0.0
 # Iter 115: GunState owns ammo + reload state for the cowboy.
 var _gun: Resource
@@ -5287,16 +5288,6 @@ func _process(delta: float) -> void:
 			var dx: float = bullet.position.x - outlaw.position.x
 			var dz: float = bullet.position.z - outlaw.position.z
 			if dx * dx + dz * dz < OUTLAW_HIT_RADIUS_SQ:
-				# iter405: during a boss fight, bullets within the BOSS's hit radius pass
-				# THROUGH the outlaw rabble so the posse can hit the boss behind them (the
-				# ~50-strong mob was shielding Pete, eating every bullet before it reached him).
-				if _pete_spawned and boss_root.get_child_count() > 0:
-					var _bn := boss_root.get_child(0)
-					if _bn is Node3D:
-						var _pdx: float = bullet.position.x - (_bn as Node3D).position.x
-						var _pdz: float = bullet.position.z - (_bn as Node3D).position.z
-						if _pdx * _pdx + _pdz * _pdz < PETE_HIT_RADIUS_SQ:
-							continue
 				# Iter 134: pushers route to specialized 1-shot-kill handler.
 				if outlaw.get_meta("is_pusher", false):
 					_pusher_take_damage(outlaw)
@@ -5308,7 +5299,7 @@ func _process(delta: float) -> void:
 					_captive_take_damage(outlaw, bullet.position)
 					bullet.queue_free()
 					break
-				var hp: int = outlaw.get_meta("hp", 1) - 1
+				var hp: int = outlaw.get_meta("hp", 1) - bullet.get_meta("dmg", 1)
 				outlaw.set_meta("hp", hp)
 				_refresh_outlaw_hp_bar(outlaw)  # iter 151
 				_spawn_popup_3d(outlaw.position + Vector3(0, 1.2, 0),
@@ -5493,7 +5484,7 @@ func _process(delta: float) -> void:
 				var dx: float = bullet.position.x - pete.position.x
 				var dz: float = bullet.position.z - pete.position.z
 				if dx * dx + dz * dz < PETE_HIT_RADIUS_SQ:
-					var hp: int = pete.get_meta("hp", PETE_HP) - 1
+					var hp: int = pete.get_meta("hp", PETE_HP) - bullet.get_meta("dmg", 1)
 					pete.set_meta("hp", hp)
 					_spawn_popup_3d(pete.position + Vector3(0, 1.5, 0),
 						"-1", Color(1, 0.45, 0.25, 1), 72)
@@ -5932,18 +5923,23 @@ func _spawn_bullet() -> void:
 	# iter404: FROSTBITE fires chain lightning through nearby enemies.
 	if _fire_mode == FireMode.FROSTBITE:
 		_emit_frost_chain()
+	# iter406: firepower SCALES with the posse. We can't spawn 1000 bullet nodes per
+	# shot, so a bounded sample of bullets fires and EACH carries the damage of the
+	# members it represents (volley damage ≈ the whole posse's per-member fire). A
+	# 1000-posse then tears through a 50-outlaw shield (10 HP each) almost instantly,
+	# rather than a 1000-posse firing the same trickle as a 20-posse.
+	var crowd_shots: int = 0
+	var origins := PackedVector3Array()
+	if _posse_crowd != null:
+		origins = _posse_crowd.call("member_origins")
+		crowd_shots = mini(origins.size(), 24)
+	var total_bullets: int = 1 + crowd_shots
+	_volley_dmg = maxi(1, int(round(float(_posse_count_3d) / float(total_bullets))))
 	# Spawn one bullet at leader.
 	_spawn_bullet_at(cowboy_3d.position.x, cowboy_3d.position.z)
-	# iter402: the posse is a FlipbookCrowd now (_followers is empty), so fire from a
-	# sample of crowd member origins — restores the multi-shooter "wall of bullets"
-	# (it was just the lone leader firing, so the posse bullets looked invisible).
-	if _posse_crowd != null:
-		var origins: PackedVector3Array = _posse_crowd.call("member_origins")
-		if origins.size() > 0:
-			var shots: int = mini(origins.size(), 16)
-			for i in range(shots):
-				var o: Vector3 = origins[randi() % origins.size()]
-				_spawn_bullet_at(_posse_crowd.position.x + o.x, _posse_crowd.position.z + o.z)
+	for i in range(crowd_shots):
+		var o: Vector3 = origins[randi() % origins.size()]
+		_spawn_bullet_at(_posse_crowd.position.x + o.x, _posse_crowd.position.z + o.z)
 
 # Iter 73/88: per-position bullet spawner — bullet visual + size now
 # depends on _fire_mode set by iter 88 bonus pickups.
@@ -5967,6 +5963,7 @@ func _spawn_bullet_at(world_x: float, world_z: float) -> void:
 		var bz: float = (boss_root.get_child(0) as Node3D).position.z
 		despawn = minf(despawn, bz - 2.0)
 	bullet.set_meta("despawn_z", despawn)
+	bullet.set_meta("dmg", _volley_dmg)   # iter406: posse-scaled damage
 	bullets_root.add_child(bullet)
 
 # Shared candy-sprite factory: a camera-facing Sprite3D sized to world_diam,
