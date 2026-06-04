@@ -179,6 +179,8 @@ var gates_root: Node3D
 var outlaws_root: Node3D
 var holes_root: Node3D   # SP2 slice3: pits/cliffs that posse + outlaws fall into
 var _world_root: Node3D = null   # SP2 slice3/iter400: static curved+hilly terrain the posse advances through
+const FrostBoltsScript = preload("res://scripts/frost_bolts.gd")
+var _frost_bolts: Node2D = null   # iter404: FROSTBITE chain-lightning overlay
 var outlaw_bullets_root: Node3D
 var boss_root: Node3D
 # Iter 69: terrain_3d.gd script wasn't attached to the inline Terrain3D
@@ -472,6 +474,7 @@ func _ready() -> void:
 	# upload / shader compile / node tree allocation to post-_ready frames.
 	_build_3d_content()
 	_build_world_terrain()   # iter400: static curved+hilly terrain the posse advances through
+	_build_frost_bolts()     # iter404: FROSTBITE chain-lightning overlay
 	if info_label != null:
 		info_label.text = "iter97 RDY-4 3D built"
 	# Iter 72: spawn posse followers at trapezoid offsets behind leader.
@@ -5865,11 +5868,60 @@ const CANDY_BULLET_TEX := {
 		"candy_cotton.png", "candy_bomb.png", "candy_fireball.png", "candy_jawbreaker.png"],
 }
 
+# iter404: the chain-lightning overlay sits on the UI CanvasLayer, behind the HUD
+# controls (added first) so bolts draw over the 3D view but under the HUD.
+func _build_frost_bolts() -> void:
+	var ui: Node = get_node_or_null("UI")
+	if ui == null:
+		return
+	_frost_bolts = FrostBoltsScript.new()
+	_frost_bolts.name = "FrostBolts"
+	ui.add_child(_frost_bolts)
+	ui.move_child(_frost_bolts, 0)
+
+# Up to `n` live enemies in front of `from`, nearest first — the chain targets.
+func _frost_chain_targets(from: Vector3, n: int) -> Array:
+	var cand: Array = []
+	for o in outlaws_root.get_children():
+		if o is Node3D and not o.get_meta("falling", false) and not o.get_meta("dying", false) \
+		and o.position.z < cowboy_3d.position.z:
+			cand.append(o.position)
+	for b in boss_root.get_children():
+		if b is Node3D and b.position.z < cowboy_3d.position.z:
+			cand.append((b as Node3D).position)
+	cand.sort_custom(func(a, c): return from.distance_squared_to(a) < from.distance_squared_to(c))
+	return cand.slice(0, n)
+
+# Emit one frost chain from the leader's muzzle through the nearest enemies.
+func _emit_frost_chain() -> void:
+	if _frost_bolts == null or camera == null or cowboy_3d == null:
+		return
+	var muzzle: Vector3 = cowboy_3d.position + Vector3(0, 0.95, 0)
+	if camera.is_position_behind(muzzle):
+		return
+	var pts := PackedVector2Array()
+	pts.append(camera.unproject_position(muzzle))
+	var targets: Array = _frost_chain_targets(muzzle, 3)
+	if targets.is_empty():
+		var fwd := Vector3(cowboy_3d.position.x, 0.95, _bullet_despawn_z)
+		if not camera.is_position_behind(fwd):
+			pts.append(camera.unproject_position(fwd))
+	else:
+		for t in targets:
+			var tp: Vector3 = t + Vector3(0, 0.9, 0)
+			if not camera.is_position_behind(tp):
+				pts.append(camera.unproject_position(tp))
+	if pts.size() >= 2:
+		_frost_bolts.call("add_chain", pts, 1.0)
+
 func _spawn_bullet() -> void:
 	# Iter 73: gunfire SFX. Single call so multi-dude firing doesn't
 	# stack 5 layered samples per shot.
 	if get_node_or_null("/root/AudioBus"):
 		AudioBus.play_gunfire()
+	# iter404: FROSTBITE fires chain lightning through nearby enemies.
+	if _fire_mode == FireMode.FROSTBITE:
+		_emit_frost_chain()
 	# Spawn one bullet at leader.
 	_spawn_bullet_at(cowboy_3d.position.x, cowboy_3d.position.z)
 	# iter402: the posse is a FlipbookCrowd now (_followers is empty), so fire from a
