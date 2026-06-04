@@ -230,8 +230,8 @@ var _rng := RandomNumberGenerator.new()
 # Posse count starts at STARTING_POSSE (5) and modifies as cowboy
 # walks through gates.
 const GATE_SPAWN_INTERVAL: float = 3.0  # iter 145: 4.5 → 3.0 (more gates per second with slower terrain)
-const GATE_WIDTH: float = 4.0       # iter 107: 8.0 → 4.0 (each door is 2.0 wide)
-const GATE_HEIGHT: float = 1.35     # iter 108: 2.5 → 1.35 = 1.5× cowboy height (~0.89)
+const GATE_WIDTH: float = 13.0      # iter402: ~4× bigger gates (was 4.0) — much more prominent
+const GATE_HEIGHT: float = 5.4      # iter402: 1.35 → 5.4 (×4)
 const GATE_TRIGGER_Z: float = 0.5   # gates fire when their z passes this
 var _gate_spawn_timer: float = 0.0
 var _posse_count_3d: int = 5
@@ -240,7 +240,8 @@ const STARTING_POSSE_3D: int = 1  # iter 118: 5 → 1 (gates grow it from there)
 # Iter 76: outlaw enemies. Spawn red boxes periodically at far z that
 # scroll toward camera + fire red bullets at the cowboy.
 const OUTLAW_SPAWN_INTERVAL: float = 0.5  # iter 118: 3.0 → 0.5 (~14 alive at once)
-const OUTLAW_SPEED: float = 2.5  # iter 153: matched to OBSTACLE_SPEED so outlaws drift in with the world (not rushing) and actually reach the player before Pete
+const OUTLAW_SPEED: float = 1.5  # iter402: 2.5 → 1.5 — outlaws were rushing the posse before the first gate
+const OUTLAW_GRACE: float = 9.0  # iter402: no outlaws for the first 9s so the player reaches a gate or two first
 const OUTLAW_FIRE_INTERVAL: float = 3.6  # iter 121: 1.8 → 3.6 (halved fire rate)
 # Iter 121: only fire when within this many world units of cowboy z.
 # Halves the effective bullet range since outlaws spawn at z=-24 but
@@ -358,9 +359,12 @@ var _followers: Array[Sprite3D] = []   # iter401: now always empty — posse ren
 # camera pitch (which eases CALM↔busy), so the mob rearranges to stay on-screen.
 const FlipbookCrowdScript = preload("res://scripts/flipbook_crowd.gd")
 const POSSE_CROWD_CLIPS: Array = [
-	"cowboy_run_shoot_fwd", "cowboy_idle_a", "cowboy_idle_b", "cowboy_idle_c",
+	# iter402: BACK-VIEW clips only — the posse faces INTO the screen (toward the
+	# outlaws) like the leader. The idle clips are front-view (faced the camera =
+	# "running backwards"); stand_shoot/run_shoot_fwd are back-view.
+	"cowboy_stand_shoot", "cowboy_run_shoot_fwd",
 ]
-const POSSE_CROWD_DEPTH: float = 1.5   # how far back the mob extends behind the leader
+const POSSE_CROWD_DEPTH: float = 1.0   # how far back the mob extends behind the leader
 var _posse_crowd: Node3D = null
 var _crowd_built_count: int = -1
 var _crowd_built_pitch: float = 999.0
@@ -820,7 +824,10 @@ func _update_posse_crowd(delta: float) -> void:
 		return
 	_posse_crowd.position.x = lerpf(_posse_crowd.position.x, cowboy_3d.position.x,
 		clampf(FOLLOWER_LERP_SPEED * delta, 0.0, 1.0))
-	_posse_crowd.position.y = POSSE_BASE_Y + _hill_y(_level_distance)
+	# iter402: sit ON the terrain at the mob's own world-z (the terrain scrolls in
+	# WorldRoot, so the surface under world-z Z is at distance _level_distance − Z).
+	# Using _level_distance alone sank the mob into the hill, so it was occluded.
+	_posse_crowd.position.y = 0.55 + _hill_y(_level_distance - COWBOY_Z)
 	var want: int = maxi(0, _posse_count_3d - 1)
 	if want != _crowd_built_count or absf(_cam_pitch - _crowd_built_pitch) > 2.0:
 		_build_posse_formation(want)
@@ -1228,7 +1235,7 @@ func _spawn_building_one(side: float, z: float) -> void:
 # the bullet. Decrements the hit door's value toward zero (or degrades
 # a multiplier toward additive zero), updates the Label3D + door tint.
 const GATE_BULLET_Z_RANGE: float = 0.5
-const GATE_BULLET_X_HALF: float = 2.0  # half door width (= GATE_WIDTH * 0.5 * 0.5 = 1.0)
+const GATE_BULLET_X_HALF: float = 3.25  # half door width (= GATE_WIDTH * 0.25) — iter402 bigger gates
 const GATE_HITS_PER_STEP: int = 3  # iter 113: armor — 3 bullets per value decrement
 
 func _check_bullet_gate_collision(bullet: Node3D, prev_z: float = INF) -> bool:
@@ -2440,16 +2447,16 @@ func _spawn_gate() -> void:
 	var llabel := Label3D.new()
 	llabel.text = "%s%d" % [operators[0], values[0]]
 	llabel.position = Vector3(-GATE_WIDTH * 0.25, GATE_HEIGHT * 0.55, 0)
-	llabel.font_size = 96
-	llabel.outline_size = 12
+	llabel.font_size = 180
+	llabel.outline_size = 24
 	llabel.modulate = Color.WHITE
 	gate.add_child(llabel)
 	gate.set_meta("left_label", llabel)  # iter 110: bullets update label text via meta
 	var rlabel := Label3D.new()
 	rlabel.text = "%s%d" % [operators[1], values[1]]
 	rlabel.position = Vector3(GATE_WIDTH * 0.25, GATE_HEIGHT * 0.55, 0)
-	rlabel.font_size = 96
-	rlabel.outline_size = 12
+	rlabel.font_size = 180
+	rlabel.outline_size = 24
 	rlabel.modulate = Color.WHITE
 	gate.add_child(rlabel)
 	gate.set_meta("right_label", rlabel)
@@ -5193,7 +5200,7 @@ func _process(delta: float) -> void:
 	# own focus). Outlaws already spawned keep moving via _world_motion.
 	# Iter 124: skip all outlaw + prospector spawning in test range mode
 	# (cactus-only practice — nothing fires back).
-	if _level_state == LevelState.PLAYING and not _test_range_mode:
+	if _level_state == LevelState.PLAYING and not _test_range_mode and _level_elapsed > OUTLAW_GRACE:
 		_outlaw_spawn_timer -= delta
 		if _outlaw_spawn_timer <= 0.0:
 			_outlaw_spawn_timer = OUTLAW_SPAWN_INTERVAL
@@ -5652,14 +5659,24 @@ func _build_world_terrain() -> void:
 	var mi := MeshInstance3D.new()
 	mi.name = "Terrain"
 	mi.mesh = st.commit()
-	var mat := StandardMaterial3D.new()
-	mat.albedo_color = Color(0.62, 0.45, 0.28)   # dirt fallback if no texture
-	var dirt := _grab_ground_texture()
-	if dirt != null:
-		mat.albedo_texture = dirt
-	mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
-	mat.cull_mode = BaseMaterial3D.CULL_DISABLED   # ground viewed from above; don't backface-cull
-	mat.uv1_scale = Vector3(1, 1, 1)
+	# iter402: reuse the flat ground's AUTHORED PBR dirt material (albedo + normal +
+	# roughness, lit) instead of a flat unshaded albedo — the unshaded version looked
+	# basic/ugly. Duplicate it, disable backface cull (our winding), and let our own
+	# UVs drive the tiling.
+	var mat: Material = null
+	var flat_mi := get_node_or_null("Terrain3D/SubViewport/Ground")
+	if flat_mi is MeshInstance3D and (flat_mi as MeshInstance3D).material_override != null:
+		mat = (flat_mi as MeshInstance3D).material_override.duplicate()
+		if mat is StandardMaterial3D:
+			(mat as StandardMaterial3D).cull_mode = BaseMaterial3D.CULL_DISABLED
+			(mat as StandardMaterial3D).uv1_scale = Vector3(1, 1, 1)
+	if mat == null:
+		var sm := StandardMaterial3D.new()
+		sm.albedo_color = Color(0.62, 0.45, 0.28)
+		if ResourceLoader.exists("res://assets/textures/dirt_2k.png"):
+			sm.albedo_texture = load("res://assets/textures/dirt_2k.png")
+		sm.cull_mode = BaseMaterial3D.CULL_DISABLED
+		mat = sm
 	mi.material_override = mat
 	_world_root.add_child(mi)
 	# Puddles: flat translucent blue discs on the terrain at authored spots.
@@ -5691,10 +5708,14 @@ func _make_puddle(d: float, gx: float, radius: float) -> MeshInstance3D:
 	var pos: Vector3 = _terr_vertex(gx, -d)
 	mi.position = Vector3(pos.x, pos.y + 0.04, pos.z)
 	var mat := StandardMaterial3D.new()
-	mat.albedo_color = Color(0.35, 0.55, 0.75, 0.6)
-	mat.metallic = 0.6
-	mat.roughness = 0.1
+	# iter402: soft radial water texture (was a hard flat blue rectangle).
+	if ResourceLoader.exists("res://assets/sprites/fx/puddle.png"):
+		mat.albedo_texture = load("res://assets/sprites/fx/puddle.png")
+	mat.albedo_color = Color(1, 1, 1, 0.85)
+	mat.metallic = 0.5
+	mat.roughness = 0.12
 	mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	mat.cull_mode = BaseMaterial3D.CULL_DISABLED
 	mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
 	mi.material_override = mat
 	return mi
@@ -5851,11 +5872,16 @@ func _spawn_bullet() -> void:
 		AudioBus.play_gunfire()
 	# Spawn one bullet at leader.
 	_spawn_bullet_at(cowboy_3d.position.x, cowboy_3d.position.z)
-	# Iter 73: also spawn a bullet at each posse follower's position so
-	# the full posse fires (matches 2D level.gd's iter 61 multi-shooter).
-	for f in _followers:
-		if is_instance_valid(f):
-			_spawn_bullet_at(f.position.x, f.position.z)
+	# iter402: the posse is a FlipbookCrowd now (_followers is empty), so fire from a
+	# sample of crowd member origins — restores the multi-shooter "wall of bullets"
+	# (it was just the lone leader firing, so the posse bullets looked invisible).
+	if _posse_crowd != null:
+		var origins: PackedVector3Array = _posse_crowd.call("member_origins")
+		if origins.size() > 0:
+			var shots: int = mini(origins.size(), 16)
+			for i in range(shots):
+				var o: Vector3 = origins[randi() % origins.size()]
+				_spawn_bullet_at(_posse_crowd.position.x + o.x, _posse_crowd.position.z + o.z)
 
 # Iter 73/88: per-position bullet spawner — bullet visual + size now
 # depends on _fire_mode set by iter 88 bonus pickups.
@@ -5868,7 +5894,7 @@ func _spawn_bullet_at(world_x: float, world_z: float) -> void:
 	# full-frame disk reads MUCH bigger than the old translucent sphere of the
 	# same diameter — at 1.2× the bullet was ~65% of the cowboy's width. 0.6×
 	# (~0.22 world units) makes it a clearly jelly-bean-sized projectile.
-	var world_diam: float = BULLET_PIXEL_SIZE * 2.0 * size_mult * 0.6
+	var world_diam: float = BULLET_PIXEL_SIZE * 2.0 * size_mult * 0.85   # iter402: 0.6 → 0.85 (more visible)
 	var bullet: Sprite3D = _make_candy_billboard(paths, world_diam)
 	bullet.position = Vector3(world_x, BULLET_SPAWN_Y, world_z - 0.5)
 	bullet.set_meta("despawn_z", _bullet_despawn_z)  # per-weapon range
