@@ -232,6 +232,8 @@ var scenery_root: Node3D
 
 var _spawn_timer: float = 0.0
 var _volley_dmg: int = 1   # iter406: per-bullet damage = the posse's per-member firepower
+var _was_reloading: bool = false   # iter413: edge-detect reload start for the click SFX
+var _last_lap: float = 0.0   # iter414: puddle-cross splash detector
 var _fire_timer: float = 0.0
 # Iter 115: GunState owns ammo + reload state for the cowboy.
 var _gun: Resource
@@ -755,6 +757,7 @@ const POWERUP_PUFF_TEX := preload("res://assets/sprites/fx/sugar_puff.png")
 const POWERUP_STAR_TEX := preload("res://assets/sprites/fx/candy_sheriff_star.png")
 
 func _spawn_powerup_flourish(member: Sprite3D) -> void:
+	if get_node_or_null("/root/AudioBus") and AudioBus.has_method("play_sfx"): AudioBus.play_sfx("deputize_join")
 	if not is_instance_valid(member):
 		return
 	# Bounce in instead of blinking in, with a brief warm flash.
@@ -1355,6 +1358,7 @@ func _check_bullet_gate_collision(bullet: Node3D, prev_z: float = INF) -> bool:
 		# Step-popup at impact: shows the new value so player sees the change.
 		_spawn_popup_3d(bullet.position + Vector3(0, 0.5, 0),
 			"%s%d" % [op, value], Color(1.0, 0.92, 0.3, 1), 40)
+		if get_node_or_null("/root/AudioBus") and AudioBus.has_method("play_sfx"): AudioBus.play_sfx("gate_step")
 		return true
 	return false
 
@@ -1471,6 +1475,9 @@ func _drop_bonus_at(landing: Vector3, value: int, color: Color, label: String = 
 func _add_bounty(amount: int) -> void:
 	if get_node_or_null("/root/GameState") != null:
 		GameState.bounty = GameState.bounty + amount
+	# iter414: big cascade payouts (the gold-rush finales) get the chain-reaction sting.
+	if amount >= 500 and get_node_or_null("/root/AudioBus") and AudioBus.has_method("play_sfx"):
+		AudioBus.play_sfx("rush_cascade")
 
 # Iter 125: announce + camera shake at ceremony start.
 func _ceremony_announce(preset: String) -> void:
@@ -2875,6 +2882,8 @@ func _spawn_bonus() -> void:
 
 # Iter 88: cowboy collects a bonus → swap FireMode + show feedback popup.
 func _collect_bonus(bonus: Node3D) -> void:
+	if get_node_or_null("/root/AudioBus") and AudioBus.has_method("play_sfx"):
+		AudioBus.play_sfx("bonus_pickup")   # iter413
 	var t: String = bonus.get_meta("bonus_type", "candy")
 	match t:
 		"rifle":     _fire_mode = FireMode.RIFLE
@@ -3454,6 +3463,7 @@ func _in_box(px: float, pz: float, cx: float, cz: float, half_x: float, half_z: 
 # Drop an entity into a pit: fall + shrink, then free. Marked "falling" so the
 # regular loops skip it.
 func _fall_entity(node: Node3D) -> void:
+	if get_node_or_null("/root/AudioBus") and AudioBus.has_method("play_sfx"): AudioBus.play_sfx("hole_fall")
 	if not is_instance_valid(node):
 		return
 	node.set_meta("falling", true)
@@ -3923,6 +3933,8 @@ func _show_fail() -> void:
 	if _failed:
 		return
 	_failed = true
+	if get_node_or_null("/root/AudioBus") and AudioBus.has_method("play_sfx"):
+		AudioBus.play_sfx("fail_sting")   # iter413
 	# Iter 87: kill any lingering gunshot pool samples so the sound
 	# doesn't keep playing after the firefight ends.
 	if get_node_or_null("/root/AudioBus") and AudioBus.has_method("stop_gunfire"):
@@ -3947,6 +3959,8 @@ func _show_win(boss_label: String = "Pete", cleanup_node: Node = null, cleanup_v
 	# spawns its own gunfire) doesn't fight the trailing combat audio.
 	if get_node_or_null("/root/AudioBus") and AudioBus.has_method("stop_gunfire"):
 		AudioBus.stop_gunfire()
+	if get_node_or_null("/root/AudioBus") and AudioBus.has_method("play_sfx"):
+		AudioBus.play_sfx("win_fanfare")   # iter413
 	info_label.text = "WIN!  %s defeated · posse %d · hits %d" % [
 		boss_label, _posse_count_3d, _hits,
 	]
@@ -5037,6 +5051,7 @@ func _update_cowboy_anim() -> void:
 
 # Iter 76: outlaw fires a red bullet aimed at the cowboy.
 func _outlaw_fire(outlaw: Node3D) -> void:
+	if randf() < 0.25 and get_node_or_null("/root/AudioBus") and AudioBus.has_method("play_sfx"): AudioBus.play_sfx("outlaw_fire")
 	var b := CSGSphere3D.new()
 	b.radius = OUTLAW_BULLET_RADIUS
 	b.radial_segments = 8
@@ -5374,6 +5389,9 @@ func _process(delta: float) -> void:
 						death_sprite.texture = death_sv.get_texture()
 					_hits += 1
 					_refresh_hud()
+					# iter413: occasional defeat grunt (prob-gated so a kill wave doesn't stack).
+					if randf() < 0.3 and get_node_or_null("/root/AudioBus") and AudioBus.has_method("play_sfx"):
+						AudioBus.play_sfx("outlaw_down")
 				break
 	# Iter 76: outlaw bullets move along their stored velocity vector.
 	# Despawn off-screen or after reaching cowboy.
@@ -5417,6 +5435,7 @@ func _process(delta: float) -> void:
 					min_dx = minf(min_dx, absf(bx - f.position.x))
 			ob.queue_free()
 			if min_dx < OUTLAW_BULLET_HIT_X:
+				if randf() < 0.3 and get_node_or_null("/root/AudioBus") and AudioBus.has_method("play_sfx"): AudioBus.play_sfx("posse_hurt")
 				_posse_count_3d = maxi(0, _posse_count_3d - 1)
 				_refresh_hud()
 				_sync_followers_to_count(_posse_count_3d)
@@ -5509,6 +5528,7 @@ func _process(delta: float) -> void:
 						_pete_melee_tick_accum += delta * PETE_MELEE_DPS
 						while _pete_melee_tick_accum >= 1.0:
 							_pete_melee_tick_accum -= 1.0
+							if randf() < 0.4 and get_node_or_null("/root/AudioBus") and AudioBus.has_method("play_sfx"): AudioBus.play_sfx("pete_melee")
 							# Iter 149: a special follower near Pete soaks the
 							# melee hit before the generic posse does.
 							var sf_pete: Dictionary = _nearest_special_follower(
@@ -5582,6 +5602,11 @@ func _process(delta: float) -> void:
 	# Iter 118: gate firing on PLAYING + BOSS. Countdown blocks firing.
 	if _gun_state != null and _level_state != LevelState.COUNTDOWN:
 		_gun_state.tick(delta)
+		# iter413: reload click on the empty->reloading transition.
+		var reloading_now: bool = _gun_state.is_reloading()
+		if reloading_now and not _was_reloading and get_node_or_null("/root/AudioBus") and AudioBus.has_method("play_sfx"):
+			AudioBus.play_sfx("gun_reload")
+		_was_reloading = reloading_now
 		while _gun_state.can_fire():
 			_gun_state.fire()
 			_spawn_bullet()
@@ -5633,6 +5658,8 @@ func _process(delta: float) -> void:
 					break
 				_spawn_popup_3d(obstacle.position + Vector3(0, 1, 0),
 					"-1", Color(1, 0.32, 0.22, 1), 56)
+				if get_node_or_null("/root/AudioBus") and AudioBus.has_method("play_sfx"):
+					AudioBus.play_sfx("impact_thud")   # iter413: prop shattered
 				obstacle.queue_free()
 				_hits += 1
 				_refresh_hud()
@@ -5683,6 +5710,21 @@ func _apply_path_curve() -> void:
 			if ground_follow:
 				c.position.y = c.get_meta("lane_y") + _hill_y(d_at)
 	_update_world_root()
+
+func _check_puddle_splash() -> void:
+	if _level_state != LevelState.PLAYING:
+		return
+	var lap: float = fposmod(_level_distance, PATH_PATTERN_LEN)
+	var prev: float = _last_lap
+	_last_lap = lap
+	if lap < prev:   # wrapped this frame
+		prev -= PATH_PATTERN_LEN
+	for pud in _PUDDLES:
+		var pd: float = pud.x   # Vector3(distance, lateral, radius)
+		if (prev < pd and pd <= lap) or (prev < pd - PATH_PATTERN_LEN and pd - PATH_PATTERN_LEN <= lap):
+			if get_node_or_null("/root/AudioBus") and AudioBus.has_method("play_sfx"):
+				AudioBus.play_sfx("puddle_splash")
+			break
 
 # Rolling hills as a function of distance — periods divide PATH_PATTERN_LEN (140)
 # so the terrain tiles seamlessly when WorldRoot.z wraps.
@@ -5817,6 +5859,7 @@ func _update_world_root() -> void:
 	for f in _followers:
 		if is_instance_valid(f) and not f.get_meta("falling", false):
 			f.position.y = POSSE_BASE_Y + hy
+	_check_puddle_splash()
 
 # Posse members that stray over an authored pit (the hole passing under the posse)
 # fall in — a two-way hazard once outlaws are placed in the world too.
@@ -5923,12 +5966,15 @@ func _spawn_chicken_coop() -> void:
 	coop.set_meta("is_coop", true)
 	coop.set_meta("hp", COOP_HP)
 	obstacles_root.add_child(coop)
+	if get_node_or_null("/root/AudioBus") and AudioBus.has_method("play_sfx"):
+		AudioBus.play_sfx("chicken_cluck")   # iter413: clucking as the coop arrives
 
 # Bust: 8 chickens scatter outward + a cloud of tumbling feathers (the visual
 # distraction). All in popups_root so they aren't treated as bullets/obstacles.
 func _bust_coop(pos: Vector3) -> void:
 	if get_node_or_null("/root/AudioBus") and AudioBus.has_method("play_sfx"):
 		AudioBus.play_sfx("chicken_bust")
+		AudioBus.play_sfx("feather_poof")   # iter413
 	for i in range(8):
 		var c := Sprite3D.new()
 		c.texture = CHICKEN_TEX[_rng.randi() % CHICKEN_TEX.size()]
@@ -6014,6 +6060,7 @@ func _spawn_obstacle() -> void:
 			obstacle.set_meta("confused", false)
 			if get_node_or_null("/root/AudioBus") and AudioBus.has_method("play_sfx"):
 				AudioBus.play_sfx("bull_snort")   # iter411: angry snort as it charges in
+				AudioBus.play_sfx("bull_charge")  # iter413: galloping hooves
 	obstacles_root.add_child(obstacle)
 
 # Iter 334: build a registry-driven breathing-sprite obstacle, grounded so its
