@@ -262,7 +262,7 @@ const PETE_SPAWN_DELAY: float = 30.0  # iter 153: 18 → 30. At OBSTACLE_SPEED 2
 const PETE_HP: int = 500  # iter 119: 40 → 1000 → iter 147: 1000 → 500 (user: "Pete's HP is too high. cut it in half")
 const PETE_SPEED: float = 10.0  # iter 124: 1.6 → 4.0 → iter 143: 4.0 → 10.0 (user reported "doesn't advance fast enough")
 const PETE_FIRE_INTERVAL: float = 0.5  # iter 119: 1.0 → 0.5 (alternates L/R guns)
-const PETE_HIT_RADIUS_SQ: float = 3.6 * 3.6  # iter 147: 2.6 → 3.6 (user: "bullets pass through him too")
+const PETE_HIT_RADIUS_SQ: float = 5.5 * 5.5  # iter402b: 3.6 → 5.5 — the posse crowd now sprays bullets across its full width; a point-radius let most of a huge posse's fire pass beside the boss
 const PETE_STAY_Z: float = -6.0  # holds at duel distance until melee phase
 # Iter 119: Pete melee — if the duel drags on (Pete not yet defeated)
 # he keeps walking past STAY_Z toward the cowboy. Once within MELEE_RANGE,
@@ -5897,7 +5897,12 @@ func _spawn_bullet_at(world_x: float, world_z: float) -> void:
 	var world_diam: float = BULLET_PIXEL_SIZE * 2.0 * size_mult * 0.85   # iter402: 0.6 → 0.85 (more visible)
 	var bullet: Sprite3D = _make_candy_billboard(paths, world_diam)
 	bullet.position = Vector3(world_x, BULLET_SPAWN_Y, world_z - 0.5)
-	bullet.set_meta("despawn_z", _bullet_despawn_z)  # per-weapon range
+	# iter402b: during the boss fight, guarantee bullets travel PAST the boss so a
+	# short-range weapon (e.g. FROSTBITE range −6 == Pete's hold z) can still hit him.
+	var despawn: float = _bullet_despawn_z
+	if _pete_spawned and boss_root.get_child_count() > 0:
+		despawn = minf(despawn, PETE_STAY_Z - 4.0)
+	bullet.set_meta("despawn_z", despawn)
 	bullets_root.add_child(bullet)
 
 # Shared candy-sprite factory: a camera-facing Sprite3D sized to world_diam,
