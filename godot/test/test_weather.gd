@@ -19,12 +19,37 @@ func test_type_rain_exists():
 func test_type_wind_storm_exists():
 	assert_eq(WeatherScript.TYPE_WIND_STORM, "WIND_STORM")
 
-func test_all_types_returns_three():
+func test_type_snow_exists():
+	assert_eq(WeatherScript.TYPE_SNOW, "SNOW")
+
+func test_all_types_returns_four():
+	# iter417: SNOW joined the original three when weather went 3D.
 	var types: Array[String] = WeatherScript.all_types()
-	assert_eq(types.size(), 3, "exactly three weather types in iter 22d")
+	assert_eq(types.size(), 4, "four weather types after iter417")
 	assert_true(types.has("DUST_STORM"))
 	assert_true(types.has("RAIN"))
 	assert_true(types.has("WIND_STORM"))
+	assert_true(types.has("SNOW"))
+
+# ---------- sky_for ----------
+
+func test_sky_for_maps_each_weather_to_distinct_slug():
+	assert_eq(WeatherScript.sky_for("DUST_STORM"), "dust_storm")
+	assert_eq(WeatherScript.sky_for("RAIN"), "rain")
+	assert_eq(WeatherScript.sky_for("WIND_STORM"), "wind_storm")
+	assert_eq(WeatherScript.sky_for("SNOW"), "snow")
+
+func test_sky_for_unknown_or_empty_is_fair():
+	assert_eq(WeatherScript.sky_for(""), "fair")
+	assert_eq(WeatherScript.sky_for("NOPE"), "fair")
+
+func test_every_weather_sky_slug_exists_in_skybodies():
+	# Guards the link between weather.gd and sky_bodies.gd: a typo'd slug would
+	# silently fall back to fair clouds. Every mapped slug must be a real entry.
+	for type_id in WeatherScript.all_types():
+		var slug: String = WeatherScript.sky_for(type_id)
+		assert_true(SkyBodies.SKY_WEATHER.has(slug),
+			"%s → sky slug '%s' missing from SkyBodies.SKY_WEATHER" % [type_id, slug])
 
 # ---------- is_valid ----------
 

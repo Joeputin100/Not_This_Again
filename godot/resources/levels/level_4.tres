@@ -16,5 +16,6 @@ script = ExtResource("1_def")
 difficulty = 4
 terrain = "mountain"
 display_name = "MOUNTAIN PASS PERIL"
+weather_type = "WIND_STORM"
 seed = 4
 events = Array[ExtResource("1_hrksf")]([SubResource("Resource_7xi47")])

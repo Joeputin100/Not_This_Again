@@ -253,6 +253,19 @@ var _level_player: LevelPlayer = null
 var _level_distance: float = 0.0      # world distance scrolled (drives the timeline)
 var _boss_from_data: bool = false     # true when the LevelDef has a BOSS event (legacy timer yields)
 var _director: LevelDirector = null   # SP2 slice2: pacing (variable scroll speed + approach-zone halts)
+# iter417: per-level weather, driven by LevelDef.weather_type. The visual layer is
+# the 2D weather scene (rain/snow/dust/wind) drawn on a CanvasLayer over the 3D
+# viewport; the gameplay modifiers below re-map the iter-22d 2D knobs to 3D.
+const WeatherData = preload("res://scripts/weather.gd")
+# Drift params in weather.gd are px/sec on a 1080-wide screen; the visible road is
+# COWBOY_X_BOUND*2 world units across, so this converts px/sec → world-units/sec.
+const WEATHER_PX_TO_WORLD: float = (COWBOY_X_BOUND * 2.0) / 1080.0
+var _weather_range_mult: float = 1.0        # scales bullet range (despawn z)
+var _weather_bullet_speed_mult: float = 1.0 # scales bullet forward speed
+var _weather_bullet_drift: float = 0.0      # world-units/sec lateral bullet push
+var _weather_cowboy_drift: float = 0.0      # world-units/sec lateral cowboy push
+var _weather_steering_mult: float = 1.0     # scales the cowboy follow-lerp
+var _weather_layer: CanvasLayer = null
 const COUNTDOWN_TOTAL: float = 3.5  # 3, 2, 1, GO! across this window
 var _countdown_remaining: float = COUNTDOWN_TOTAL
 var _hits: int = 0
@@ -655,6 +668,7 @@ func _build_3d_content() -> void:
 	# transparent sprite over the sky erases it; see memory). Replaces the old
 	# purple CSG box mountains. The dynamic camera (calm → -25°) reveals it.
 	_build_sky_3d()
+	_apply_weather_3d()   # iter417: per-level weather visuals + gameplay modifiers
 	DebugLog.add("level_3d: sky + candy mountains added")
 
 func _make_lvl3d_container(node_name: String) -> Node3D:
@@ -719,15 +733,40 @@ func _apply_level_sky() -> void:
 		SkyBodies.tod_from_clock(), _level_weather())
 	_sky.apply_preset(preset, Vector3(-0.5, 0.0, 1.0))
 
-# Per-level signature weather (offline/deterministic, themed). L2 (Mine Shaft)
-# is gloomy/overcast; others fair for now. Easy to extend per level theme.
+# Per-level signature weather → sky slug, derived from LevelDef.weather_type
+# (iter417). "" / clear → "fair". The cloud tint/cover/SPEED for each slug live
+# in SkyBodies.SKY_WEATHER.
 func _level_weather() -> String:
-	var lvl: int = 1
-	if get_node_or_null("/root/GameState"):
-		lvl = GameState.current_level
-	match lvl:
-		2: return "overcast"
-		_: return "fair"
+	var wt: String = _level_def.weather_type if _level_def != null else ""
+	return WeatherData.sky_for(wt)
+
+# iter417: apply this level's weather to the 3D game. Reads the iter-22d weather
+# param table and (a) caches the gameplay-modifier multipliers used in _process
+# and at bullet spawn, and (b) instances the weather's 2D visual scene onto a
+# CanvasLayer that draws over the 3D viewport but under the HUD. Clear/unknown
+# weather leaves every modifier at its identity value and spawns no visual.
+func _apply_weather_3d() -> void:
+	var wt: String = _level_def.weather_type if _level_def != null else ""
+	if not WeatherData.is_valid(wt):
+		return
+	var p: Dictionary = WeatherData.params_for(wt)
+	_weather_range_mult = float(p.get("range_mult", 1.0))
+	_weather_bullet_speed_mult = float(p.get("bullet_velocity_mult", 1.0))
+	_weather_bullet_drift = float(p.get("bullet_drift", 0.0)) * WEATHER_PX_TO_WORLD
+	_weather_cowboy_drift = float(p.get("cowboy_drift_x", 0.0)) * WEATHER_PX_TO_WORLD
+	_weather_steering_mult = float(p.get("steering_mult", 1.0))
+	var scene_path: String = String(p.get("scene_path", ""))
+	var packed: PackedScene = load(scene_path) as PackedScene
+	if packed != null:
+		_weather_layer = CanvasLayer.new()
+		_weather_layer.name = "WeatherOverlay"
+		_weather_layer.layer = 0   # over the 3D viewport (base canvas), under UI (layer 1)
+		add_child(_weather_layer)
+		_weather_layer.add_child(packed.instantiate())
+	else:
+		DebugLog.add("level_3d: weather %s failed to load %s" % [wt, scene_path])
+	DebugLog.add("level_3d weather=%s (range×%.2f speed×%.2f drift=%.3f)" %
+		[wt, _weather_range_mult, _weather_bullet_speed_mult, _weather_bullet_drift])
 
 # A posse follower — video billboard textured from the staggered pool,
 # placed at a trapezoid formation slot computed from its index.
@@ -5169,9 +5208,15 @@ func _process(delta: float) -> void:
 		_show_fail()
 		return
 	_level_elapsed += delta
-	# Lerp cowboy x toward target (drag input target).
+	# iter417: wind weather nudges the cowboy's target sideways (player can fight
+	# it by dragging, which resets _target_x to the finger position).
+	if _weather_cowboy_drift != 0.0:
+		_target_x = clampf(_target_x + _weather_cowboy_drift * delta,
+			-COWBOY_X_BOUND, COWBOY_X_BOUND)
+	# Lerp cowboy x toward target (drag input target). Weather steering_mult
+	# (dust/snow) slows the follow so the cowboy feels sluggish to steer.
 	cowboy_3d.position.x = lerpf(cowboy_3d.position.x, _target_x,
-		clampf(COWBOY_LERP_SPEED * delta, 0.0, 1.0))
+		clampf(COWBOY_LERP_SPEED * _weather_steering_mult * delta, 0.0, 1.0))
 	# Iter 72: followers track the leader's x with formation-offset lag.
 	# Iter 85: y-bob animation overlays on top of the base 0.45 anchor.
 	_bob_time += delta
@@ -5627,7 +5672,10 @@ func _process(delta: float) -> void:
 		if not (bullet is Node3D):
 			continue
 		var _prev_z: float = bullet.position.z   # iter364: for swept gate collision
-		bullet.position.z -= BULLET_SPEED * delta
+		bullet.position.z -= BULLET_SPEED * _weather_bullet_speed_mult * delta
+		# iter417: wind weather pushes bullets sideways as they fly.
+		if _weather_bullet_drift != 0.0:
+			bullet.position.x += _weather_bullet_drift * delta
 		# Despawn at the weapon's range (per-bullet; default const otherwise).
 		if bullet.position.z < float(bullet.get_meta("despawn_z", BULLET_DESPAWN_Z)):
 			bullet.queue_free()
@@ -6269,7 +6317,9 @@ func _spawn_bullet_at(world_x: float, world_z: float) -> void:
 	bullet.position = Vector3(world_x, BULLET_SPAWN_Y, world_z - 0.5)
 	# iter402b: during the boss fight, guarantee bullets travel PAST the boss so a
 	# short-range weapon (e.g. FROSTBITE range −6 == Pete's hold z) can still hit him.
-	var despawn: float = _bullet_despawn_z
+	# iter417: dust/snow weather trims sight range — shorten the despawn distance
+	# (less negative). Applied here so it tracks the current weapon's range.
+	var despawn: float = _bullet_despawn_z * _weather_range_mult
 	if _pete_spawned and boss_root.get_child_count() > 0:
 		# Reach the boss wherever he is on his approach, not just at his hold z.
 		var bz: float = (boss_root.get_child(0) as Node3D).position.z

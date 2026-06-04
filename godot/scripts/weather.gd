@@ -83,6 +83,20 @@ static func params_for(type_id: String) -> Dictionary:
 		return {}
 	return _PARAMS[type_id]
 
+# Maps a weather type to the SkyBodies SKY_WEATHER slug that dresses the clouds
+# to match (tint/cover/SPEED). Kept here (not in level_3d) so it's a pure,
+# unit-testable lookup. Unknown/empty → "fair" (calm, slow clouds).
+const _SKY_FOR: Dictionary = {
+	"DUST_STORM": "dust_storm",
+	"RAIN": "rain",
+	"WIND_STORM": "wind_storm",
+	"SNOW": "snow",
+}
+
+# Sky slug for a weather type. "" / unknown → "fair".
+static func sky_for(type_id: String) -> String:
+	return _SKY_FOR.get(type_id, "fair")
+
 # All known type IDs. Used by tests and could be used by a future
 # random-pick utility.
 static func all_types() -> Array[String]:

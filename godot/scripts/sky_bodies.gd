@@ -44,6 +44,12 @@ const SKY_WEATHER := {
 	"fair":     {"cloud_tint": Color(1.10, 1.10, 0.95, 1), "cloud_cover": 0.45, "cloud_speed": 0.006},
 	"overcast": {"cloud_tint": Color(0.92, 0.92, 0.94, 1), "cloud_cover": 0.66, "cloud_speed": 0.010},
 	"stormy":   {"cloud_tint": Color(0.40, 0.42, 0.48, 1), "cloud_cover": 0.94, "cloud_speed": 0.020},
+	# Per-weather looks (iter417). Cloud SPEED rises with the weather's energy:
+	# rain scuds gently, snow drifts slowest, dust blows fast, wind whips fastest.
+	"rain":       {"cloud_tint": Color(0.78, 0.80, 0.86, 1), "cloud_cover": 0.78, "cloud_speed": 0.013},
+	"snow":       {"cloud_tint": Color(0.90, 0.93, 0.98, 1), "cloud_cover": 0.62, "cloud_speed": 0.008},
+	"dust_storm": {"cloud_tint": Color(0.82, 0.66, 0.45, 1), "cloud_cover": 0.80, "cloud_speed": 0.022},
+	"wind_storm": {"cloud_tint": Color(0.55, 0.52, 0.50, 1), "cloud_cover": 0.88, "cloud_speed": 0.034},
 }
 
 # System clock → time-of-day key. Local hour buckets.

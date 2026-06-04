@@ -16,5 +16,6 @@ script = ExtResource("1_def")
 difficulty = 3
 terrain = "farm"
 display_name = "FARM ROAD FRACAS"
+weather_type = "RAIN"
 seed = 3
 events = Array[ExtResource("1_onuep")]([SubResource("Resource_mnyl5")])

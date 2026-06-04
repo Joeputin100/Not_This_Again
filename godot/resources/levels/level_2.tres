@@ -16,5 +16,6 @@ script = ExtResource("1_def")
 difficulty = 2
 terrain = "mine"
 display_name = "MINE SHAFT MAYHEM"
+weather_type = "DUST_STORM"
 seed = 2
 events = Array[ExtResource("1_or7n4")]([SubResource("Resource_o1k3p")])
