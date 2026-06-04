@@ -5287,6 +5287,16 @@ func _process(delta: float) -> void:
 			var dx: float = bullet.position.x - outlaw.position.x
 			var dz: float = bullet.position.z - outlaw.position.z
 			if dx * dx + dz * dz < OUTLAW_HIT_RADIUS_SQ:
+				# iter405: during a boss fight, bullets within the BOSS's hit radius pass
+				# THROUGH the outlaw rabble so the posse can hit the boss behind them (the
+				# ~50-strong mob was shielding Pete, eating every bullet before it reached him).
+				if _pete_spawned and boss_root.get_child_count() > 0:
+					var _bn := boss_root.get_child(0)
+					if _bn is Node3D:
+						var _pdx: float = bullet.position.x - (_bn as Node3D).position.x
+						var _pdz: float = bullet.position.z - (_bn as Node3D).position.z
+						if _pdx * _pdx + _pdz * _pdz < PETE_HIT_RADIUS_SQ:
+							continue
 				# Iter 134: pushers route to specialized 1-shot-kill handler.
 				if outlaw.get_meta("is_pusher", false):
 					_pusher_take_damage(outlaw)
@@ -5953,7 +5963,9 @@ func _spawn_bullet_at(world_x: float, world_z: float) -> void:
 	# short-range weapon (e.g. FROSTBITE range −6 == Pete's hold z) can still hit him.
 	var despawn: float = _bullet_despawn_z
 	if _pete_spawned and boss_root.get_child_count() > 0:
-		despawn = minf(despawn, PETE_STAY_Z - 4.0)
+		# Reach the boss wherever he is on his approach, not just at his hold z.
+		var bz: float = (boss_root.get_child(0) as Node3D).position.z
+		despawn = minf(despawn, bz - 2.0)
 	bullet.set_meta("despawn_z", despawn)
 	bullets_root.add_child(bullet)
 
