@@ -117,6 +117,23 @@ const BULL_CONFUSED_FWD_MULT: float = 0.35
 const BULL_DRIFT_SPEED: float = 4.0    # lateral veer-off speed while fleeing
 const BULL_CONTACT_POSSE_LOSS: int = 8 # posse members gored if a bull reaches them
 
+# iter411: chicken coop set-piece (ported from the 2D prototype). A destructible
+# decorative prop; shoot it down and it bursts into scattering chickens + a cloud of
+# tumbling feathers — pure visual chaos / a sightline distraction (no posse damage).
+const COOP_HP: int = 12
+const COOP_SPAWN_INTERVAL: float = 13.0
+var _coop_spawn_timer: float = 7.0     # first coop ~7s in
+const CHICKEN_TEX: Array = [
+	preload("res://assets/sprites/props/chicken_rir.png"),
+	preload("res://assets/sprites/props/chicken_leghorn.png"),
+	preload("res://assets/sprites/props/chicken_silkie.png"),
+]
+const FEATHER_TEX: Array = [
+	preload("res://assets/sprites/fx/feather_0.png"),
+	preload("res://assets/sprites/fx/feather_1.png"),
+	preload("res://assets/sprites/fx/feather_2.png"),
+]
+
 # SP2 slice3 (curves): the path bends left/right as it recedes. Per the spec's
 # (distance, lateral) mechanism, every scrolling entity's world x is offset by the
 # path's lateral curve at ITS distance-along-path, minus the curve at the PLAYER's
@@ -5186,6 +5203,12 @@ func _process(delta: float) -> void:
 	if _level_state == LevelState.PLAYING and _spawn_timer <= 0.0:
 		_spawn_timer = OBSTACLE_SPAWN_INTERVAL
 		_spawn_obstacle()
+	# iter411: periodic chicken coop set-piece.
+	if _level_state == LevelState.PLAYING:
+		_coop_spawn_timer -= delta
+		if _coop_spawn_timer <= 0.0:
+			_coop_spawn_timer = COOP_SPAWN_INTERVAL
+			_spawn_chicken_coop()
 	# Move all obstacles toward camera (z increases since camera is at z>0).
 	# Iter 334: obstacles are breathing sprites now; the tumbleweed's roll is
 	# the shader UV-spin (set in _spawn_obstacle), so no per-frame node spin
@@ -5590,13 +5613,18 @@ func _process(delta: float) -> void:
 			if dx * dx + dz * dz < BULLET_COLLISION_DIST_SQ:
 				_spawn_impact_blast(bullet.position)
 				bullet.queue_free()
-				if obstacle.get_meta("is_bull", false):
-					# iter410: bulls soak many hits (scaled by posse damage), die at 0.
-					var bhp: int = obstacle.get_meta("hp", BULL_HP) - bullet.get_meta("dmg", 1)
-					obstacle.set_meta("hp", bhp)
-					if bhp <= 0:
-						_spawn_popup_3d(obstacle.position + Vector3(0, 1.3, 0),
-							"BULL DOWN!", Color(1.0, 0.82, 0.3, 1), 52)
+				if obstacle.get_meta("is_bull", false) or obstacle.get_meta("is_coop", false):
+					# iter410/411: bulls + coops soak many hits (scaled by posse damage).
+					var ohp: int = obstacle.get_meta("hp", BULL_HP) - bullet.get_meta("dmg", 1)
+					obstacle.set_meta("hp", ohp)
+					if ohp <= 0:
+						if obstacle.get_meta("is_coop", false):
+							_bust_coop(obstacle.position)
+							_spawn_popup_3d(obstacle.position + Vector3(0, 1.4, 0),
+								"FEATHERS!", Color(1.0, 0.95, 0.7, 1), 50)
+						else:
+							_spawn_popup_3d(obstacle.position + Vector3(0, 1.3, 0),
+								"BULL DOWN!", Color(1.0, 0.82, 0.3, 1), 52)
 						obstacle.queue_free()
 						_hits += 1
 						_refresh_hud()
@@ -5885,6 +5913,72 @@ func _confuse_all_bulls() -> void:
 			c.set_meta("confused", true)
 			c.set_meta("flee_dir", -1.0 if c.position.x < 0.0 else 1.0)  # toward nearer edge
 			_spawn_popup_3d(c.position + Vector3(0, 1.4, 0), "SPOOKED!", Color(0.6, 0.9, 1.0, 1), 44)
+
+# iter411: spawn a destructible chicken coop (decorative; bursts on destroy).
+func _spawn_chicken_coop() -> void:
+	var lane_x: float = _rng.randf_range(-COWBOY_X_BOUND * 0.8, COWBOY_X_BOUND * 0.8)
+	var coop: MeshInstance3D = _obstacle_prop("chicken_coop", lane_x)
+	coop.set_meta("is_coop", true)
+	coop.set_meta("hp", COOP_HP)
+	obstacles_root.add_child(coop)
+
+# Bust: 8 chickens scatter outward + a cloud of tumbling feathers (the visual
+# distraction). All in popups_root so they aren't treated as bullets/obstacles.
+func _bust_coop(pos: Vector3) -> void:
+	for i in range(8):
+		var c := Sprite3D.new()
+		c.texture = CHICKEN_TEX[_rng.randi() % CHICKEN_TEX.size()]
+		c.billboard = BaseMaterial3D.BILLBOARD_ENABLED
+		c.shaded = false
+		c.pixel_size = 0.9 / float(maxi(c.texture.get_height(), 1))   # ~0.9 units tall
+		c.position = pos + Vector3(_rng.randf_range(-0.4, 0.4), 0.2, _rng.randf_range(-0.3, 0.3))
+		if _rng.randf() < 0.5:
+			c.flip_h = true
+		popups_root.add_child(c)
+		var ang: float = _rng.randf() * TAU
+		var dist: float = _rng.randf_range(2.5, 5.5)
+		var dest: Vector3 = c.position + Vector3(cos(ang) * dist, 0.0, sin(ang) * dist * 0.5)
+		var run: float = _rng.randf_range(2.2, 3.2)
+		var t := c.create_tween()
+		t.set_parallel(true)
+		t.tween_property(c, "position:x", dest.x, run).set_trans(Tween.TRANS_SINE)
+		t.tween_property(c, "position:z", dest.z, run).set_trans(Tween.TRANS_SINE)
+		# panicked hop
+		var hop := c.create_tween().set_loops(int(run / 0.3))
+		hop.tween_property(c, "position:y", c.position.y + 0.35, 0.15).set_trans(Tween.TRANS_SINE)
+		hop.tween_property(c, "position:y", c.position.y, 0.15).set_trans(Tween.TRANS_SINE)
+		var ft := c.create_tween()
+		ft.tween_interval(run)
+		ft.tween_property(c, "modulate:a", 0.0, 0.5)
+		ft.tween_callback(c.queue_free)
+	for i in range(16):
+		var f := Sprite3D.new()
+		f.texture = FEATHER_TEX[_rng.randi() % FEATHER_TEX.size()]
+		# NOT billboarded — billboard rebuilds the basis each frame and would kill the
+		# tumble. Face roughly toward the (down-tilted) camera + spin rotation.z.
+		f.shaded = false
+		f.no_depth_test = true
+		f.rotation = Vector3(deg_to_rad(-35.0), 0.0, _rng.randf() * TAU)
+		f.pixel_size = 0.55 / float(maxi(f.texture.get_height(), 1))
+		f.position = pos + Vector3(0, 1.0, 0)
+		popups_root.add_child(f)
+		var ang2: float = _rng.randf() * TAU
+		var up: float = _rng.randf_range(1.6, 3.2)
+		var spread: float = _rng.randf_range(1.0, 3.0)
+		var apex: Vector3 = f.position + Vector3(cos(ang2) * spread, up, sin(ang2) * spread * 0.6)
+		var land: Vector3 = apex + Vector3(cos(ang2) * spread * 0.4, -up - 1.0, sin(ang2) * spread * 0.4)
+		var fall := _rng.randf_range(1.6, 2.6)
+		var t2 := f.create_tween()
+		t2.tween_property(f, "position", apex, 0.45).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
+		t2.tween_property(f, "position", land, fall).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_IN)
+		# Continuous tumble (rotation.z is in the sprite plane → reads as spinning).
+		var spin := f.create_tween().set_loops()
+		var dir: float = 1.0 if _rng.randf() < 0.5 else -1.0
+		spin.tween_property(f, "rotation:z", f.rotation.z + dir * TAU, _rng.randf_range(0.7, 1.3))
+		var fade := f.create_tween()
+		fade.tween_interval(0.45 + fall - 0.5)
+		fade.tween_property(f, "modulate:a", 0.0, 0.5)
+		fade.tween_callback(f.queue_free)
 
 func _spawn_obstacle() -> void:
 	var lane_x: float = _rng.randf_range(-COWBOY_X_BOUND * 0.85,
