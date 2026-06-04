@@ -175,8 +175,10 @@ const POSSE_BASE_Y: float = 0.45
 const OUTLAW_BASE_Y: float = 1.0   # outlaws spawn at this foot height (see _spawn_outlaw)
 # Authored features within one 140u period (the designer will place these later):
 const _HOLES: Array = [
-	{"d0": 38.0, "d1": 46.0, "x0": -3.5, "x1": 0.5},
-	{"d0": 96.0, "d1": 104.0, "x0": 0.5, "x1": 4.0},
+	# iter418: narrowed to half-road pits — each leaves a clear dodge lane on the
+	# opposite side (road is x in [-3,3]). Now also rendered (see _make_pit).
+	{"d0": 38.0, "d1": 46.0, "x0": -3.2, "x1": -0.5},  # left pit  → dodge right
+	{"d0": 96.0, "d1": 104.0, "x0": 0.5, "x1": 3.2},   # right pit → dodge left
 ]
 const _PUDDLES: Array = [   # Vector3(distance, x-from-path-centre, radius)
 	Vector3(22.0, -2.5, 2.2), Vector3(68.0, 2.0, 2.4), Vector3(126.0, 0.0, 2.0),
@@ -511,9 +513,11 @@ func _ready() -> void:
 		# appear.
 		camera.position = CAM_POS_CALM
 		camera.rotation_degrees = Vector3(CAM_PITCH_CALM, 0, 0)
-		camera.fov = 50.0
+		camera.fov = 62.0   # iter418: 50 → 62 — the new hilly landscape felt cramped;
+		# wider horizontal FOV (half ≈ 31° → visible road x≈±5.1 at the cowboy) shows
+		# both shoulders + dodge lanes around pits. Input still maps to ±COWBOY_X_BOUND.
 		camera.keep_aspect = 0  # Camera3D.KEEP_WIDTH (portrait viewport)
-		DebugLog.add("level_3d: camera overridden (y=7 z=3 dynamic pitch fov=50 KEEP_WIDTH)")
+		DebugLog.add("level_3d: camera overridden (y=7 z=3 dynamic pitch fov=62 KEEP_WIDTH)")
 	# Iter 95: build 3D content (cowboy + mountains + 8 container Node3Ds)
 	# AFTER initial setup. Hypothesis: bundling everything into .tscn was
 	# overloading mobile scene-load — script-side spawn defers texture
@@ -3453,8 +3457,13 @@ func _dispatch_level_event(ev: LevelEvent) -> void:
 					_spawn_candy_rustler()
 				else:
 					_spawn_pete()
+				# iter418: clear on-screen gates so the boss isn't hidden behind one
+				# (the legacy Pete path did this; the data path did not, which is why the
+				# L2 Rustler was unhittable). New gates are blocked once state != PLAYING.
+				for _g in gates_root.get_children():
+					_g.queue_free()
 				_level_state = LevelState.BOSS
-				DebugLog.add("SP2: boss spawned from data event at dist %.1f" % ev.distance)
+				DebugLog.add("SP2: boss spawned from data event at dist %.1f (gates cleared)" % ev.distance)
 		LevelEvent.EventKind.PACING:
 			if _director != null:
 				_director.set_cruise(float(ev.params.get("speed_factor", 1.0)))
@@ -5894,6 +5903,16 @@ func _build_world_terrain() -> void:
 	# Puddles: flat translucent blue discs on the terrain at authored spots.
 	for p in _PUDDLES:
 		_world_root.add_child(_make_puddle(p.x, p.y, p.z))
+	# iter418: pits were invisible (only a distance+x kill-zone) so the posse
+	# seemed to float over nothing. Render each authored hole as a world-anchored
+	# dark decal that scrolls + rides the hills exactly like the puddles, so it
+	# lines up with the _check_authored_holes trigger.
+	for hh in _HOLES:
+		var hd: float = (float(hh["d0"]) + float(hh["d1"])) * 0.5
+		var hgx: float = (float(hh["x0"]) + float(hh["x1"])) * 0.5
+		var hxh: float = (float(hh["x1"]) - float(hh["x0"])) * 0.5
+		var hzh: float = (float(hh["d1"]) - float(hh["d0"])) * 0.5
+		_world_root.add_child(_make_pit(hd, hgx, hxh, hzh))
 	# Retire the UV-scroll "treadmill": hide the flat ground + stop its auto-scroll.
 	var flat := get_node_or_null("Terrain3D/SubViewport/Ground")
 	if flat != null and flat is Node3D:
@@ -5910,6 +5929,27 @@ func _grab_ground_texture() -> Texture2D:
 	if ResourceLoader.exists("res://assets/textures/dirt_path_2k.png"):
 		return load("res://assets/textures/dirt_path_2k.png")
 	return null
+
+# iter418: a visible pit decal — dark rectangle on the terrain at an authored
+# hole. World-anchored (placed via _terr_vertex) so it scrolls + follows hills
+# like the puddles and stays aligned with the gameplay kill-zone.
+func _make_pit(d: float, gx: float, x_half: float, z_half: float) -> MeshInstance3D:
+	var mi := MeshInstance3D.new()
+	var qm := QuadMesh.new()
+	qm.size = Vector2(x_half * 2.0, z_half * 2.0)
+	qm.orientation = PlaneMesh.FACE_Y
+	mi.mesh = qm
+	var pos: Vector3 = _terr_vertex(gx, -d)
+	mi.position = Vector3(pos.x, pos.y + 0.05, pos.z)
+	var mat := StandardMaterial3D.new()
+	if ResourceLoader.exists("res://assets/sprites/props/pit_hole.png"):
+		mat.albedo_texture = load("res://assets/sprites/props/pit_hole.png")
+	mat.albedo_color = Color(0.04, 0.03, 0.05, 1.0)   # near-black pit floor
+	mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	mat.cull_mode = BaseMaterial3D.CULL_DISABLED
+	mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	mi.material_override = mat
+	return mi
 
 func _make_puddle(d: float, gx: float, radius: float) -> MeshInstance3D:
 	var mi := MeshInstance3D.new()
@@ -5959,10 +5999,13 @@ func _check_authored_holes(delta: float) -> void:
 		return
 	var dd: float = fposmod(_level_distance, PATH_PATTERN_LEN)
 	var over: bool = false
+	var hx0: float = 0.0
+	var hx1: float = 0.0
 	for h in _HOLES:
 		if dd >= h["d0"] and dd <= h["d1"] \
 		and cowboy_3d.position.x >= h["x0"] and cowboy_3d.position.x <= h["x1"]:
 			over = true
+			hx0 = float(h["x0"]); hx1 = float(h["x1"])
 			break
 	if not over:
 		_hole_lose_accum = 0.0
@@ -5978,7 +6021,8 @@ func _check_authored_holes(delta: float) -> void:
 	while _hole_lose_accum >= 1.0 and _posse_count_3d > 1:
 		_hole_lose_accum -= 1.0
 		_posse_count_3d = maxi(0, _posse_count_3d - 1)
-		_spawn_falling_cowboy(cowboy_3d.position + Vector3(_rng.randf_range(-1.0, 1.0), 0.0, 0.0))
+		var fx: float = _rng.randf_range(hx0, hx1)
+		_spawn_falling_cowboy(Vector3(fx, cowboy_3d.position.y, cowboy_3d.position.z + _rng.randf_range(-0.6, 0.6)))
 		_refresh_hud()
 		if _posse_count_3d <= 0:
 			_show_fail()
@@ -5990,13 +6034,16 @@ func _spawn_falling_cowboy(pos: Vector3) -> void:
 	c.billboard = BaseMaterial3D.BILLBOARD_ENABLED
 	c.shaded = false
 	c.pixel_size = COWBOY_PIXEL_SIZE
-	c.position = pos
+	c.position = Vector3(pos.x, pos.y + 0.3, pos.z)   # start slightly raised
+	c.scale = Vector3.ONE * 1.15                        # pop bigger, then shrink as it drops
 	popups_root.add_child(c)
 	var t := c.create_tween()
 	t.set_parallel(true)
-	t.tween_property(c, "position:y", pos.y - 6.0, 0.6).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_IN)
-	t.tween_property(c, "scale", c.scale * 0.1, 0.6)
-	t.tween_property(c, "modulate:a", 0.0, 0.6)
+	# Drop deep into the dark pit over ~0.8s so the tumble is clearly visible.
+	t.tween_property(c, "position:y", pos.y - 7.0, 0.8).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_IN)
+	t.tween_property(c, "scale", Vector3.ONE * 0.15, 0.8)
+	# Hold opacity, then fade only in the final stretch (was fading immediately).
+	t.tween_property(c, "modulate:a", 0.0, 0.3).set_delay(0.5)
 	t.chain().tween_callback(c.queue_free)
 
 func _input(event: InputEvent) -> void:
