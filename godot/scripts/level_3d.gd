@@ -370,6 +370,7 @@ const POSSE_CROWD_CLIPS: Array = [
 	"cowboy_stand_shoot", "cowboy_run_shoot_fwd",
 ]
 const POSSE_CROWD_DEPTH: float = 1.0   # how far back the mob extends behind the leader
+const CROWD_RENDER_CAP: int = 1500     # iter408: max MultiMesh members drawn (logical posse can exceed this)
 var _posse_crowd: Node3D = null
 var _crowd_built_count: int = -1
 var _crowd_built_pitch: float = 999.0
@@ -807,6 +808,12 @@ func _crowd_frame_halfwidth() -> float:
 func _build_posse_formation(want: int) -> void:
 	if _posse_crowd == null:
 		return
+	# iter408: cap the RENDERED crowd. The logical posse (_posse_count_3d) can reach
+	# thousands via ×gates and still drives damage, but drawing/​rebuilding 4000+
+	# MultiMesh members every frame tanked FPS — which ballooned delta, which made
+	# bullets tunnel + despawn in a single frame (the real "can't hit Pete" cause).
+	# A dense ~1500 reads as a huge mob; the rest are "off-screen" reinforcements.
+	want = mini(want, CROWD_RENDER_CAP)
 	var halfw: float = _crowd_frame_halfwidth()
 	var rng := RandomNumberGenerator.new()
 	var specs: Array = []
@@ -834,7 +841,8 @@ func _update_posse_crowd(delta: float) -> void:
 	# WorldRoot, so the surface under world-z Z is at distance _level_distance − Z).
 	# Using _level_distance alone sank the mob into the hill, so it was occluded.
 	_posse_crowd.position.y = 0.55 + _hill_y(_level_distance - COWBOY_Z)
-	var want: int = maxi(0, _posse_count_3d - 1)
+	# Cap BEFORE the change-test so a 4000-posse doesn't rebuild every frame.
+	var want: int = mini(maxi(0, _posse_count_3d - 1), CROWD_RENDER_CAP)
 	if want != _crowd_built_count or absf(_cam_pitch - _crowd_built_pitch) > 2.0:
 		_build_posse_formation(want)
 
@@ -5056,6 +5064,11 @@ var _gate_combo_count: int = 0
 var _gate_combo_decay: float = 0.0
 
 func _process(delta: float) -> void:
+	# iter408: clamp delta so a frame-rate dip can't balloon per-frame motion. Without
+	# this, a low-FPS frame moves bullets 50+ units in one step — they tunnel past
+	# targets and despawn the same frame (the "bullets=0 / can't hit Pete" symptom).
+	# Below ~12 FPS the game just runs in slow-motion instead of breaking.
+	delta = minf(delta, 1.0 / 12.0)
 	if not _process_first_tick_logged:
 		_process_first_tick_logged = true
 		DebugLog.add("_process first tick — game loop is running, state=%d" % _level_state)
