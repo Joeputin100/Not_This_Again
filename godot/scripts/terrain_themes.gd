@@ -34,3 +34,13 @@ static func hill_height(d: float) -> float:
 static func tint(hill_y: float, lo: Color, hi: Color, amp: float) -> Color:
 	var t: float = clampf((hill_y + amp) / (2.0 * amp), 0.0, 1.0)
 	return lo.lerp(hi, t)
+
+# Low-frequency albedo MULTIPLIER (~0.8..1.15) that varies across the surface to
+# break the obvious texture-tile repeat. Periodic in lz (period HILL_PERIOD) so the
+# wrapping world stays seamless; gx (lateral) is unconstrained.
+static func mottle(gx: float, lz: float) -> float:
+	var w: float = lz * TAU / HILL_PERIOD
+	var m: float = (sin(gx * 0.43 + w * 3.0)
+		+ 0.6 * sin(gx * 0.91 - w * 5.0)
+		+ 0.4 * sin(gx * 0.19 + w * 8.0))
+	return clampf(1.0 + 0.11 * m, 0.78, 1.16)

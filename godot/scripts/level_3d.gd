@@ -2501,7 +2501,8 @@ func _spawn_gate() -> void:
 	# Math value labels (Label3D billboards above each door)
 	var llabel := Label3D.new()
 	llabel.text = "%s%d" % [operators[0], values[0]]
-	llabel.position = Vector3(-GATE_WIDTH * 0.25, GATE_HEIGHT * 0.55, 0)
+	llabel.position = Vector3(-GATE_WIDTH * 0.25, GATE_HEIGHT * 0.55, 0.35)
+	llabel.no_depth_test = true
 	llabel.font_size = 180
 	llabel.outline_size = 24
 	llabel.modulate = Color.WHITE
@@ -2509,7 +2510,8 @@ func _spawn_gate() -> void:
 	gate.set_meta("left_label", llabel)  # iter 110: bullets update label text via meta
 	var rlabel := Label3D.new()
 	rlabel.text = "%s%d" % [operators[1], values[1]]
-	rlabel.position = Vector3(GATE_WIDTH * 0.25, GATE_HEIGHT * 0.55, 0)
+	rlabel.position = Vector3(GATE_WIDTH * 0.25, GATE_HEIGHT * 0.55, 0.35)
+	rlabel.no_depth_test = true
 	rlabel.font_size = 180
 	rlabel.outline_size = 24
 	rlabel.modulate = Color.WHITE
@@ -2543,7 +2545,11 @@ func _make_gate_door(value: int, op: String) -> MeshInstance3D:
 	door.mesh = qm
 	var mat := StandardMaterial3D.new()
 	mat.albedo_texture = _gate_texture_for(value, op)
-	mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	# iter416: ALPHA_SCISSOR (not blend) — the transparent pixels still carry gray
+	# checkerboard RGB; alpha-blend + mipmaps bled that gray into the edges. Scissor
+	# discards the transparent pixels outright (matches the clean SP1 gate).
+	mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA_SCISSOR
+	mat.alpha_scissor_threshold = 0.5
 	mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
 	mat.cull_mode = BaseMaterial3D.CULL_DISABLED
 	door.material_override = mat
@@ -5779,12 +5785,16 @@ func _build_world_terrain() -> void:
 	st.begin(Mesh.PRIMITIVE_TRIANGLES)
 	var cols: int = int(TERR_HALF_W * 2.0 / TERR_DX)
 	var rows: int = int((TERR_Z_BEHIND - TERR_Z_AHEAD) / TERR_DZ)
-	var tile: float = 6.0
+	var tile: float = 13.0
 	# iter415: bake per-vertex valley/ridge tint from the level's terrain theme.
 	var _theme: Dictionary = TerrainThemes.get_theme(_level_def.terrain if _level_def != null else "frontier")
 	var _tlo: Color = _theme["tint_low"]
 	var _thi: Color = _theme["tint_high"]
 	var _tamp: float = 2.2   # ~max |hill_height|
+	var _vcol := func(py: float, gx: float, lz: float) -> Color:
+		var c: Color = TerrainThemes.tint(py, _tlo, _thi, _tamp)
+		var m: float = TerrainThemes.mottle(gx, lz)
+		return Color(c.r * m, c.g * m, c.b * m, 1.0)
 	for r in range(rows):
 		var lz0: float = TERR_Z_BEHIND - float(r) * TERR_DZ
 		var lz1: float = TERR_Z_BEHIND - float(r + 1) * TERR_DZ
@@ -5799,12 +5809,12 @@ func _build_world_terrain() -> void:
 			var u1: float = (gx1 + TERR_HALF_W) / tile
 			var v0: float = -lz0 / tile
 			var v1: float = -lz1 / tile
-			st.set_color(TerrainThemes.tint(p00.y, _tlo, _thi, _tamp)); st.set_uv(Vector2(u0, v0)); st.add_vertex(p00)
-			st.set_color(TerrainThemes.tint(p10.y, _tlo, _thi, _tamp)); st.set_uv(Vector2(u1, v0)); st.add_vertex(p10)
-			st.set_color(TerrainThemes.tint(p11.y, _tlo, _thi, _tamp)); st.set_uv(Vector2(u1, v1)); st.add_vertex(p11)
-			st.set_color(TerrainThemes.tint(p00.y, _tlo, _thi, _tamp)); st.set_uv(Vector2(u0, v0)); st.add_vertex(p00)
-			st.set_color(TerrainThemes.tint(p11.y, _tlo, _thi, _tamp)); st.set_uv(Vector2(u1, v1)); st.add_vertex(p11)
-			st.set_color(TerrainThemes.tint(p01.y, _tlo, _thi, _tamp)); st.set_uv(Vector2(u0, v1)); st.add_vertex(p01)
+			st.set_color(_vcol.call(p00.y, gx0, lz0)); st.set_uv(Vector2(u0, v0)); st.add_vertex(p00)
+			st.set_color(_vcol.call(p10.y, gx1, lz0)); st.set_uv(Vector2(u1, v0)); st.add_vertex(p10)
+			st.set_color(_vcol.call(p11.y, gx1, lz1)); st.set_uv(Vector2(u1, v1)); st.add_vertex(p11)
+			st.set_color(_vcol.call(p00.y, gx0, lz0)); st.set_uv(Vector2(u0, v0)); st.add_vertex(p00)
+			st.set_color(_vcol.call(p11.y, gx1, lz1)); st.set_uv(Vector2(u1, v1)); st.add_vertex(p11)
+			st.set_color(_vcol.call(p01.y, gx0, lz1)); st.set_uv(Vector2(u0, v1)); st.add_vertex(p01)
 	st.generate_normals()
 	var mi := MeshInstance3D.new()
 	mi.name = "Terrain"

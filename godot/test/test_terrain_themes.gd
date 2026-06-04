@@ -30,3 +30,12 @@ func test_tint_valley_darker_than_ridge():
 	var valley := TerrainThemes.tint(-2.0, lo, hi, 2.0)
 	var ridge := TerrainThemes.tint(2.0, lo, hi, 2.0)
 	assert_true(valley.v < ridge.v, "valley should be darker than ridge")
+
+func test_mottle_periodic_in_lz_and_bounded():
+	for gx in [-8.0, 0.0, 5.0]:
+		for lz in [-3.0, -50.0]:
+			assert_almost_eq(TerrainThemes.mottle(gx, lz),
+				TerrainThemes.mottle(gx, lz - TerrainThemes.HILL_PERIOD), 0.0001)
+	for i in range(200):
+		var m: float = TerrainThemes.mottle(float(i) * 0.3, float(-i) * 0.7)
+		assert_between(m, 0.78, 1.16)
