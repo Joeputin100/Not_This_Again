@@ -106,6 +106,17 @@ const OBSTACLE_DESPAWN_Z: float = 3.5   # past the cowboy
 const OBSTACLE_SPEED: float = 2.5    # iter 144: 8→5→0.5 → iter 153: 0.5→2.5 (0.5 was non-functional — gates took ~56s to arrive while Pete spawned at 18s; 2.5 is ~31% of the original, slow but playable)
 const OBSTACLE_SPAWN_INTERVAL: float = 1.2
 
+# iter410: bulls are charging hazards (ported from the 2D prototype's bull.gd), not
+# static props. They barrel toward the posse faster than other obstacles, soak many
+# hits, and gore the posse on contact. Signature beat: when the player shoots a RED
+# (shrinking) gate enough to FLIP it BLUE (growing), every bull on screen is
+# "confused" — it veers off the track and flees. Makes the gate-flip feel powerful.
+const BULL_HP: int = 30
+const BULL_CHARGE_MULT: float = 2.4    # z-speed vs other obstacles (charge feel)
+const BULL_CONFUSED_FWD_MULT: float = 0.35
+const BULL_DRIFT_SPEED: float = 4.0    # lateral veer-off speed while fleeing
+const BULL_CONTACT_POSSE_LOSS: int = 8 # posse members gored if a bull reaches them
+
 # SP2 slice3 (curves): the path bends left/right as it recedes. Per the spec's
 # (distance, lateral) mechanism, every scrolling entity's world x is offset by the
 # path's lateral curve at ITS distance-along-path, minus the curve at the PLAYER's
@@ -1297,6 +1308,7 @@ func _check_bullet_gate_collision(bullet: Node3D, prev_z: float = INF) -> bool:
 		gate.set_meta(side + "_hits", 0)
 		var value: int = gate.get_meta(side + "_value", 0)
 		var op: String = gate.get_meta(side + "_op", "+")
+		var _was_red: bool = (value < 0)   # iter410: for the red→blue bull-confuse beat
 		if op == "×":
 			pass  # iter 119: × gates absorb the bullet but DON'T increment. Multipliers stay at ×2 max so posse doesn't explode.
 		elif value >= 0:
@@ -1311,6 +1323,10 @@ func _check_bullet_gate_collision(bullet: Node3D, prev_z: float = INF) -> bool:
 		# _gate_color_for paints it blue (it keys on value sign, not op).
 		if value > 0:
 			op = "+"
+		# iter410: a red (shrinking) gate just flipped to blue (growing) — confuse
+		# every bull on screen so they veer off and flee. The gate-flip reward beat.
+		if _was_red and value > 0:
+			_confuse_all_bulls()
 		# Persist + update visuals.
 		gate.set_meta(side + "_value", value)
 		gate.set_meta(side + "_op", op)
@@ -5176,6 +5192,9 @@ func _process(delta: float) -> void:
 	# is needed here.
 	for child in obstacles_root.get_children():
 		if child is Node3D:
+			if child.get_meta("is_bull", false):
+				_update_bull(child, motion_delta, delta)
+				continue
 			child.position.z += OBSTACLE_SPEED * motion_delta
 			if child.position.z > OBSTACLE_DESPAWN_Z:
 				child.queue_free()
@@ -5569,11 +5588,22 @@ func _process(delta: float) -> void:
 			var dx: float = bullet.position.x - obstacle.position.x
 			var dz: float = bullet.position.z - obstacle.position.z
 			if dx * dx + dz * dz < BULLET_COLLISION_DIST_SQ:
+				_spawn_impact_blast(bullet.position)
+				bullet.queue_free()
+				if obstacle.get_meta("is_bull", false):
+					# iter410: bulls soak many hits (scaled by posse damage), die at 0.
+					var bhp: int = obstacle.get_meta("hp", BULL_HP) - bullet.get_meta("dmg", 1)
+					obstacle.set_meta("hp", bhp)
+					if bhp <= 0:
+						_spawn_popup_3d(obstacle.position + Vector3(0, 1.3, 0),
+							"BULL DOWN!", Color(1.0, 0.82, 0.3, 1), 52)
+						obstacle.queue_free()
+						_hits += 1
+						_refresh_hud()
+					break
 				_spawn_popup_3d(obstacle.position + Vector3(0, 1, 0),
 					"-1", Color(1, 0.32, 0.22, 1), 56)
-				_spawn_impact_blast(bullet.position)
 				obstacle.queue_free()
-				bullet.queue_free()
 				_hits += 1
 				_refresh_hud()
 				break
@@ -5825,6 +5855,37 @@ func _input(event: InputEvent) -> void:
 #   bull:       wide dark-brown box (CSGBox3D)
 enum ObstacleType { BARREL, CACTUS, TUMBLEWEED, BULL }
 
+# iter410: per-frame bull behavior. Charges toward the posse (faster than other
+# obstacles); on contact it gores a chunk of the posse. When confused (a red gate
+# flipped blue) it veers off the track via its curve-lane base and despawns.
+func _update_bull(bull: Node3D, motion_delta: float, delta: float) -> void:
+	if bull.get_meta("confused", false):
+		bull.position.z += OBSTACLE_SPEED * BULL_CONFUSED_FWD_MULT * motion_delta
+		var dir: float = bull.get_meta("flee_dir", 1.0)
+		# Drift the curve-lane base (not position.x directly) so the path offset,
+		# re-applied each frame in _apply_path_curve, doesn't snap it back.
+		var lx: float = bull.get_meta("lane_x", bull.position.x) + dir * BULL_DRIFT_SPEED * delta
+		bull.set_meta("lane_x", lx)
+		if absf(lx) > 13.0 or bull.position.z > OBSTACLE_DESPAWN_Z:
+			bull.queue_free()
+		return
+	bull.position.z += OBSTACLE_SPEED * BULL_CHARGE_MULT * motion_delta
+	if bull.position.z > cowboy_3d.position.z - 0.4:
+		# Gore: rip a chunk out of the posse, then the bull is spent.
+		_posse_count_3d = maxi(0, _posse_count_3d - BULL_CONTACT_POSSE_LOSS)
+		_refresh_hud()
+		_spawn_impact_blast(bull.position + Vector3(0, 1.0, 0))
+		bull.queue_free()
+		if _posse_count_3d <= 0:
+			_show_fail()
+
+func _confuse_all_bulls() -> void:
+	for c in obstacles_root.get_children():
+		if c is Node3D and c.get_meta("is_bull", false) and not c.get_meta("confused", false):
+			c.set_meta("confused", true)
+			c.set_meta("flee_dir", -1.0 if c.position.x < 0.0 else 1.0)  # toward nearer edge
+			_spawn_popup_3d(c.position + Vector3(0, 1.4, 0), "SPOOKED!", Color(0.6, 0.9, 1.0, 1), 44)
+
 func _spawn_obstacle() -> void:
 	var lane_x: float = _rng.randf_range(-COWBOY_X_BOUND * 0.85,
 		COWBOY_X_BOUND * 0.85)
@@ -5850,6 +5911,9 @@ func _spawn_obstacle() -> void:
 			obstacle = tw
 		_:  # BULL
 			obstacle = _obstacle_prop("bull", lane_x)
+			obstacle.set_meta("is_bull", true)   # iter410: charging hazard, not a static prop
+			obstacle.set_meta("hp", BULL_HP)
+			obstacle.set_meta("confused", false)
 	obstacles_root.add_child(obstacle)
 
 # Iter 334: build a registry-driven breathing-sprite obstacle, grounded so its
