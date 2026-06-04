@@ -204,6 +204,8 @@ var scenery_root: Node3D
 
 var _spawn_timer: float = 0.0
 var _volley_dmg: int = 1   # iter406: per-bullet damage = the posse's per-member firepower
+var _pete_dbg_t: float = 0.0   # iter407 diagnostic
+var _pete_dbg_hits: int = 0
 var _fire_timer: float = 0.0
 # Iter 115: GunState owns ammo + reload state for the cowboy.
 var _gun: Resource
@@ -5416,6 +5418,24 @@ func _process(delta: float) -> void:
 	if _pete_spawned and boss_root.get_child_count() > 0:
 		var pete: Node3D = boss_root.get_child(0)
 		if is_instance_valid(pete) and pete is Node3D and pete.get_meta("boss_kind", "pete") != "rustler":
+			# iter407 DIAGNOSTIC: log Pete state + how many posse bullets are actually
+			# within his hit radius each second, to see WHY hits aren't registering.
+			_pete_dbg_t += delta
+			if _pete_dbg_t >= 1.0:
+				_pete_dbg_t = 0.0
+				var _near: int = 0
+				for _b in bullets_root.get_children():
+					if _b is Node3D:
+						var _bx: float = (_b as Node3D).position.x - pete.position.x
+						var _bz: float = (_b as Node3D).position.z - pete.position.z
+						if _bx * _bx + _bz * _bz < PETE_HIT_RADIUS_SQ:
+							_near += 1
+				DebugLog.add("PETEDBG z=%.1f x=%.1f hp=%d posse=%d dmg=%d bullets=%d near=%d hits1s=%d cowx=%.1f crowdx=%.1f" % [
+					pete.position.z, pete.position.x, pete.get_meta("hp", PETE_HP),
+					_posse_count_3d, _volley_dmg, bullets_root.get_child_count(), _near,
+					_pete_dbg_hits, cowboy_3d.position.x,
+					_posse_crowd.position.x if _posse_crowd != null else 0.0])
+				_pete_dbg_hits = 0
 			# Iter 146: anim revert timer — if running, count down; on
 			# expiry switch Pete back to IDLE.
 			var revert_t: float = pete.get_meta("anim_revert_t", 0.0)
@@ -5492,6 +5512,7 @@ func _process(delta: float) -> void:
 					_hits += 1
 					_refresh_hud()
 					_refresh_pete_hp(pete)
+					_pete_dbg_hits += 1
 					var has_bus := get_node_or_null("/root/AudioBus") != null \
 						and AudioBus.has_method("play_character_line")
 					if hp <= 0:
