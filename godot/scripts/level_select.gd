@@ -218,6 +218,7 @@ func _ready() -> void:
 	_place_props()
 	_place_cowboy()
 	_focus_on(_focus_level)  # default view = the cowboy's (highest completed) level
+	_maybe_celebrate_win()
 	_prop_player = AudioStreamPlayer.new()
 	_prop_player.bus = "Master"
 	add_child(_prop_player)
@@ -1505,6 +1506,67 @@ func _start_level(btn: Button, level_num: int) -> void:
 func _set_cowboy_s(s: float) -> void:
 	_cowboy_s = s
 	_set_focus_s(s)
+
+# Win/retry flow (spec §7): if the player just won a level, drop the cowboy on
+# the completed orb, light the newly-unlocked orb with a gold-dust burst, then
+# walk him to it. Reuses the map's existing walk machinery (_set_cowboy_s +
+# _set_focus_s, exactly like _start_level). GameState.just_won_level is the
+# trigger; we clear it so the celebration plays only once.
+func _maybe_celebrate_win() -> void:
+	if get_node_or_null("/root/GameState") == null:
+		return
+	var won: int = GameState.just_won_level
+	GameState.just_won_level = 0
+	if won <= 0:
+		return
+	var from_idx: int = clampi(won - 1, 0, ORB_COUNT - 1)   # completed orb
+	var to_idx: int = clampi(won, 0, ORB_COUNT - 1)         # newly unlocked
+	if to_idx == from_idx:
+		return
+	_walking = true
+	_set_cowboy_s(ORB_START_S + float(from_idx) * ORB_GAP_S)
+	_focus_on(from_idx)
+	_gold_dust_on_orb(to_idx)
+	var target_s: float = ORB_START_S + float(to_idx) * ORB_GAP_S
+	var dur: float = clampf(absf(target_s - _cowboy_s) / 12.0, 0.5, 2.0)
+	var walk := create_tween().set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN_OUT)
+	walk.tween_method(_set_cowboy_s, _cowboy_s, target_s, dur)
+	await walk.finished
+	_walking = false
+
+# Projects the newly-unlocked orb's 3D centre to screen (same projection
+# _place_orbs_on_terrain uses) and bursts gold dust there. Falls back to the
+# cowboy marker's position if the orb projection isn't available yet.
+func _gold_dust_on_orb(idx: int) -> void:
+	var p := CPUParticles2D.new()
+	p.position = _orb_screen_center(idx)
+	p.amount = 40
+	p.lifetime = 1.2
+	p.one_shot = true
+	p.explosiveness = 0.85
+	p.emitting = true
+	p.color = Color(1.0, 0.85, 0.35, 1.0)
+	p.initial_velocity_min = 80.0
+	p.initial_velocity_max = 220.0
+	p.scale_amount_min = 2.0
+	p.scale_amount_max = 5.0
+	add_child(p)
+	if get_node_or_null("/root/AudioBus"):
+		AudioBus.play_sfx("bonus_pickup")
+	get_tree().create_timer(1.5).timeout.connect(p.queue_free)
+
+# On-screen pixel centre of an orb, mirroring _place_orbs_on_terrain's
+# projection of _orb_local_centers through the Ground transform + camera.
+func _orb_screen_center(idx: int) -> Vector2:
+	var cam: Camera3D = get_node_or_null("Terrain3D/SubViewport/Camera3D")
+	var gnd: Node3D = get_node_or_null("Terrain3D/SubViewport/Ground")
+	if cam != null and gnd != null and idx >= 0 and idx < _orb_local_centers.size():
+		var world: Vector3 = gnd.global_transform * _orb_local_centers[idx]
+		if not cam.is_position_behind(world):
+			return cam.unproject_position(world)
+	if _cowboy_sprite != null:
+		return _cowboy_sprite.position + _cowboy_sprite.size * 0.5
+	return get_viewport_rect().size * 0.5
 
 func _to_main_menu() -> void:
 	get_tree().change_scene_to_file("res://scenes/main_menu.tscn")
