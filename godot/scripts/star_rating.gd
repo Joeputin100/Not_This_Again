@@ -30,6 +30,11 @@ static func slots_for(stars: int) -> Array:
 var _difficulty: int = 1
 var _earned: int = 0
 var _candies: Array = []   # holds spawned candy/ghost nodes
+# When false, the per-candy internal breathe tween is suppressed (used by the
+# level-select map orbs, which drive the whole widget's pulse from the orb's
+# own breathe so it stays in lockstep instead of double-pulsing). Default true
+# keeps the modal / win-flow usage breathing exactly as before.
+var breathe_enabled: bool = true
 
 func set_rating(difficulty: int, earned: int, animate: bool = false) -> void:
 	_difficulty = difficulty
@@ -56,7 +61,8 @@ func _rebuild(animate: bool) -> void:
 		node.position = Vector2(frac.x * box.x - sz * 0.5, frac.y * box.y - sz * 0.5)
 		node.pivot_offset = Vector2(sz * 0.5, sz * 0.5)
 		if lit.has(i):
-			_breathe(node, float(lit.find(i)) * 0.25)
+			if breathe_enabled:
+				_breathe(node, float(lit.find(i)) * 0.25)
 			if animate: _pop_in(node, float(lit.find(i)) * 0.18)
 		else:
 			node.modulate = Color(1, 1, 1, 0.28)   # ghost slot

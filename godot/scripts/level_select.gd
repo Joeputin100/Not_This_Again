@@ -131,6 +131,12 @@ const ORB_NODE_NAMES: Array[String] = [
 	"LevelNode5Locked", "LevelNode6Locked", "LevelNode7Locked", "LevelNode8Locked",
 ]
 const ORB_NEAR_DIST: float = 4.0  # camera distance at which a tile is full-size
+# Level-select map stars: base dish size (px at sc==1) and an extra multiplier
+# so the stars sit large and readable ON the orb. The golden glow behind them is
+# sized as a multiple of the dish.
+const STAR_BASE_SIZE: Vector2 = Vector2(150, 100)
+const STAR_SCALE_MULT: float = 1.35
+const STAR_GLOW_MULT: float = 2.2
 const ORB_SIZE_MULT: float = 2.0  # iter339: orbs much bigger (×3 overlapped)
 # Iter 339: rendered (Imagen) orb art per level. L1-4 are dual-themed
 # (difficulty × terrain); L5-8 share the locked orb.
@@ -553,11 +559,57 @@ func _build_orb_stars() -> void:
 			_orb_stars.append(null)
 			continue
 		var sr := preload("res://scenes/ui/star_rating.tscn").instantiate()
+		# A soft golden radial glow sits BEHIND the stars so they read as lit
+		# candies on the orb. Built procedurally (no custom shader — the mobile
+		# renderer white-rects those) from a radial GradientTexture2D, drawn with
+		# additive blend for a warm bloom. It is a sibling added just before the
+		# StarRating so the stars paint on top of it.
+		var glow := _make_star_glow()
+		add_child(glow)
 		add_child(sr)
-		sr.custom_minimum_size = Vector2(84, 56)
-		sr.size = Vector2(84, 56)
+		# Bigger, centred dish; pivot at centre so the orb-synced scale grows
+		# from the middle and stays seated on the orb.
+		sr.custom_minimum_size = STAR_BASE_SIZE
+		sr.size = STAR_BASE_SIZE
+		sr.pivot_offset = STAR_BASE_SIZE * 0.5
+		# Map orbs drive their pulse from the orb's breathe, so kill the widget's
+		# own per-candy breathe to avoid a competing double-pulse.
+		sr.breathe_enabled = false
+		# Draw the glow + stars ON TOP of the orb billboard (the Terrain3D Sprite2D)
+		# and the invisible tap buttons.
+		glow.z_index = 50
+		sr.z_index = 51
 		sr.set_rating(_orb_difficulty(lvl), int(GameState.level_best[lvl].get("stars", 0)), false)
+		sr.set_meta("glow", glow)
 		_orb_stars.append(sr)
+
+# A soft, warm-gold radial bloom that sits behind the on-orb stars. Built from a
+# radial GradientTexture2D (gold core fading to transparent) on a TextureRect set
+# to additive blend — no custom shader (the mobile renderer white-rects those).
+func _make_star_glow() -> TextureRect:
+	var grad := Gradient.new()
+	grad.colors = PackedColorArray([
+		Color(1.0, 0.86, 0.45, 0.85),
+		Color(1.0, 0.78, 0.30, 0.45),
+		Color(1.0, 0.70, 0.25, 0.0),
+	])
+	grad.offsets = PackedFloat32Array([0.0, 0.45, 1.0])
+	var gt := GradientTexture2D.new()
+	gt.gradient = grad
+	gt.width = 128
+	gt.height = 128
+	gt.fill = GradientTexture2D.FILL_RADIAL
+	gt.fill_from = Vector2(0.5, 0.5)
+	gt.fill_to = Vector2(1.0, 0.5)
+	var tr := TextureRect.new()
+	tr.texture = gt
+	tr.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	tr.stretch_mode = TextureRect.STRETCH_SCALE
+	tr.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	var cm := CanvasItemMaterial.new()
+	cm.blend_mode = CanvasItemMaterial.BLEND_MODE_ADD
+	tr.material = cm
+	return tr
 
 func _orb_difficulty(lvl: int) -> int:
 	# Levels 1..4 map difficulty 1..4; beyond that, cycle.
@@ -585,6 +637,9 @@ func _place_orbs_on_terrain() -> void:
 			btn.visible = false
 			if star != null:
 				star.visible = false
+				var gl = star.get_meta("glow", null)
+				if gl != null and is_instance_valid(gl):
+					(gl as Control).visible = false
 			continue
 		btn.visible = true
 		var center: Vector2 = cam.unproject_position(world)
@@ -596,10 +651,25 @@ func _place_orbs_on_terrain() -> void:
 		btn.size = Vector2(d, d)
 		btn.position = center - Vector2(d, d) * 0.5
 		if star != null:
-			# Sit the stars just below the orb, centred on it; scale with the orb.
+			# Sit the stars ON the orb, centred over its screen centre. The pulse
+			# is taken straight from the orb mesh's CURRENT breathe scale (the
+			# focus orb's _add_orb_breathe tween drives orb.scale; other orbs sit
+			# at 1.0), so the stars breathe in exact lockstep with the orb rather
+			# than on their own competing tween.
 			star.visible = true
-			star.scale = Vector2(sc, sc)
-			star.position = center + Vector2(-42.0 * sc, d * 0.5)
+			var breathe: float = 1.0
+			if i < _orb_nodes.size() and is_instance_valid(_orb_nodes[i]):
+				breathe = (_orb_nodes[i] as Node3D).scale.x
+			var ssc: float = sc * STAR_SCALE_MULT * breathe
+			star.scale = Vector2(ssc, ssc)
+			# Centre the (pivot-centred) dish on the orb's screen centre.
+			star.position = center - STAR_BASE_SIZE * 0.5
+			var glow = star.get_meta("glow", null)
+			if glow != null and is_instance_valid(glow):
+				glow.visible = true
+				var gsz: float = STAR_BASE_SIZE.x * STAR_GLOW_MULT * ssc
+				(glow as Control).size = Vector2(gsz, gsz)
+				(glow as Control).position = center - Vector2(gsz, gsz) * 0.5
 	_place_cowboy_marker(cam, terrain, gnd)
 	_place_humbug_marker(cam, terrain, gnd)
 
