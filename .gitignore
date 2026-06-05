@@ -70,3 +70,6 @@ __pycache__/
 *.pyc
 *.uid
 godot/.shader_render/frames/
+
+# Brainstorming visual companion (local mockups)
+.superpowers/
