@@ -141,3 +141,12 @@ func _load_from_disk() -> void:
 	bounty = int(cfg.get_value("meta", "bounty", 0))
 	# Apply any regen that happened while the app was closed.
 	apply_regen()
+
+# Win/retry flow: stars (1..3) earned for a run's bounty against ascending
+# thresholds. A win always grants >= 1 star; result is clamped to 3.
+static func stars_for(run_bounty: int, thresholds: Array) -> int:
+	var n: int = 1
+	for t in thresholds:
+		if run_bounty >= int(t):
+			n = maxi(n, 1 + thresholds.find(t))
+	return clampi(n, 1, 3)
