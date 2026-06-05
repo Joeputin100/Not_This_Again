@@ -136,7 +136,7 @@ const ORB_NEAR_DIST: float = 4.0  # camera distance at which a tile is full-size
 # sized as a multiple of the dish.
 const STAR_BASE_SIZE: Vector2 = Vector2(150, 100)
 const STAR_SCALE_MULT: float = 1.35
-const STAR_GLOW_MULT: float = 2.2
+const STAR_GLOW_MULT: float = 1.35   # softened: the resting per-orb star glow is a subtle halo, not a big persistent golden bloom
 const ORB_SIZE_MULT: float = 2.0  # iter339: orbs much bigger (×3 overlapped)
 # Iter 339: rendered (Imagen) orb art per level. L1-4 are dual-themed
 # (difficulty × terrain); L5-8 share the locked orb.
@@ -581,6 +581,11 @@ func _build_orb_stars() -> void:
 		sr.z_index = 51
 		sr.set_rating(_orb_difficulty(lvl), int(GameState.level_best[lvl].get("stars", 0)), false)
 		sr.set_meta("glow", glow)
+		# The stars + glow sit ON TOP of the orb tap areas (z 50/51). They must NOT
+		# eat the touch — make the StarRating root, every child, and the glow all
+		# pass taps through to the invisible orb buttons beneath.
+		_ignore_mouse_recursive(sr)
+		_ignore_mouse_recursive(glow)
 		_orb_stars.append(sr)
 
 # A soft, warm-gold radial bloom that sits behind the on-orb stars. Built from a
@@ -588,9 +593,11 @@ func _build_orb_stars() -> void:
 # to additive blend — no custom shader (the mobile renderer white-rects those).
 func _make_star_glow() -> TextureRect:
 	var grad := Gradient.new()
+	# Softened resting glow: low alpha so the on-orb stars read as gently lit
+	# rather than wrapped in a glaring persistent golden halo.
 	grad.colors = PackedColorArray([
-		Color(1.0, 0.86, 0.45, 0.85),
-		Color(1.0, 0.78, 0.30, 0.45),
+		Color(1.0, 0.86, 0.45, 0.32),
+		Color(1.0, 0.78, 0.30, 0.16),
 		Color(1.0, 0.70, 0.25, 0.0),
 	])
 	grad.offsets = PackedFloat32Array([0.0, 0.45, 1.0])
@@ -610,6 +617,14 @@ func _make_star_glow() -> TextureRect:
 	cm.blend_mode = CanvasItemMaterial.BLEND_MODE_ADD
 	tr.material = cm
 	return tr
+
+# Make a Control (and every Control descendant) ignore mouse/touch so it never
+# intercepts taps meant for the orb tap-areas sitting beneath the stars/glow.
+func _ignore_mouse_recursive(n: Node) -> void:
+	if n is Control:
+		(n as Control).mouse_filter = Control.MOUSE_FILTER_IGNORE
+	for c in n.get_children():
+		_ignore_mouse_recursive(c)
 
 func _orb_difficulty(lvl: int) -> int:
 	# Levels 1..4 map difficulty 1..4; beyond that, cycle.
@@ -661,6 +676,11 @@ func _place_orbs_on_terrain() -> void:
 			if i < _orb_nodes.size() and is_instance_valid(_orb_nodes[i]):
 				breathe = (_orb_nodes[i] as Node3D).scale.x
 			var ssc: float = sc * STAR_SCALE_MULT * breathe
+			# A celebration pop multiplies the orb-synced scale by a 0->1.2->1 curve
+			# so the stars "land" while staying seated on the orb (position below
+			# still tracks every frame).
+			if star.get_meta("popping", false):
+				ssc *= float(star.get_meta("pop_mult", 1.0))
 			star.scale = Vector2(ssc, ssc)
 			# Centre the (pivot-centred) dish on the orb's screen centre.
 			star.position = center - STAR_BASE_SIZE * 0.5
@@ -1637,9 +1657,13 @@ func _maybe_celebrate_win() -> void:
 	_walking = true
 	_set_cowboy_s(ORB_START_S + float(from_idx) * ORB_GAP_S)
 	_focus_on(from_idx)
+	# Pop the just-COMPLETED orb's stars in with a flourish so the player sees the
+	# reward land on the orb they finished (rather than the stars just being there).
+	_pop_completed_orb_stars(from_idx)
 	_gold_dust_on_orb(to_idx)
 	var target_s: float = ORB_START_S + float(to_idx) * ORB_GAP_S
-	var dur: float = clampf(absf(target_s - _cowboy_s) / 12.0, 0.5, 2.0)
+	# Slower, clearly-watchable stride: a single orb gap reads as ~2-3.5s.
+	var dur: float = clampf(absf(target_s - _cowboy_s) / 5.0, 1.4, 3.5)
 	var walk := create_tween().set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN_OUT)
 	walk.tween_method(_set_cowboy_s, _cowboy_s, target_s, dur)
 	await walk.finished
@@ -1650,6 +1674,40 @@ func _maybe_celebrate_win() -> void:
 	_focus_level = to_idx
 	_unlock_orb_flourish(to_idx)
 	_walking = false
+	# Handoff from the win modal: CONTINUE auto-starts the next level after the
+	# celebration; MAP (continue_to_next == false) just leaves the player here.
+	if get_node_or_null("/root/GameState") and GameState.continue_to_next:
+		GameState.continue_to_next = false
+		await get_tree().create_timer(0.4).timeout
+		get_tree().change_scene_to_file("res://scenes/level_3d.tscn")
+
+# Scale-pops the just-completed orb's StarRating (0 -> 1.2 -> 1, TRANS_BACK) with
+# a small sparkle, so the earned stars visibly "land" during the celebration.
+func _pop_completed_orb_stars(from_idx: int) -> void:
+	if from_idx < 0 or from_idx >= _orb_stars.size():
+		return
+	var star := _orb_stars[from_idx] as StarRating
+	if star == null or not is_instance_valid(star):
+		return
+	star.visible = true
+	# Re-run the widget's own slot pop-in (each candy scales up with TRANS_BACK +
+	# a pickup sparkle), then overlay a whole-widget scale pop for a clear "pop".
+	var earned: int = 0
+	if GameState.level_best.has(from_idx + 1):
+		earned = int(GameState.level_best[from_idx + 1].get("stars", 0))
+	star.set_rating(_orb_difficulty(from_idx + 1), earned, true)
+	# Drive the pop through a 0 -> 1.2 -> 1 multiplier that _place_orbs_on_terrain
+	# folds into the per-frame orb-synced scale (so it stays seated while popping).
+	star.set_meta("popping", true)
+	star.set_meta("pop_mult", 0.001)
+	var t := star.create_tween().set_trans(Tween.TRANS_BACK)
+	t.tween_method(_set_star_pop_mult.bind(star), 0.001, 1.2, 0.22).set_ease(Tween.EASE_OUT)
+	t.tween_method(_set_star_pop_mult.bind(star), 1.2, 1.0, 0.28).set_ease(Tween.EASE_OUT)
+	t.tween_callback(func(): star.set_meta("popping", false))
+
+func _set_star_pop_mult(v: float, star: StarRating) -> void:
+	if is_instance_valid(star):
+		star.set_meta("pop_mult", v)
 
 # Projects the newly-unlocked orb's 3D centre to screen (same projection
 # _place_orbs_on_terrain uses) and bursts gold dust there. Falls back to the

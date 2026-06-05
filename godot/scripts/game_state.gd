@@ -38,6 +38,7 @@ var level_best: Dictionary = {}
 # Transient (NOT persisted) handoff: set to the level number just won so
 # level_select plays the celebration walk on its next _ready, then cleared.
 var just_won_level: int = 0
+var continue_to_next: bool = false  # transient: after the win celebration, auto-start the next level
 
 var hearts: int = MAX_HEARTS:
 	set(value):

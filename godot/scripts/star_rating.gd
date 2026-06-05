@@ -36,6 +36,13 @@ var _candies: Array = []   # holds spawned candy/ghost nodes
 # keeps the modal / win-flow usage breathing exactly as before.
 var breathe_enabled: bool = true
 
+func _ready() -> void:
+	# The widget is purely decorative; it must never intercept taps (on the map it
+	# sits on top of the orb tap-areas). Make the root + dish pass touches through.
+	mouse_filter = Control.MOUSE_FILTER_IGNORE
+	if _dish != null:
+		_dish.mouse_filter = Control.MOUSE_FILTER_IGNORE
+
 func set_rating(difficulty: int, earned: int, animate: bool = false) -> void:
 	_difficulty = difficulty
 	_earned = clampi(earned, 0, 3)
@@ -60,6 +67,7 @@ func _rebuild(animate: bool) -> void:
 		node.size = Vector2(sz, sz)
 		node.position = Vector2(frac.x * box.x - sz * 0.5, frac.y * box.y - sz * 0.5)
 		node.pivot_offset = Vector2(sz * 0.5, sz * 0.5)
+		node.mouse_filter = Control.MOUSE_FILTER_IGNORE  # purely decorative; never eat taps meant for the orb beneath
 		if lit.has(i):
 			if breathe_enabled:
 				_breathe(node, float(lit.find(i)) * 0.25)
