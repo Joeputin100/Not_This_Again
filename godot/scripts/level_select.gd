@@ -87,6 +87,8 @@ const PATH_SWITCHBACKS: float = 5.0
 const VIEW_FOCUS_Z: float = -2.0 # world z where the focused (cowboy's) level sits — near the bottom
 var _orb_anchors: Array[Vector2] = []   # plane-local (x, z) per orb
 var _orb_local_centers: Array[Vector3] = []  # 3D centre of each orb billboard (for aligned tap targets)
+var _orb_stars: Array = []              # StarRating per orb (or null); built once, repositioned each frame
+var _orb_stars_built: bool = false
 var _trail_anchors: Array[Vector2] = [] # plane-local (x, z) densely along the path
 var _path_pts: Array[Vector2] = []      # dense path samples for arc-length lookup
 var _path_cum: PackedFloat32Array = PackedFloat32Array()
@@ -215,6 +217,7 @@ func _ready() -> void:
 		terr.call("build_grass", PackedVector2Array(_trail_anchors), 0.95, prop_av, 2.8)
 	_build_trail_mesh()
 	_build_orb_visuals()
+	_build_orb_stars()
 	_place_props()
 	_place_cowboy()
 	_focus_on(_focus_level)  # default view = the cowboy's (highest completed) level
@@ -534,6 +537,31 @@ func _path_world(p: float) -> Vector2:
 # Iter 339: project each level tile's terrain anchor to the screen so the orbs
 # sit ON the hilly map. Tiles behind the camera are hidden; the rest are scaled
 # by camera distance for perspective and centred on their projected point.
+# Build the per-orb best-star widgets ONCE. Each completed level (one with a
+# GameState.level_best entry) gets a small static StarRating; _place_orbs_on_terrain
+# repositions them every frame to follow the orb through pans. Orbs without a
+# level_best entry get a null slot (no widget).
+func _build_orb_stars() -> void:
+	if _orb_stars_built:
+		return
+	_orb_stars_built = true
+	var has_gs: bool = get_node_or_null("/root/GameState") != null
+	for i in ORB_COUNT:
+		var lvl: int = i + 1
+		if not has_gs or not GameState.level_best.has(lvl):
+			_orb_stars.append(null)
+			continue
+		var sr := preload("res://scenes/ui/star_rating.tscn").instantiate()
+		add_child(sr)
+		sr.custom_minimum_size = Vector2(84, 56)
+		sr.size = Vector2(84, 56)
+		sr.set_rating(_orb_difficulty(lvl), int(GameState.level_best[lvl].get("stars", 0)), false)
+		_orb_stars.append(sr)
+
+func _orb_difficulty(lvl: int) -> int:
+	# Levels 1..4 map difficulty 1..4; beyond that, cycle.
+	return ((lvl - 1) % 4) + 1
+
 func _place_orbs_on_terrain() -> void:
 	var cam: Camera3D = get_node_or_null("Terrain3D/SubViewport/Camera3D")
 	var terrain = get_node_or_null("Terrain3D")
@@ -549,8 +577,13 @@ func _place_orbs_on_terrain() -> void:
 		# Project to the orb's true 3D CENTRE (not the ground point) so the tap
 		# target sits ON the floating orb, and give it a generous diameter.
 		var world: Vector3 = gnd.global_transform * _orb_local_centers[i]
+		var star: StarRating = null
+		if i < _orb_stars.size():
+			star = _orb_stars[i] as StarRating
 		if cam.is_position_behind(world):
 			btn.visible = false
+			if star != null:
+				star.visible = false
 			continue
 		btn.visible = true
 		var center: Vector2 = cam.unproject_position(world)
@@ -561,6 +594,11 @@ func _place_orbs_on_terrain() -> void:
 		btn.custom_minimum_size = Vector2.ZERO
 		btn.size = Vector2(d, d)
 		btn.position = center - Vector2(d, d) * 0.5
+		if star != null:
+			# Sit the stars just below the orb, centred on it; scale with the orb.
+			star.visible = true
+			star.scale = Vector2(sc, sc)
+			star.position = center + Vector2(-42.0 * sc, d * 0.5)
 	_place_cowboy_marker(cam, terrain, gnd)
 	_place_humbug_marker(cam, terrain, gnd)
 
