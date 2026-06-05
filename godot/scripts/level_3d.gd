@@ -223,7 +223,8 @@ var boss_root: Node3D
 @onready var back_button: Button = $UI/BackButton
 @onready var info_label: Label = $UI/InfoLabel
 # Iter 79: dedicated HUD labels.
-@onready var hearts_label: HeartRow = $UI/HeartsLabel
+@onready var hearts_label: HeartCookieRow = $UI/HeartsCutout/HeartCookieRow
+@onready var _hud_outlaws: Label = $UI/HeartsCutout/OutlawNumber
 @onready var posse_label: Label = $UI/PosseLabel
 @onready var hits_label: Label = $UI/HitsLabel
 # Iter 95: also created in _build_3d_content().
@@ -561,6 +562,8 @@ func _ready() -> void:
 		_bounty_at_start = GameState.bounty
 	if _level_def != null and _level_def.outlaw_quota > 0:
 		_outlaws_remaining = _level_def.outlaw_quota
+	if _hud_outlaws != null:
+		_hud_outlaws.text = str(_outlaws_remaining)
 	# SP2: starting posse size from the level definition (default 5).
 	if _level_def != null and _level_def.start_posse > 0 and _level_def.start_posse != _posse_count_3d:
 		_posse_count_3d = _level_def.start_posse
@@ -3171,7 +3174,9 @@ func _build_quake_bar() -> void:
 		_weapon_label.add_theme_font_size_override("font_size", 26)
 		_weapon_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 		_reparent_into_bar(_weapon_label, Vector2(2, 160), Vector2(280, 36))
-	_reparent_into_bar(hearts_label, Vector2(286, 124), Vector2(330, 58))
+	# iter370 winflow: hearts no longer live on the Quake bar — they're pinned
+	# in the top-left taffy cutout ($UI/HeartsCutout/HeartCookieRow) where the
+	# cookies dance, so the reparent into the bar is removed.
 	if posse_label != null:
 		posse_label.visible = false  # absorbed into the bar
 
@@ -4786,9 +4791,15 @@ func _outlaw_left_field(outlaw: Node) -> void:
 	if _outlaws_remaining == 0:
 		_trigger_quota_boss()
 
-# Temporary safe stub — replaced in the taffy-cutout task with the real label update.
-func _set_outlaws_label(_n: int) -> void:
-	pass
+# Set the taffy's outlaws-remaining number with a small bump on change.
+func _set_outlaws_label(n: int) -> void:
+	if _hud_outlaws == null:
+		return
+	_hud_outlaws.text = str(n)
+	_hud_outlaws.pivot_offset = _hud_outlaws.size * 0.5
+	var t := _hud_outlaws.create_tween()
+	t.tween_property(_hud_outlaws, "scale", Vector2(1.25, 1.25), 0.08)
+	t.tween_property(_hud_outlaws, "scale", Vector2.ONE, 0.12).set_trans(Tween.TRANS_BACK)
 
 func _trigger_quota_boss() -> void:
 	if _pete_spawned or _test_range_mode:

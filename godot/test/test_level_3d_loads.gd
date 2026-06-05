@@ -38,7 +38,12 @@ func test_scene_instantiates():
 	# UI subtree
 	assert_not_null(inst.get_node_or_null("UI/BackButton"))
 	assert_not_null(inst.get_node_or_null("UI/InfoLabel"))
-	assert_not_null(inst.get_node_or_null("UI/HeartsLabel"))
+	# iter370 winflow: lives moved off the Quake bar into the top-left taffy
+	# cutout — the old UI/HeartsLabel was replaced by HeartsCutout + its
+	# HeartCookieRow + OutlawNumber children.
+	assert_not_null(inst.get_node_or_null("UI/HeartsCutout"))
+	assert_not_null(inst.get_node_or_null("UI/HeartsCutout/HeartCookieRow"))
+	assert_not_null(inst.get_node_or_null("UI/HeartsCutout/OutlawNumber"))
 	assert_not_null(inst.get_node_or_null("UI/PosseLabel"))
 	assert_not_null(inst.get_node_or_null("UI/HitsLabel"))
 	assert_not_null(inst.get_node_or_null("UI/WinOverlay"))
