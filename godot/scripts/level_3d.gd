@@ -29,6 +29,29 @@ func _init() -> void:
 func _enter_tree() -> void:
 	DebugLog.add("level_3d.gd _enter_tree")
 
+# Rainbow Kimmy: her cage only takes damage from rainbow bullets; non-Kimmy
+# captives are unaffected by this rule (base damage passes through).
+static func kimmy_cage_damage(is_kimmy: bool, bullet_rainbow: bool, base: int) -> int:
+	if is_kimmy and not bullet_rainbow:
+		return 0
+	return base
+
+# Rainbow Kimmy: rescue resolves to "cracked" (freed) the instant cage HP hits
+# 0 (even at the buzzer); else "timed_out" when the window is spent; else "ongoing".
+static func kimmy_rescue_outcome(cage_hp: int, window_left: float) -> String:
+	if cage_hp <= 0:
+		return "cracked"
+	if window_left <= 0.0:
+		return "timed_out"
+	return "ongoing"
+
+# Rainbow Kimmy sugar rush: destroy outlaws + destructible obstacles (incl. bulls);
+# never the cage/captive (Kimmy) or already-dying nodes. `meta` = the node's flags.
+static func kimmy_clears_node(meta: Dictionary) -> bool:
+	if meta.get("is_captive", false) or meta.get("is_kimmy", false) or meta.get("dying", false):
+		return false
+	return true
+
 # Iter 64: prototype 3D level scene. The user chose the full 3D refactor
 # path over the perspective-fake approach. This scene is the foundation
 # for the migration:
