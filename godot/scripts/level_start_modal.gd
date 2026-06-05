@@ -14,17 +14,33 @@ signal close_pressed
 @onready var _panel: Control = $Panel
 @onready var _header_pill: TextureRect = $Panel/HeaderPill
 @onready var _header_label: Label = $Panel/HeaderPill/HeaderLabel
-@onready var _goal_label: Label = $Panel/GoalLabel
+@onready var _subtitle_label: Label = $Panel/SubtitleLabel
+@onready var _goal_label: Label = $Panel/GoalViewer/GoalLabel
+@onready var _play_button: Button = $Panel/PlayButton
 
-# title: e.g. "MINE SHAFT MAYHEM"; goal_text: e.g.
-# "Clear 60 outlaws, then defeat The Candy Rustler!"
-func show_level(title: String, goal_text: String) -> void:
-	_header_label.text = title
+# level_num: e.g. 2; title: e.g. "MINE SHAFT MAYHEM"; goal_text: e.g.
+# "Clear 60 outlaws, then defeat The Candy Rustler!". The pill shows
+# "LEVEL <n>" big (Candy-Crush-Soda style), the level name as a subtitle
+# beneath it, and the goal inside the tinted goal viewer.
+func show_level(level_num: int, title: String, goal_text: String) -> void:
+	_header_label.text = "LEVEL %d" % level_num
+	_subtitle_label.text = title
 	_goal_label.text = goal_text
 	visible = true
 	if get_node_or_null("/root/AudioBus") and AudioBus.has_method("play_tap"):
 		AudioBus.play_tap()
 	_bounce_in()
+	_start_play_breathing()
+
+# Idle breathing pulse on the PLAY button (1.0 <-> 1.05, ~1.2s, TRANS_SINE,
+# looping) so it invites a tap. Scales from its centre.
+func _start_play_breathing() -> void:
+	_play_button.pivot_offset = _play_button.size * 0.5
+	var t := _play_button.create_tween().set_loops()
+	t.tween_property(_play_button, "scale", Vector2(1.05, 1.05), 1.2) \
+		.set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN_OUT)
+	t.tween_property(_play_button, "scale", Vector2.ONE, 1.2) \
+		.set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN_OUT)
 
 func _bounce_in() -> void:
 	_panel.scale = Vector2(0.2, 0.2)

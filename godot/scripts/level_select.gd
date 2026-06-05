@@ -1671,7 +1671,7 @@ func _show_level_start_modal(level_num: int) -> void:
 	_level_start_modal = modal
 	modal.play_pressed.connect(_on_level_start_play)
 	modal.close_pressed.connect(_on_level_start_close)
-	modal.show_level(title, goal)
+	modal.show_level(level_num, title, goal)
 
 func _on_level_start_play() -> void:
 	get_tree().change_scene_to_file("res://scenes/level_3d.tscn")
