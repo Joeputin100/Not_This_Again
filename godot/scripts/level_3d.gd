@@ -268,6 +268,7 @@ var scenery_root: Node3D
 
 var _spawn_timer: float = 0.0
 var _volley_dmg: int = 1   # iter406: per-bullet damage = the posse's per-member firepower
+var _kimmy_cue_shown: bool = false   # kimmy: "RAINBOW ONLY" cue shown once per cage
 var _was_reloading: bool = false   # iter413: edge-detect reload start for the click SFX
 var _last_lap: float = 0.0   # iter414: puddle-cross splash detector
 var _fire_timer: float = 0.0
@@ -4409,10 +4410,17 @@ func _pusher_take_damage(pusher: Node3D) -> void:
 # Iter 133: handle bullet hitting a captive — damages container, on
 # HP=0 triggers the release ceremony. Called from the bullet/outlaw
 # collision loop when outlaw.get_meta("is_captive") is true.
-func _captive_take_damage(captive: Node3D, bullet_pos: Vector3) -> void:
+func _captive_take_damage(captive: Node3D, bullet_pos: Vector3, bullet_rainbow: bool = false) -> void:
 	if captive.get_meta("released", false):
 		return  # iter 164: already freed — ignore trailing bullets
-	var hp: int = captive.get_meta("hp", 0) - 1
+	# kimmy: cage takes damage ONLY from rainbow-mode bullets.
+	var is_kimmy: bool = captive.get_meta("is_kimmy", false)
+	var dmg: int = kimmy_cage_damage(is_kimmy, bullet_rainbow, _volley_dmg)
+	if dmg <= 0:
+		if is_kimmy:
+			_kimmy_rainbow_only_cue(bullet_pos)
+		return
+	var hp: int = captive.get_meta("hp", 0) - dmg
 	captive.set_meta("hp", hp)
 	var max_hp: int = captive.get_meta("max_hp", 60)
 	# Update HP label
@@ -4425,7 +4433,7 @@ func _captive_take_damage(captive: Node3D, bullet_pos: Vector3) -> void:
 			.set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
 	# Damage popup
 	_spawn_popup_3d(bullet_pos + Vector3(0, 0.5, 0),
-		"-1", Color(1.0, 0.55, 0.40, 1), 36)
+		"-%d" % dmg, Color(1.0, 0.55, 0.40, 1), 36)
 	# Small flash modulate on container
 	var container_sprite: Sprite3D = captive.get_meta("container_sprite", null)
 	if container_sprite != null and is_instance_valid(container_sprite):
@@ -4434,6 +4442,13 @@ func _captive_take_damage(captive: Node3D, bullet_pos: Vector3) -> void:
 		flash_tw.tween_property(container_sprite, "modulate", Color.WHITE, 0.12)
 	if hp <= 0:
 		_release_captive_hero_pushed_aware(captive)
+
+# kimmy: one-time "RAINBOW ONLY" hint when a non-rainbow bullet pings Kimmy's cage.
+func _kimmy_rainbow_only_cue(pos: Vector3) -> void:
+	if _kimmy_cue_shown:
+		return
+	_kimmy_cue_shown = true
+	_spawn_popup_3d(pos + Vector3(0, 1.5, 0), "RAINBOW ONLY!", Color(0.7, 0.5, 1.0, 1), 56)
 
 # Iter 133: container shatters → hero pops out → flips to face forward
 # → joins posse formation.
@@ -5625,7 +5640,7 @@ func _process(delta: float) -> void:
 				# Iter 133: captives route to specialized damage handler
 				# (HP scales with hero tier, no death-stream, release ceremony).
 				if outlaw.get_meta("is_captive", false):
-					_captive_take_damage(outlaw, bullet.position)
+					_captive_take_damage(outlaw, bullet.position, bullet.get_meta("rainbow", false))
 					bullet.queue_free()
 					break
 				var hp: int = outlaw.get_meta("hp", 1) - bullet.get_meta("dmg", 1)
