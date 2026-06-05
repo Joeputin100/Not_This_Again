@@ -124,6 +124,7 @@ def main() -> None:
             text=spoken,
             model_id=MODEL,
             output_format=OUTPUT_FMT,
+            apply_text_normalization="on",  # ElevenLabs best-practice: force text normalization
         )
         with open(dst, "wb") as f:
             for chunk in audio:

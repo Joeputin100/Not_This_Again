@@ -64,7 +64,8 @@ def main() -> None:
     OUT_DIR.mkdir(parents=True, exist_ok=True)
     for slug, text in LINES.items():
         audio = client.text_to_speech.convert(
-            voice_id=PETE_VOICE, text=text, model_id=MODEL, output_format=OUTPUT_FMT)
+            voice_id=PETE_VOICE, text=text, model_id=MODEL, output_format=OUTPUT_FMT,
+            apply_text_normalization="on")  # ElevenLabs best-practice: force text normalization
         dst = OUT_DIR / f"{slug}.mp3"
         with open(dst, "wb") as f:
             for chunk in audio:
