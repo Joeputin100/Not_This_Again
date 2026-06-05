@@ -35,6 +35,16 @@ for stem, name in MAP.items():
     greenkey(src).save(DST / f"{name}.png")
     print("wrote", DST / f"{name}.png")
 
+# winflow R3: the modal cowboys (overjoyed = WIN, dejected = FAIL). Same green
+# key as the candy props; despill keeps the red/blue/orange character clean.
+COWBOYS = {"cowboy_happy": "cowboy_happy", "cowboy_sad": "cowboy_sad"}
+for stem, name in COWBOYS.items():
+    src = SRC / f"{stem}.png"
+    if not src.exists():
+        raise SystemExit(f"missing staged cowboy asset: {src}")
+    greenkey(src).save(DST / f"{name}.png")
+    print("wrote", DST / f"{name}.png")
+
 
 # winflow 2026-06-04: deep candy pits (fudge / honey / soda). Same green-key as
 # the rest, but the pit fill is warm/saturated so the despill is skipped (it

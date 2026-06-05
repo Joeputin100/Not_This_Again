@@ -1,10 +1,11 @@
-[gd_scene load_steps=8 format=3]
+[gd_scene load_steps=10 format=3]
 
 [ext_resource type="Script" path="res://scripts/fail_modal.gd" id="1"]
 [ext_resource type="PackedScene" path="res://scenes/ui/heart_cookie_row.tscn" id="2"]
 [ext_resource type="Texture2D" path="res://assets/sprites/ui/winflow/panel_candy.png" id="3"]
 [ext_resource type="Texture2D" path="res://assets/sprites/ui/winflow/sunburst.png" id="4"]
 [ext_resource type="Texture2D" path="res://assets/sprites/ui/winflow/header_pill.png" id="5"]
+[ext_resource type="Texture2D" path="res://assets/sprites/ui/winflow/cowboy_sad.png" id="6"]
 
 [sub_resource type="StyleBoxFlat" id="btn_orange"]
 content_margin_left = 40.0
@@ -34,6 +35,25 @@ corner_radius_top_left = 34
 corner_radius_top_right = 34
 corner_radius_bottom_left = 34
 corner_radius_bottom_right = 34
+
+[sub_resource type="StyleBoxFlat" id="btn_blue"]
+content_margin_left = 24.0
+content_margin_top = 16.0
+content_margin_right = 24.0
+content_margin_bottom = 20.0
+bg_color = Color(0.36, 0.66, 0.92, 1)
+border_width_left = 4
+border_width_top = 4
+border_width_right = 4
+border_width_bottom = 12
+border_color = Color(0.18, 0.42, 0.68, 1)
+corner_radius_top_left = 28
+corner_radius_top_right = 28
+corner_radius_bottom_left = 28
+corner_radius_bottom_right = 28
+shadow_color = Color(0, 0, 0, 0.4)
+shadow_size = 8
+shadow_offset = Vector2(0, 5)
 
 [node name="FailModal" type="Control"]
 layout_mode = 3
@@ -196,8 +216,29 @@ offset_left = -180.0
 offset_top = -150.0
 offset_right = 180.0
 offset_bottom = -50.0
+theme_override_styles/normal = SubResource("btn_blue")
+theme_override_styles/hover = SubResource("btn_blue")
+theme_override_styles/pressed = SubResource("btn_blue")
+theme_override_styles/focus = SubResource("btn_blue")
+theme_override_colors/font_color = Color(1, 1, 1, 1)
+theme_override_colors/font_outline_color = Color(0.14, 0.32, 0.5, 1)
+theme_override_constants/outline_size = 6
 theme_override_font_sizes/font_size = 48
 text = "MAP"
+
+[node name="Cowboy" type="TextureRect" parent="Panel"]
+layout_mode = 1
+anchors_preset = 1
+anchor_left = 1.0
+anchor_right = 1.0
+offset_left = -250.0
+offset_top = 150.0
+offset_right = 30.0
+offset_bottom = 530.0
+mouse_filter = 2
+texture = ExtResource("6")
+expand_mode = 1
+stretch_mode = 5
 
 [connection signal="pressed" from="Panel/RetryButton" to="." method="_on_retry"]
 [connection signal="pressed" from="Panel/MapButton" to="." method="_on_map"]

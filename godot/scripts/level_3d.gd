@@ -4104,8 +4104,12 @@ func _present_fail_modal() -> void:
 	_end_modal.retry_pressed.connect(_retry_level)
 	_end_modal.map_pressed.connect(_goto_map.bind(false))
 
-func _goto_map(_celebrate: bool) -> void:
+func _goto_map(continue_next: bool) -> void:
 	# just_won_level was set on win; level_select reads it to celebrate.
+	# continue_next: CONTINUE auto-starts the next level after the celebration;
+	# MAP (and fail's MAP) stay on the level-select map.
+	if get_node_or_null("/root/GameState"):
+		GameState.continue_to_next = continue_next
 	get_tree().change_scene_to_file("res://scenes/level_select.tscn")
 
 func _retry_level() -> void:

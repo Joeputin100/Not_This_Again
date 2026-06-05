@@ -19,6 +19,7 @@ signal map_pressed
 @onready var _next: Label = $Panel/NextLabel
 @onready var _progress: ProgressBar = $Panel/NextProgress
 @onready var _hearts: HeartCookieRow = $Panel/HeartCookieRow
+@onready var _cowboy: TextureRect = $Panel/Cowboy
 
 # difficulty: LevelDef.difficulty; run_bounty: this level's bounty; stars: 1..3;
 # next_needed: bounty for the next star (0 = already maxed); hearts/max: lives;
@@ -46,7 +47,18 @@ func show_win(difficulty: int, run_bounty: int, stars: int, next_needed: int,
 	_stars.set_rating(difficulty, stars, true)
 	_spin_sunburst()
 	_bounce_in()
+	_cowboy_pop_in()
 	_count_up(run_bounty, next_needed)
+
+func _cowboy_pop_in() -> void:
+	if _cowboy == null:
+		return
+	_cowboy.pivot_offset = _cowboy.size * Vector2(0.5, 1.0)
+	_cowboy.scale = Vector2(0.2, 0.2)
+	var t := _cowboy.create_tween()
+	t.tween_interval(0.25)
+	t.tween_property(_cowboy, "scale", Vector2.ONE, 0.55) \
+		.set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
 
 func _spin_sunburst() -> void:
 	if _sunburst == null:
