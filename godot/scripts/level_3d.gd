@@ -426,6 +426,11 @@ var _crowd_built_count: int = -1
 var _crowd_built_pitch: float = 999.0
 var _hole_lose_accum: float = 0.0
 var _over_hole: bool = false   # iter414b: pit-entry edge for the fall whistle
+# winflow: cumulative members already dropped during the CURRENT pit visit, so
+# the immediate-fall logic only drops the *newly* overlapping increment each
+# frame (reset to 0 the moment the crowd leaves the pit).
+var _hole_dropped_this_visit: int = 0
+var _dyn_hole_count: int = 0   # winflow: cycles candy fills across runtime-spawned holes
 
 # Iter 85: subtle y-bob animation gives life to the otherwise-static
 # billboards. Sine wave on position.y at each frame; followers get a
@@ -3520,6 +3525,10 @@ func _spawn_hole(params: Dictionary) -> void:
 	hole.position = Vector3(float(params.get("x", 0.0)), 0.02, OBSTACLE_SPAWN_Z)
 	hole.set_meta("x_half", float(params.get("x_half", 1.2)))
 	hole.set_meta("z_half", float(params.get("z_half", 1.6)))
+	# winflow: dynamic holes also get a candy fill (cycles with the spawn count).
+	var fill: String = _PIT_FILLS[_dyn_hole_count % _PIT_FILLS.size()]
+	_dyn_hole_count += 1
+	hole.set_meta("pit_fill", fill)
 	var mi := MeshInstance3D.new()
 	var pm := PlaneMesh.new()  # PlaneMesh lies flat on XZ (normal up)
 	pm.size = Vector2(hole.get_meta("x_half") * 2.0, hole.get_meta("z_half") * 2.0)
@@ -3527,7 +3536,11 @@ func _spawn_hole(params: Dictionary) -> void:
 	var m := StandardMaterial3D.new()
 	m.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
 	m.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
-	m.albedo_texture = load("res://assets/sprites/props/pit_hole.png")
+	var dyn_path: String = "res://assets/sprites/ui/winflow/pit_%s.png" % fill
+	if ResourceLoader.exists(dyn_path):
+		m.albedo_texture = load(dyn_path)
+	else:
+		m.albedo_texture = load("res://assets/sprites/props/pit_hole.png")
 	m.cull_mode = BaseMaterial3D.CULL_DISABLED
 	mi.material_override = m
 	hole.add_child(mi)
@@ -5425,12 +5438,14 @@ func _process(delta: float) -> void:
 			continue
 		var hx: float = hole.get_meta("x_half", 1.2)
 		var hz: float = hole.get_meta("z_half", 1.6)
+		var hfill: String = hole.get_meta("pit_fill", "fudge")
 		for f in _followers.duplicate():
 			if is_instance_valid(f) and not f.get_meta("falling", false) \
 			and _in_box(f.position.x, f.position.z, hole.position.x, hole.position.z, hx, hz):
 				_followers.erase(f)
 				_posse_count_3d = maxi(0, _posse_count_3d - 1)
 				_fall_entity(f)
+				_spawn_pit_splash(f.position, hfill)
 				_refresh_hud()
 				if _posse_count_3d <= 0:
 					_show_fail()
@@ -5439,6 +5454,7 @@ func _process(delta: float) -> void:
 			and not o.get_meta("dying", false) and _in_box(o.position.x, o.position.z, hole.position.x, hole.position.z, hx, hz):
 				_outlaw_left_field(o)
 				_fall_entity(o)
+				_spawn_pit_splash(o.position, hfill)
 	# Iter 75: gates scroll like obstacles + check trigger when crossing z plane
 	_gate_spawn_timer -= delta
 	if _gate_spawn_timer <= 0.0 and _level_state == LevelState.PLAYING:
@@ -6027,12 +6043,13 @@ func _build_world_terrain() -> void:
 	# seemed to float over nothing. Render each authored hole as a world-anchored
 	# dark decal that scrolls + rides the hills exactly like the puddles, so it
 	# lines up with the _check_authored_holes trigger.
-	for hh in _HOLES:
+	for hi in range(_HOLES.size()):
+		var hh: Dictionary = _HOLES[hi]
 		var hd: float = (float(hh["d0"]) + float(hh["d1"])) * 0.5
 		var hgx: float = (float(hh["x0"]) + float(hh["x1"])) * 0.5
 		var hxh: float = (float(hh["x1"]) - float(hh["x0"])) * 0.5
 		var hzh: float = (float(hh["d1"]) - float(hh["d0"])) * 0.5
-		_world_root.add_child(_make_pit(hd, hgx, hxh, hzh))
+		_world_root.add_child(_make_pit(hd, hgx, hxh, hzh, _pit_fill_for(hi)))
 	# Retire the UV-scroll "treadmill": hide the flat ground + stop its auto-scroll.
 	var flat := get_node_or_null("Terrain3D/SubViewport/Ground")
 	if flat != null and flat is Node3D:
@@ -6053,7 +6070,28 @@ func _grab_ground_texture() -> Texture2D:
 # iter418: a visible pit decal — dark rectangle on the terrain at an authored
 # hole. World-anchored (placed via _terr_vertex) so it scrolls + follows hills
 # like the puddles and stays aligned with the gameplay kill-zone.
-func _make_pit(d: float, gx: float, x_half: float, z_half: float) -> MeshInstance3D:
+# winflow: deterministic fill assignment per authored hole. Cycles
+# fudge / honey / soda across the _HOLES entries (index-based), offset by the
+# current level so different levels lead with a different candy.
+const _PIT_FILLS: Array = ["fudge", "honey", "soda"]
+# Splash tint per fill — drives both the splash particles and a faint pit accent.
+const _PIT_TINTS: Dictionary = {
+	"fudge": Color(0.42, 0.24, 0.12),   # brown gloop
+	"honey": Color(0.95, 0.66, 0.10),   # golden
+	"soda":  Color(0.95, 0.95, 0.98),   # white foam
+}
+
+func _pit_fill_for(hole_index: int) -> String:
+	var lvl: int = 1
+	if get_node_or_null("/root/GameState") != null:
+		lvl = int(GameState.current_level)
+	return _PIT_FILLS[(hole_index + lvl) % _PIT_FILLS.size()]
+
+# winflow: a visible DEEP candy pit decal at an authored hole. World-anchored
+# (placed via _terr_vertex) so it scrolls + follows hills like the puddles and
+# stays aligned with the gameplay kill-zone. `fill` ∈ {fudge,honey,soda} picks
+# the deep-pit art res://assets/sprites/ui/winflow/pit_<fill>.png.
+func _make_pit(d: float, gx: float, x_half: float, z_half: float, fill: String = "fudge") -> MeshInstance3D:
 	var mi := MeshInstance3D.new()
 	var qm := QuadMesh.new()
 	qm.size = Vector2(x_half * 2.0, z_half * 2.0)
@@ -6061,10 +6099,14 @@ func _make_pit(d: float, gx: float, x_half: float, z_half: float) -> MeshInstanc
 	mi.mesh = qm
 	var pos: Vector3 = _terr_vertex(gx, -d)
 	mi.position = Vector3(pos.x, pos.y + 0.05, pos.z)
+	mi.set_meta("pit_fill", fill)
 	var mat := StandardMaterial3D.new()
-	if ResourceLoader.exists("res://assets/sprites/props/pit_hole.png"):
+	var tex_path: String = "res://assets/sprites/ui/winflow/pit_%s.png" % fill
+	if ResourceLoader.exists(tex_path):
+		mat.albedo_texture = load(tex_path)
+	elif ResourceLoader.exists("res://assets/sprites/props/pit_hole.png"):
 		mat.albedo_texture = load("res://assets/sprites/props/pit_hole.png")
-	mat.albedo_color = Color(0.04, 0.03, 0.05, 1.0)   # near-black pit floor
+	mat.albedo_color = Color(1.0, 1.0, 1.0, 1.0)
 	mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
 	mat.cull_mode = BaseMaterial3D.CULL_DISABLED
 	mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
@@ -6121,31 +6163,66 @@ func _check_authored_holes(delta: float) -> void:
 	var over: bool = false
 	var hx0: float = 0.0
 	var hx1: float = 0.0
-	for h in _HOLES:
+	var hfill: String = "fudge"
+	for hi in range(_HOLES.size()):
+		var h: Dictionary = _HOLES[hi]
+		# A pit "covers" the crowd when the crowd's x-span (leader ± COWBOY_X_BOUND)
+		# overlaps the pit's x-range while the pit is at the posse's distance.
+		var crowd_l: float = cowboy_3d.position.x - COWBOY_X_BOUND
+		var crowd_r: float = cowboy_3d.position.x + COWBOY_X_BOUND
 		if dd >= h["d0"] and dd <= h["d1"] \
-		and cowboy_3d.position.x >= h["x0"] and cowboy_3d.position.x <= h["x1"]:
+		and crowd_r >= float(h["x0"]) and crowd_l <= float(h["x1"]):
 			over = true
 			hx0 = float(h["x0"]); hx1 = float(h["x1"])
+			hfill = _pit_fill_for(hi)
 			break
 	if not over:
 		_hole_lose_accum = 0.0
 		_over_hole = false
+		_hole_dropped_this_visit = 0
 		return
-	# iter414b: entering a pit — whistle once + show the posse actually tumbling in
-	# (was a silent, invisible count drop, so you heard a fall with nothing visible).
+	# winflow: IMMEDIATE fall-on-contact. The posse is a COUNT spread evenly across
+	# the crowd x-span (leader ± COWBOY_X_BOUND, so span = 2*COWBOY_X_BOUND). The
+	# fraction of that span overlapping the pit = the fraction of members standing
+	# over the hole RIGHT NOW. We drop floor(frac * count) members the instant they
+	# overlap — so walking the whole crowd into a pit dumps nearly the whole crowd
+	# within a frame or two, not a slow 2/sec drip. _hole_dropped_this_visit tracks
+	# the cumulative drop for this visit so each frame only sheds the *new* increment
+	# as the crowd shifts deeper in.
 	if not _over_hole:
 		_over_hole = true
+		_hole_dropped_this_visit = 0
 		if get_node_or_null("/root/AudioBus") and AudioBus.has_method("play_sfx"):
 			AudioBus.play_sfx("hole_fall")
-	_hole_lose_accum += delta * 2.0
-	while _hole_lose_accum >= 1.0 and _posse_count_3d > 1:
-		_hole_lose_accum -= 1.0
-		_posse_count_3d = maxi(0, _posse_count_3d - 1)
-		var fx: float = _rng.randf_range(hx0, hx1)
-		_spawn_falling_cowboy(Vector3(fx, cowboy_3d.position.y, cowboy_3d.position.z + _rng.randf_range(-0.6, 0.6)))
-		_refresh_hud()
-		if _posse_count_3d <= 0:
-			_show_fail()
+	var span: float = 2.0 * COWBOY_X_BOUND
+	var crowd_l2: float = cowboy_3d.position.x - COWBOY_X_BOUND
+	var crowd_r2: float = cowboy_3d.position.x + COWBOY_X_BOUND
+	var overlap: float = minf(crowd_r2, hx1) - maxf(crowd_l2, hx0)
+	var frac: float = clampf(overlap / span, 0.0, 1.0)
+	# Total members the pit should have swallowed by now (cap to leave the leader).
+	var present: int = _posse_count_3d + _hole_dropped_this_visit
+	var target_dropped: int = mini(present - 1, int(floor(frac * float(present))))
+	var drop_now: int = maxi(0, target_dropped - _hole_dropped_this_visit)
+	if drop_now <= 0:
+		return
+	drop_now = mini(drop_now, _posse_count_3d - 1)   # never drop the leader
+	if drop_now <= 0:
+		return
+	_posse_count_3d = maxi(0, _posse_count_3d - drop_now)
+	_hole_dropped_this_visit += drop_now
+	_sync_followers_to_count(_posse_count_3d)
+	DebugLog.add("pit[%s]: dropped %d members (frac=%.2f, posse→%d)" % [hfill, drop_now, frac, _posse_count_3d])
+	# Cap the number of spawned falling sprites + splashes per frame (perf): show a
+	# representative sample, not one node per dropped member.
+	var visible: int = mini(drop_now, 12)
+	for i in range(visible):
+		var fx: float = _rng.randf_range(maxf(crowd_l2, hx0), minf(crowd_r2, hx1))
+		var fz: float = cowboy_3d.position.z + _rng.randf_range(-0.6, 0.6)
+		_spawn_falling_cowboy(Vector3(fx, cowboy_3d.position.y, fz))
+		_spawn_pit_splash(Vector3(fx, cowboy_3d.position.y, fz), hfill)
+	_refresh_hud()
+	if _posse_count_3d <= 0:
+		_show_fail()
 
 # A posse member tumbling into a pit (visual; the whistle plays once on pit entry).
 func _spawn_falling_cowboy(pos: Vector3) -> void:
@@ -6165,6 +6242,59 @@ func _spawn_falling_cowboy(pos: Vector3) -> void:
 	# Hold opacity, then fade only in the final stretch (was fading immediately).
 	t.tween_property(c, "modulate:a", 0.0, 0.3).set_delay(0.5)
 	t.chain().tween_callback(c.queue_free)
+
+# winflow: a quick fall-in SPLASH at the pit entry, tinted to the candy fill.
+#   fudge = brown gloopy blobs (slow, heavy, little spread)
+#   honey = golden droplets/strings (taller, slower fall, stringy)
+#   soda  = white foam + fizz (fast, wide, light)
+# Cheap CPUParticles3D one-shot, capped low; auto-frees after its lifetime.
+const _PIT_SPLASH_LIFETIME: float = 0.7
+func _spawn_pit_splash(pos: Vector3, fill: String) -> void:
+	var tint: Color = _PIT_TINTS.get(fill, Color(0.5, 0.4, 0.3))
+	var p := CPUParticles3D.new()
+	p.position = Vector3(pos.x, pos.y + 0.1, pos.z)
+	p.emitting = true
+	p.one_shot = true
+	p.explosiveness = 1.0
+	p.lifetime = _PIT_SPLASH_LIFETIME
+	p.local_coords = false
+	p.direction = Vector3(0, 1, 0)
+	p.gravity = Vector3(0, -9.0, 0)
+	p.mesh = SphereMesh.new()
+	p.color = tint
+	# Per-fill flavour.
+	match fill:
+		"honey":
+			p.amount = 10
+			p.initial_velocity_min = 1.6
+			p.initial_velocity_max = 3.0
+			p.spread = 18.0
+			p.scale_amount_min = 0.12
+			p.scale_amount_max = 0.22
+			p.gravity = Vector3(0, -6.0, 0)   # honey falls slow / stringy
+		"soda":
+			p.amount = 16
+			p.initial_velocity_min = 2.6
+			p.initial_velocity_max = 4.8
+			p.spread = 42.0                    # wide foamy fizz
+			p.scale_amount_min = 0.06
+			p.scale_amount_max = 0.14
+		_:  # fudge (default)
+			p.amount = 12
+			p.initial_velocity_min = 1.2
+			p.initial_velocity_max = 2.6
+			p.spread = 24.0
+			p.scale_amount_min = 0.14
+			p.scale_amount_max = 0.26
+			p.gravity = Vector3(0, -11.0, 0)   # heavy gloop drops fast
+	var mat := StandardMaterial3D.new()
+	mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	mat.albedo_color = tint
+	(p.mesh as SphereMesh).material = mat
+	popups_root.add_child(p)
+	var ft := p.create_tween()
+	ft.tween_interval(_PIT_SPLASH_LIFETIME + 0.2)
+	ft.tween_callback(p.queue_free)
 
 func _input(event: InputEvent) -> void:
 	# Translate drag x to cowboy world-x via the screen-to-plane mapping.
