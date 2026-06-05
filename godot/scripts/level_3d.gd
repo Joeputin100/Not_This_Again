@@ -54,6 +54,9 @@ const BuildInfo = preload("res://scripts/build_info.gd")
 # only the cowboy uses one — followers fire on the cowboy's fire event).
 const GunScript = preload("res://scripts/gun.gd")
 const GunStateScript = preload("res://scripts/gun_state.gd")
+const WIN_MODAL_SCENE := preload("res://scenes/ui/win_modal.tscn")
+const FAIL_MODAL_SCENE := preload("res://scenes/ui/fail_modal.tscn")
+var _end_modal: Control = null
 # Iter 99: moved up from mid-file (was between _ready and
 # _build_3d_content). The mid-file `const := preload(...)` after func
 # definitions appears to fail at Godot Android runtime — the script
@@ -253,6 +256,7 @@ var _level_state: int = LevelState.COUNTDOWN
 var _level_def: LevelDef = null
 var _level_player: LevelPlayer = null
 var _level_distance: float = 0.0      # world distance scrolled (drives the timeline)
+var _bounty_at_start: int = 0   # GameState.bounty when this level began (for run-bounty)
 var _boss_from_data: bool = false     # true when the LevelDef has a BOSS event (legacy timer yields)
 var _director: LevelDirector = null   # SP2 slice2: pacing (variable scroll speed + approach-zone halts)
 # iter417: per-level weather, driven by LevelDef.weather_type. The visual layer is
@@ -551,6 +555,8 @@ func _ready() -> void:
 	var _def_path := "res://resources/levels/level_%d.tres" % _lvl
 	if ResourceLoader.exists(_def_path):
 		_level_def = load(_def_path)
+	if get_node_or_null("/root/GameState"):
+		_bounty_at_start = GameState.bounty
 	# SP2: starting posse size from the level definition (default 5).
 	if _level_def != null and _level_def.start_posse > 0 and _level_def.start_posse != _posse_count_3d:
 		_posse_count_3d = _level_def.start_posse
@@ -1516,6 +1522,11 @@ func _drop_bonus_at(landing: Vector3, value: int, color: Color, label: String = 
 	tw.tween_callback(_spawn_popup_3d.bind(landing + Vector3(0, 1.5, 0), popup_label, color, 64))
 	tw.tween_callback(c.queue_free)
 	tw.tween_callback(_add_bounty.bind(value))
+
+func _run_bounty() -> int:
+	if get_node_or_null("/root/GameState") == null:
+		return 0
+	return maxi(0, GameState.bounty - _bounty_at_start)
 
 func _add_bounty(amount: int) -> void:
 	if get_node_or_null("/root/GameState") != null:
@@ -3995,15 +4006,8 @@ func _show_fail() -> void:
 	# doesn't keep playing after the firefight ends.
 	if get_node_or_null("/root/AudioBus") and AudioBus.has_method("stop_gunfire"):
 		AudioBus.stop_gunfire()
-	# Deduct one heart from the autoloaded GameState (Murderbot voice
-	# context: 'one less posse for next time').
-	if get_node_or_null("/root/GameState"):
-		GameState.spend_heart()
 	info_label.text = "DEAD  ·  posse 0  ·  hits %d" % _hits
-	if fail_label:
-		fail_label.text = "DEAD\n%d hits" % _hits
-	if fail_overlay:
-		fail_overlay.visible = true
+	_present_fail_modal()
 
 # Iter 77/81: trigger the win flow. Pop the WIN overlay AFTER playing
 # the iter 81 Gold Rush salute ceremony — each remaining posse member
@@ -4026,11 +4030,8 @@ func _show_win(boss_label: String = "Pete", cleanup_node: Node = null, cleanup_v
 	if ui_canvas != null:
 		FlourishBanner.spawn(ui_canvas, "PERFECT_VOLLEY")
 	await _gold_rush_salute_3d()
-	if win_label:
-		win_label.text = "BOUNTY!\nposse %d · hits %d" % [_posse_count_3d, _hits]
-	if win_overlay:
-		win_overlay.visible = true
 	AudioBus.play_gate_pass()
+	_present_win_modal()
 	# Iter 157: free the boss node + its SubViewport when passed in. Pete
 	# frees himself before calling _show_win; the Rustler is kept alive
 	# through the salute so his death scatter plays, then cleaned up here.
@@ -4038,6 +4039,57 @@ func _show_win(boss_label: String = "Pete", cleanup_node: Node = null, cleanup_v
 		cleanup_node.queue_free()
 	if cleanup_viewport != null and is_instance_valid(cleanup_viewport):
 		cleanup_viewport.queue_free()
+
+func _present_win_modal() -> void:
+	var diff: int = _level_def.difficulty if _level_def != null else 1
+	var thr: Array = _level_def.star_thresholds if _level_def != null else [0, 1500, 3500]
+	var rb: int = _run_bounty()
+	var stars: int = GameState.stars_for(rb, thr)
+	var next_needed: int = 0
+	for t in thr:
+		if rb < int(t):
+			next_needed = int(t) - rb
+			break
+	var lvl: int = GameState.current_level if get_node_or_null("/root/GameState") else 1
+	if get_node_or_null("/root/GameState"):
+		GameState.record_level_result(lvl, stars, rb)
+		GameState.current_level = lvl + 1
+		GameState.just_won_level = lvl
+	var hearts: int = GameState.hearts if get_node_or_null("/root/GameState") else 5
+	var hmax: int = GameState.MAX_HEARTS if get_node_or_null("/root/GameState") else 5
+	_end_modal = WIN_MODAL_SCENE.instantiate()
+	get_node("UI").add_child(_end_modal)
+	_end_modal.show_win(diff, rb, stars, next_needed, hearts, hmax)
+	_end_modal.continue_pressed.connect(_goto_map.bind(true))
+	_end_modal.replay_pressed.connect(_retry_level)
+	_end_modal.map_pressed.connect(_goto_map.bind(false))
+
+func _present_fail_modal() -> void:
+	var hearts: int = GameState.hearts if get_node_or_null("/root/GameState") else 5
+	var hmax: int = GameState.MAX_HEARTS if get_node_or_null("/root/GameState") else 5
+	var regen_text: String = ""
+	if get_node_or_null("/root/GameState") and GameState.has_method("regen_text"):
+		regen_text = GameState.regen_text()
+	_end_modal = FAIL_MODAL_SCENE.instantiate()
+	get_node("UI").add_child(_end_modal)
+	_end_modal.show_fail(_run_bounty(), hearts, hmax, regen_text)
+	_end_modal.retry_pressed.connect(_retry_level)
+	_end_modal.map_pressed.connect(_goto_map.bind(false))
+
+func _goto_map(_celebrate: bool) -> void:
+	# just_won_level was set on win; level_select reads it to celebrate.
+	get_tree().change_scene_to_file("res://scenes/level_select.tscn")
+
+func _retry_level() -> void:
+	# Retry costs a heart, charged HERE (not on death). If broke, do nothing
+	# (the FailModal disables the button at 0 hearts).
+	if get_node_or_null("/root/GameState"):
+		if GameState.hearts <= 0:
+			return
+		GameState.spend_heart()
+	if get_node_or_null("/root/DebugPreview") and DebugPreview.has_method("clear"):
+		DebugPreview.clear()
+	get_tree().reload_current_scene()
 
 # Iter 81: Gold Rush A — Six-Shooter Salute, ported to 3D.
 # Each remaining posse member (leader + active followers) fires a

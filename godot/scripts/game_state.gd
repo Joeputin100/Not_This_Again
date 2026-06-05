@@ -111,6 +111,14 @@ func seconds_until_next_heart() -> int:
 	var elapsed: int = now - _last_spend_unix
 	return maxi(int(REGEN_INTERVAL_S) - (elapsed % int(REGEN_INTERVAL_S)), 0)
 
+# Human-readable time until the next heart regenerates ("full in 24:31").
+func regen_text() -> String:
+	if hearts >= MAX_HEARTS or _last_spend_unix == 0:
+		return "full"
+	var elapsed: int = int(Time.get_unix_time_from_system()) - _last_spend_unix
+	var remain: int = int(REGEN_INTERVAL_S) - (elapsed % int(REGEN_INTERVAL_S))
+	return "full in %d:%02d" % [remain / 60, remain % 60]
+
 # Reset to a fresh-account state. Useful for tests + a future
 # "wipe progress" debug menu.
 func reset() -> void:
@@ -129,9 +137,9 @@ func record_level_result(level: int, stars: int, run_bounty: int) -> void:
 	_save_to_disk()
 
 # Iter 82: persistence to user://gamestate.cfg. ConfigFile (INI-style)
-# is the simplest portable Godot save format. Only ITER 82 persisted
-# fields are hearts + _last_spend_unix; bounty + current_level will
-# join when their run-persistent semantics are decided.
+# is the simplest portable Godot save format. Persisted fields are
+# hearts + _last_spend_unix plus current_level + level_best (the
+# win/retry progress). bounty stays run-local and is not persisted.
 func _ready() -> void:
 	_load_from_disk()
 
