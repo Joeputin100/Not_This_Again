@@ -1,0 +1,81 @@
+# tools/winflow_assets.py — one-shot. Green-keys + autocrops the staged
+# NB-Pro winflow renders into clean transparent game sprites.
+#   python3 tools/winflow_assets.py
+import numpy as np
+from PIL import Image, ImageFilter
+from pathlib import Path
+
+SRC = Path("docs/superpowers/assets/winflow_2026-06-04")
+DST = Path("godot/assets/sprites/ui/winflow"); DST.mkdir(parents=True, exist_ok=True)
+# staged filename -> output sprite name
+MAP = {
+    "g_pepper": "star_pepper", "g_hard": "star_gold", "g_gummy": "star_gummy",
+    "g_sugar": "star_sugar", "td_oval": "dish_oval",
+    "heart_full": "heart_full", "heart_empty": "heart_empty",
+    "cutout_taffy": "cutout_taffy",
+}
+
+def greenkey(src, low=12, high=46):
+    a = np.array(Image.open(src).convert("RGBA")).astype(np.float32)
+    R, G, B = a[:, :, 0], a[:, :, 1], a[:, :, 2]
+    g = G - np.maximum(R, B)
+    alpha = np.clip((high - g) / (high - low), 0, 1) * 255.0
+    G2 = G - np.maximum(0, G - np.maximum(R, B)) * 0.9   # despill
+    out = a.copy(); out[:, :, 1] = G2; out[:, :, 3] = alpha
+    out = np.clip(out, 0, 255).astype(np.uint8)
+    al = Image.fromarray(out[:, :, 3]).filter(ImageFilter.GaussianBlur(0.6))
+    out[:, :, 3] = np.array(al)
+    im = Image.fromarray(out); bb = im.getbbox()
+    return im.crop(bb) if bb else im
+
+for stem, name in MAP.items():
+    src = SRC / f"{stem}.png"
+    if not src.exists():
+        raise SystemExit(f"missing staged asset: {src}")
+    greenkey(src).save(DST / f"{name}.png")
+    print("wrote", DST / f"{name}.png")
+
+# winflow R3: the modal cowboys (overjoyed = WIN, dejected = FAIL). Same green
+# key as the candy props; despill keeps the red/blue/orange character clean.
+COWBOYS = {"cowboy_happy": "cowboy_happy", "cowboy_sad": "cowboy_sad"}
+for stem, name in COWBOYS.items():
+    src = SRC / f"{stem}.png"
+    if not src.exists():
+        raise SystemExit(f"missing staged cowboy asset: {src}")
+    greenkey(src).save(DST / f"{name}.png")
+    print("wrote", DST / f"{name}.png")
+
+
+# winflow 2026-06-04: deep candy pits (fudge / honey / soda). Same green-key as
+# the rest, but the pit fill is warm/saturated so the despill is skipped (it
+# would dull the candy). The soda render has a baked "FIZZY SODA" badge in the
+# bottom-right corner; we zero its alpha BEFORE autocrop so it's gone for good.
+def greenkey_pit(src, watermark=None, low=14, high=52):
+    a = np.array(Image.open(src).convert("RGBA")).astype(np.float32)
+    R, G, B = a[:, :, 0], a[:, :, 1], a[:, :, 2]
+    g = G - np.maximum(R, B)
+    alpha = np.clip((high - g) / (high - low), 0, 1) * 255.0
+    out = a.copy(); out[:, :, 3] = alpha
+    out = np.clip(out, 0, 255).astype(np.uint8)
+    # Mask out the watermark badge region (fractional x0,y0,x1,y1 of the canvas).
+    if watermark is not None:
+        h, w = out.shape[0], out.shape[1]
+        fx0, fy0, fx1, fy1 = watermark
+        out[int(fy0 * h):int(fy1 * h), int(fx0 * w):int(fx1 * w), 3] = 0
+    al = Image.fromarray(out[:, :, 3]).filter(ImageFilter.GaussianBlur(0.6))
+    out[:, :, 3] = np.array(al)
+    im = Image.fromarray(out); bb = im.getbbox()
+    return im.crop(bb) if bb else im
+
+PITS = {
+    "pit_fudge": None,
+    "pit_honey": None,
+    # bottom-right "FIZZY SODA" badge — zero its alpha before crop.
+    "pit_soda": (0.68, 0.78, 1.0, 1.0),
+}
+for stem, wm in PITS.items():
+    src = SRC / f"{stem}.png"
+    if not src.exists():
+        raise SystemExit(f"missing staged pit asset: {src}")
+    greenkey_pit(src, watermark=wm).save(DST / f"{stem}.png")
+    print("wrote", DST / f"{stem}.png")

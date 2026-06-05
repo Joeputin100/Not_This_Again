@@ -87,6 +87,9 @@ const PATH_SWITCHBACKS: float = 5.0
 const VIEW_FOCUS_Z: float = -2.0 # world z where the focused (cowboy's) level sits — near the bottom
 var _orb_anchors: Array[Vector2] = []   # plane-local (x, z) per orb
 var _orb_local_centers: Array[Vector3] = []  # 3D centre of each orb billboard (for aligned tap targets)
+var _orb_nodes: Array = []               # the orb billboard MeshInstance3Ds (for the unlock flourish pop)
+var _orb_stars: Array = []              # StarRating per orb (or null); built once, repositioned each frame
+var _orb_stars_built: bool = false
 var _trail_anchors: Array[Vector2] = [] # plane-local (x, z) densely along the path
 var _path_pts: Array[Vector2] = []      # dense path samples for arc-length lookup
 var _path_cum: PackedFloat32Array = PackedFloat32Array()
@@ -114,7 +117,18 @@ var _cowboy_sprite: VideoStreamPlayer   # idle-looping marker on the cowboy's le
 var _cowboy_s: float = 0.0              # the cowboy's arc-length position along the path
 var _walking: bool = false              # true while the cowboy strides to a selected orb
 var _cowboy_half_h: float = 128.0       # half the idle texture height (for grounding his feet)
-const COWBOY_SIDE: float = -1.9         # he stands this far to the side of the path/orb
+const COWBOY_SIDE: float = -0.9         # he stands just beside the path/orb (small so switchbacks don't fling him off-screen)
+# Walk-bob: while striding, overlay a periodic up/down step + slight side waddle
+# on the projected marker so he reads as WALKING, not gliding. Time-based so the
+# cadence is independent of frame rate / tween pacing.
+const COWBOY_BOB_HZ: float = 2.2        # steps per second (a couple of paces/sec)
+const COWBOY_BOB_PX: float = 9.0        # vertical bob amplitude (px at sc==1)
+const COWBOY_WADDLE_PX: float = 5.0     # side-to-side waddle amplitude (px at sc==1)
+# The perspective scale at the focus orb is roughly constant (the view always
+# pans the focus path point to the same screen depth), so clamp the cowboy's
+# scale to a tight band: he should NOT shrink to half as he walks up the path.
+const COWBOY_SC_MIN: float = 0.78
+const COWBOY_SC_MAX: float = 1.05
 # Iter 344: tap the cowboy → a random one of 6 warm Murderbot reactions; after
 # COWBOY_QUICK_TAPS taps inside COWBOY_QUICK_WINDOW he gets abrasively annoyed.
 var _cowboy_vo_player: AudioStreamPlayer
@@ -128,6 +142,12 @@ const ORB_NODE_NAMES: Array[String] = [
 	"LevelNode5Locked", "LevelNode6Locked", "LevelNode7Locked", "LevelNode8Locked",
 ]
 const ORB_NEAR_DIST: float = 4.0  # camera distance at which a tile is full-size
+# Level-select map stars: base dish size (px at sc==1) and an extra multiplier
+# so the stars sit large and readable ON the orb. The golden glow behind them is
+# sized as a multiple of the dish.
+const STAR_BASE_SIZE: Vector2 = Vector2(150, 100)
+const STAR_SCALE_MULT: float = 1.35
+const STAR_GLOW_MULT: float = 1.35   # softened: the resting per-orb star glow is a subtle halo, not a big persistent golden bloom
 const ORB_SIZE_MULT: float = 2.0  # iter339: orbs much bigger (×3 overlapped)
 # Iter 339: rendered (Imagen) orb art per level. L1-4 are dual-themed
 # (difficulty × terrain); L5-8 share the locked orb.
@@ -215,9 +235,11 @@ func _ready() -> void:
 		terr.call("build_grass", PackedVector2Array(_trail_anchors), 0.95, prop_av, 2.8)
 	_build_trail_mesh()
 	_build_orb_visuals()
+	_build_orb_stars()
 	_place_props()
 	_place_cowboy()
 	_focus_on(_focus_level)  # default view = the cowboy's (highest completed) level
+	_maybe_celebrate_win()
 	_prop_player = AudioStreamPlayer.new()
 	_prop_player.bus = "Master"
 	add_child(_prop_player)
@@ -533,6 +555,95 @@ func _path_world(p: float) -> Vector2:
 # Iter 339: project each level tile's terrain anchor to the screen so the orbs
 # sit ON the hilly map. Tiles behind the camera are hidden; the rest are scaled
 # by camera distance for perspective and centred on their projected point.
+# Build the per-orb best-star widgets ONCE. Each completed level (one with a
+# GameState.level_best entry) gets a small static StarRating; _place_orbs_on_terrain
+# repositions them every frame to follow the orb through pans. Orbs without a
+# level_best entry get a null slot (no widget).
+func _build_orb_stars() -> void:
+	if _orb_stars_built:
+		return
+	_orb_stars_built = true
+	var has_gs: bool = get_node_or_null("/root/GameState") != null
+	for i in ORB_COUNT:
+		var lvl: int = i + 1
+		if not has_gs or not GameState.level_best.has(lvl):
+			_orb_stars.append(null)
+			continue
+		var sr := preload("res://scenes/ui/star_rating.tscn").instantiate()
+		# A soft golden radial glow sits BEHIND the stars so they read as lit
+		# candies on the orb. Built procedurally (no custom shader — the mobile
+		# renderer white-rects those) from a radial GradientTexture2D, drawn with
+		# additive blend for a warm bloom. It is a sibling added just before the
+		# StarRating so the stars paint on top of it.
+		var glow := _make_star_glow()
+		add_child(glow)
+		add_child(sr)
+		# Bigger, centred dish; pivot at centre so the orb-synced scale grows
+		# from the middle and stays seated on the orb.
+		sr.custom_minimum_size = STAR_BASE_SIZE
+		sr.size = STAR_BASE_SIZE
+		sr.pivot_offset = STAR_BASE_SIZE * 0.5
+		# Map orbs drive their pulse from the orb's breathe, so kill the widget's
+		# own per-candy breathe to avoid a competing double-pulse.
+		sr.breathe_enabled = false
+		# On the MAP the candies sit directly on the orb — hide the oval boat dish
+		# (the win/fail modals keep theirs, default show_dish=true).
+		sr.set_dish_visible(false)
+		# Draw the glow + stars ON TOP of the orb billboard (the Terrain3D Sprite2D)
+		# and the invisible tap buttons.
+		glow.z_index = 50
+		sr.z_index = 51
+		sr.set_rating(_orb_difficulty(lvl), int(GameState.level_best[lvl].get("stars", 0)), false)
+		sr.set_meta("glow", glow)
+		# The stars + glow sit ON TOP of the orb tap areas (z 50/51). They must NOT
+		# eat the touch — make the StarRating root, every child, and the glow all
+		# pass taps through to the invisible orb buttons beneath.
+		_ignore_mouse_recursive(sr)
+		_ignore_mouse_recursive(glow)
+		_orb_stars.append(sr)
+
+# A soft, warm-gold radial bloom that sits behind the on-orb stars. Built from a
+# radial GradientTexture2D (gold core fading to transparent) on a TextureRect set
+# to additive blend — no custom shader (the mobile renderer white-rects those).
+func _make_star_glow() -> TextureRect:
+	var grad := Gradient.new()
+	# Softened resting glow: low alpha so the on-orb stars read as gently lit
+	# rather than wrapped in a glaring persistent golden halo.
+	grad.colors = PackedColorArray([
+		Color(1.0, 0.86, 0.45, 0.32),
+		Color(1.0, 0.78, 0.30, 0.16),
+		Color(1.0, 0.70, 0.25, 0.0),
+	])
+	grad.offsets = PackedFloat32Array([0.0, 0.45, 1.0])
+	var gt := GradientTexture2D.new()
+	gt.gradient = grad
+	gt.width = 128
+	gt.height = 128
+	gt.fill = GradientTexture2D.FILL_RADIAL
+	gt.fill_from = Vector2(0.5, 0.5)
+	gt.fill_to = Vector2(1.0, 0.5)
+	var tr := TextureRect.new()
+	tr.texture = gt
+	tr.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	tr.stretch_mode = TextureRect.STRETCH_SCALE
+	tr.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	var cm := CanvasItemMaterial.new()
+	cm.blend_mode = CanvasItemMaterial.BLEND_MODE_ADD
+	tr.material = cm
+	return tr
+
+# Make a Control (and every Control descendant) ignore mouse/touch so it never
+# intercepts taps meant for the orb tap-areas sitting beneath the stars/glow.
+func _ignore_mouse_recursive(n: Node) -> void:
+	if n is Control:
+		(n as Control).mouse_filter = Control.MOUSE_FILTER_IGNORE
+	for c in n.get_children():
+		_ignore_mouse_recursive(c)
+
+func _orb_difficulty(lvl: int) -> int:
+	# Levels 1..4 map difficulty 1..4; beyond that, cycle.
+	return ((lvl - 1) % 4) + 1
+
 func _place_orbs_on_terrain() -> void:
 	var cam: Camera3D = get_node_or_null("Terrain3D/SubViewport/Camera3D")
 	var terrain = get_node_or_null("Terrain3D")
@@ -548,8 +659,16 @@ func _place_orbs_on_terrain() -> void:
 		# Project to the orb's true 3D CENTRE (not the ground point) so the tap
 		# target sits ON the floating orb, and give it a generous diameter.
 		var world: Vector3 = gnd.global_transform * _orb_local_centers[i]
+		var star: StarRating = null
+		if i < _orb_stars.size():
+			star = _orb_stars[i] as StarRating
 		if cam.is_position_behind(world):
 			btn.visible = false
+			if star != null:
+				star.visible = false
+				var gl = star.get_meta("glow", null)
+				if gl != null and is_instance_valid(gl):
+					(gl as Control).visible = false
 			continue
 		btn.visible = true
 		var center: Vector2 = cam.unproject_position(world)
@@ -560,6 +679,31 @@ func _place_orbs_on_terrain() -> void:
 		btn.custom_minimum_size = Vector2.ZERO
 		btn.size = Vector2(d, d)
 		btn.position = center - Vector2(d, d) * 0.5
+		if star != null:
+			# Sit the stars ON the orb, centred over its screen centre. The pulse
+			# is taken straight from the orb mesh's CURRENT breathe scale (the
+			# focus orb's _add_orb_breathe tween drives orb.scale; other orbs sit
+			# at 1.0), so the stars breathe in exact lockstep with the orb rather
+			# than on their own competing tween.
+			star.visible = true
+			var breathe: float = 1.0
+			if i < _orb_nodes.size() and is_instance_valid(_orb_nodes[i]):
+				breathe = (_orb_nodes[i] as Node3D).scale.x
+			var ssc: float = sc * STAR_SCALE_MULT * breathe
+			# A celebration pop multiplies the orb-synced scale by a 0->1.2->1 curve
+			# so the stars "land" while staying seated on the orb (position below
+			# still tracks every frame).
+			if star.get_meta("popping", false):
+				ssc *= float(star.get_meta("pop_mult", 1.0))
+			star.scale = Vector2(ssc, ssc)
+			# Centre the (pivot-centred) dish on the orb's screen centre.
+			star.position = center - STAR_BASE_SIZE * 0.5
+			var glow = star.get_meta("glow", null)
+			if glow != null and is_instance_valid(glow):
+				glow.visible = true
+				var gsz: float = STAR_BASE_SIZE.x * STAR_GLOW_MULT * ssc
+				(glow as Control).size = Vector2(gsz, gsz)
+				(glow as Control).position = center - Vector2(gsz, gsz) * 0.5
 	_place_cowboy_marker(cam, terrain, gnd)
 	_place_humbug_marker(cam, terrain, gnd)
 
@@ -649,14 +793,44 @@ func _place_cowboy_marker(cam: Camera3D, terrain, gnd: Node3D) -> void:
 		return
 	_cowboy_sprite.visible = true
 	var c: Vector2 = cam.unproject_position(world)
-	var sc: float = clampf(ORB_NEAR_DIST / cam.global_position.distance_to(world), 0.08, 1.6) * ORB_SIZE_MULT * 0.62 * _fov_mag()
+	# Fix 4 (shrink): the raw perspective factor (ORB_NEAR_DIST/dist) drops as the
+	# focus orb recedes up the path, halving his size L2->L3. The view always pans
+	# the focus point to the same screen depth, so his on-screen size SHOULD be
+	# near-constant — clamp the perspective factor to a tight band so he stays a
+	# consistent, readable size across orbs instead of shrinking with depth.
+	var persp: float = ORB_NEAR_DIST / cam.global_position.distance_to(world)
+	var sc: float = clampf(persp, COWBOY_SC_MIN, COWBOY_SC_MAX) * ORB_SIZE_MULT * 0.62 * _fov_mag()
 	# The clip is 720×1280 with the cowboy's feet at ~0.953 down the frame.
 	# Size to match the old sprite's on-screen height (~559·sc), feet at c.
 	var dh: float = 559.0 * sc
 	var dw: float = dh * (720.0 / 1280.0)
+	# Fix 2 (walk bob): while striding, lift his feet in a periodic step + add a
+	# slight side waddle so he reads as walking rather than gliding. Scaled by sc
+	# so the bob stays proportional. Zero while idle so resting is rock-steady.
+	var bob_y: float = 0.0
+	var waddle_x: float = 0.0
+	if _walking:
+		var ph: float = float(Time.get_ticks_msec()) * 0.001 * COWBOY_BOB_HZ * TAU
+		bob_y = -absf(sin(ph)) * COWBOY_BOB_PX * sc   # feet lift (up) on each step
+		waddle_x = sin(ph * 0.5) * COWBOY_WADDLE_PX * sc
+	# R4b (pan-drift fix): the cowboy is anchored to his arc-length _cowboy_s and must
+	# project EXACTLY with the path every frame — identical to the level orbs, which use
+	# the raw unproject_position with NO on-screen clamp (so they scroll off naturally as
+	# you pan away). The earlier per-frame feet-x clamp pinned him inside the viewport, so
+	# during a free pan his true projection slid off-screen while the clamp dragged him
+	# back to the edge => the "drift". Use the raw projected x. The reduced COWBOY_SIDE
+	# (-0.9) keeps his rest position at the focus orb on-screen WITHOUT any clamp, so a
+	# switchback orb can no longer fling him off either edge.
+	var vw: float = get_viewport_rect().size.x
+	var foot_x: float = c.x + waddle_x  # raw path projection — no per-frame on-screen clamp
 	_cowboy_sprite.size = Vector2(dw, dh)
 	_cowboy_sprite.pivot_offset = Vector2(dw, dh) * 0.5  # tap-pops scale around his middle
-	_cowboy_sprite.position = Vector2(c.x - dw * 0.5, c.y - 0.953 * dh)  # feet on the ground
+	_cowboy_sprite.position = Vector2(foot_x - dw * 0.5, c.y - 0.953 * dh + bob_y)  # feet on the ground
+	# DebugLog projected vs final feet-x so the device test can confirm no clamp engages
+	# during a pan (projected == final means he tracks the path exactly).
+	if not _walking and absf(_cowboy_s - _path_s) < 0.01 and Engine.get_process_frames() % 120 == 0:
+		DebugLog.add("cowboy@focus L%d proj_x=%.0f foot_x=%.0f y=%.0f sc=%.2f persp=%.2f vw=%.0f" % [
+			_focus_level + 1, c.x + waddle_x, foot_x, c.y - 0.953 * dh, sc, persp, vw])
 
 # Iter 339: rendered orbs as 3D breathing billboards on the terrain (depth-sort
 # with the sign/props — fixes the old 2D-orb-over-3D-sign layering), each with a
@@ -670,6 +844,7 @@ func _build_orb_visuals() -> void:
 	if get_node_or_null("/root/GameState"):  # know the current level before tagging the halo orb
 		_focus_level = clampi(GameState.current_level - 1, 0, ORB_COUNT - 1)
 	_orb_local_centers.clear()
+	_orb_nodes.clear()
 	for i in ORB_COUNT:
 		var level: int = i + 1
 		var tex: Texture2D = load("res://assets/sprites/props/%s.png" % ORB_TEX.get(level, "orb_locked"))
@@ -680,6 +855,7 @@ func _build_orb_visuals() -> void:
 		var orb := _make_prop(tex, w, h, 0.04)  # gentle breathe via breathing_prop
 		orb.position = Vector3(a.x, gy + h * 0.5, a.y)
 		_orb_local_centers.append(orb.position)  # for aligned tap targets
+		_orb_nodes.append(orb)                    # for the unlock flourish pop
 		# Current (last-unlocked) orb: a gentle breathe marks it (no halo).
 		if i == _focus_level:
 			_add_orb_breathe(orb)
@@ -1475,6 +1651,47 @@ func _on_level_2_pressed() -> void:
 # a brief Candy-Crush squish, then enter the 3D level. The squish tweens
 # around the node's CURRENT (perspective-scaled) scale so it doesn't snap
 # back to full size.
+const LEVEL_START_MODAL := preload("res://scenes/ui/level_start_modal.tscn")
+var _level_start_modal: LevelStartModal = null
+
+# Instance the Soda-Crush level-start modal over the map (on its own CanvasLayer
+# so it sits above the 3D viewport + 2D markers), load the level's .tres and
+# fill in title + derived goal, then wire PLAY/X. _walking stays true while it's
+# up so a stray tap can't kick off another walk; X clears it (cancel back to the
+# map), PLAY loads level_3d (GameState.current_level is already this level).
+func _show_level_start_modal(level_num: int) -> void:
+	if _level_start_modal != null and is_instance_valid(_level_start_modal):
+		return
+	if get_node_or_null("/root/GameState"):
+		GameState.current_level = level_num
+	var path := "res://resources/levels/level_%d.tres" % level_num
+	var def: LevelDef = load(path) if ResourceLoader.exists(path) else null
+	var title := def.display_name if def != null else "LEVEL %d" % level_num
+	var goal := LevelDef.goal_text(def, level_num)
+	var layer := CanvasLayer.new()
+	layer.name = "LevelStartLayer"
+	layer.layer = 80
+	add_child(layer)
+	var modal: LevelStartModal = LEVEL_START_MODAL.instantiate()
+	layer.add_child(modal)
+	_level_start_modal = modal
+	modal.play_pressed.connect(_on_level_start_play)
+	modal.close_pressed.connect(_on_level_start_close)
+	modal.show_level(level_num, title, goal)
+
+func _on_level_start_play() -> void:
+	get_tree().change_scene_to_file("res://scenes/level_3d.tscn")
+
+func _on_level_start_close() -> void:
+	if _level_start_modal != null and is_instance_valid(_level_start_modal):
+		var layer: Node = _level_start_modal.get_parent()
+		if layer != null:
+			layer.queue_free()
+		else:
+			_level_start_modal.queue_free()
+	_level_start_modal = null
+	_walking = false  # cancel: stay on the map, allow taps again
+
 func _start_level(btn: Button, level_num: int) -> void:
 	if _drag_dist > 30.0:
 		return  # this press was the tail of a pan-drag, not a tap
@@ -1486,7 +1703,8 @@ func _start_level(btn: Button, level_num: int) -> void:
 	# view following), then the level loads.
 	_walking = true
 	var target_s: float = ORB_START_S + float(level_num - 1) * ORB_GAP_S
-	var dur: float = clampf(absf(target_s - _cowboy_s) / 14.0, 0.25, 1.6)  # ~14 arc units/sec
+	# A clear, watchable stroll: one orb gap (~7 arc units) reads as ~2-4.5s.
+	var dur: float = clampf(absf(target_s - _cowboy_s) / 4.0, 2.0, 4.5)
 	var walk := create_tween().set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN_OUT)
 	walk.tween_method(_set_cowboy_s, _cowboy_s, target_s, dur)
 	await walk.finished
@@ -1498,13 +1716,138 @@ func _start_level(btn: Button, level_num: int) -> void:
 	tween.tween_property(btn, "scale", cur, 0.18) \
 		.set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
 	await tween.finished
-	get_tree().change_scene_to_file("res://scenes/level_3d.tscn")
+	btn.disabled = false
+	# Soda-Crush flow: show the level-start modal (title + goal + PLAY!) instead
+	# of loading the level straight away. PLAY loads level_3d; X cancels back to
+	# the map. GameState.current_level is already set to level_num above.
+	_show_level_start_modal(level_num)
 
 # One step of the cowboy's walk: advance his arc-length and pan the view to
 # follow (which also repositions his marker via _place_cowboy_marker).
 func _set_cowboy_s(s: float) -> void:
 	_cowboy_s = s
 	_set_focus_s(s)
+
+# Win/retry flow (spec §7): if the player just won a level, drop the cowboy on
+# the completed orb, light the newly-unlocked orb with a gold-dust burst, then
+# walk him to it. Reuses the map's existing walk machinery (_set_cowboy_s +
+# _set_focus_s, exactly like _start_level). GameState.just_won_level is the
+# trigger; we clear it so the celebration plays only once.
+func _maybe_celebrate_win() -> void:
+	if get_node_or_null("/root/GameState") == null:
+		return
+	var won: int = GameState.just_won_level
+	GameState.just_won_level = 0
+	if won <= 0:
+		return
+	var from_idx: int = clampi(won - 1, 0, ORB_COUNT - 1)   # completed orb
+	var to_idx: int = clampi(won, 0, ORB_COUNT - 1)         # newly unlocked
+	if to_idx == from_idx:
+		return
+	_walking = true
+	_set_cowboy_s(ORB_START_S + float(from_idx) * ORB_GAP_S)
+	_focus_on(from_idx)
+	# Pop the just-COMPLETED orb's stars in with a flourish so the player sees the
+	# reward land on the orb they finished (rather than the stars just being there).
+	_pop_completed_orb_stars(from_idx)
+	_gold_dust_on_orb(to_idx)
+	var target_s: float = ORB_START_S + float(to_idx) * ORB_GAP_S
+	# Slower, clearly-watchable stride: a single orb gap reads as ~2-4.5s.
+	var dur: float = clampf(absf(target_s - _cowboy_s) / 4.0, 2.0, 4.5)
+	var walk := create_tween().set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN_OUT)
+	walk.tween_method(_set_cowboy_s, _cowboy_s, target_s, dur)
+	await walk.finished
+	# The cowboy now rests ON the newly-unlocked orb: make it the focus so the
+	# drift-back snap keeps the view centred on him (leaving _focus_level at
+	# from_idx made the first tap snap the camera away from the cowboy, which is
+	# why he appeared to vanish off the map on device).
+	_focus_level = to_idx
+	_unlock_orb_flourish(to_idx)
+	_walking = false
+	# Handoff from the win modal: CONTINUE auto-starts the next level after the
+	# celebration; MAP (continue_to_next == false) just leaves the player here.
+	if get_node_or_null("/root/GameState") and GameState.continue_to_next:
+		GameState.continue_to_next = false
+		await get_tree().create_timer(0.4).timeout
+		# Continue also routes through the level-start modal for the now-current
+		# level: PLAY loads it, X stays on the map.
+		_show_level_start_modal(GameState.current_level)
+
+# Scale-pops the just-completed orb's StarRating (0 -> 1.2 -> 1, TRANS_BACK) with
+# a small sparkle, so the earned stars visibly "land" during the celebration.
+func _pop_completed_orb_stars(from_idx: int) -> void:
+	if from_idx < 0 or from_idx >= _orb_stars.size():
+		return
+	var star := _orb_stars[from_idx] as StarRating
+	if star == null or not is_instance_valid(star):
+		return
+	star.visible = true
+	# Re-run the widget's own slot pop-in (each candy scales up with TRANS_BACK +
+	# a pickup sparkle), then overlay a whole-widget scale pop for a clear "pop".
+	var earned: int = 0
+	if GameState.level_best.has(from_idx + 1):
+		earned = int(GameState.level_best[from_idx + 1].get("stars", 0))
+	star.set_rating(_orb_difficulty(from_idx + 1), earned, true)
+	# Drive the pop through a 0 -> 1.2 -> 1 multiplier that _place_orbs_on_terrain
+	# folds into the per-frame orb-synced scale (so it stays seated while popping).
+	star.set_meta("popping", true)
+	star.set_meta("pop_mult", 0.001)
+	var t := star.create_tween().set_trans(Tween.TRANS_BACK)
+	t.tween_method(_set_star_pop_mult.bind(star), 0.001, 1.2, 0.22).set_ease(Tween.EASE_OUT)
+	t.tween_method(_set_star_pop_mult.bind(star), 1.2, 1.0, 0.28).set_ease(Tween.EASE_OUT)
+	t.tween_callback(func(): star.set_meta("popping", false))
+
+func _set_star_pop_mult(v: float, star: StarRating) -> void:
+	if is_instance_valid(star):
+		star.set_meta("pop_mult", v)
+
+# Projects the newly-unlocked orb's 3D centre to screen (same projection
+# _place_orbs_on_terrain uses) and bursts gold dust there. Falls back to the
+# cowboy marker's position if the orb projection isn't available yet.
+func _gold_dust_on_orb(idx: int) -> void:
+	var p := CPUParticles2D.new()
+	p.position = _orb_screen_center(idx)
+	p.amount = 40
+	p.lifetime = 1.2
+	p.one_shot = true
+	p.explosiveness = 0.85
+	p.emitting = true
+	p.color = Color(1.0, 0.85, 0.35, 1.0)
+	p.initial_velocity_min = 80.0
+	p.initial_velocity_max = 220.0
+	p.scale_amount_min = 2.0
+	p.scale_amount_max = 5.0
+	add_child(p)
+	if get_node_or_null("/root/AudioBus"):
+		AudioBus.play_sfx("bonus_pickup")
+	get_tree().create_timer(1.5).timeout.connect(p.queue_free)
+
+# Orb-unlock flourish: a quick scale-pop on the newly-unlocked orb billboard so
+# it visibly "pops in" as the cowboy arrives (reuses the orb MeshInstance3D from
+# _build_orb_visuals). Pairs with the gold-dust burst for a clear unlock read.
+func _unlock_orb_flourish(idx: int) -> void:
+	if idx < 0 or idx >= _orb_nodes.size():
+		return
+	var orb = _orb_nodes[idx]
+	if orb == null or not is_instance_valid(orb):
+		return
+	var base: Vector3 = Vector3.ONE
+	var t := create_tween().set_trans(Tween.TRANS_BACK)
+	t.tween_property(orb, "scale", base * 1.45, 0.18).set_ease(Tween.EASE_OUT)
+	t.tween_property(orb, "scale", base, 0.34).set_ease(Tween.EASE_OUT)
+
+# On-screen pixel centre of an orb, mirroring _place_orbs_on_terrain's
+# projection of _orb_local_centers through the Ground transform + camera.
+func _orb_screen_center(idx: int) -> Vector2:
+	var cam: Camera3D = get_node_or_null("Terrain3D/SubViewport/Camera3D")
+	var gnd: Node3D = get_node_or_null("Terrain3D/SubViewport/Ground")
+	if cam != null and gnd != null and idx >= 0 and idx < _orb_local_centers.size():
+		var world: Vector3 = gnd.global_transform * _orb_local_centers[idx]
+		if not cam.is_position_behind(world):
+			return cam.unproject_position(world)
+	if _cowboy_sprite != null:
+		return _cowboy_sprite.position + _cowboy_sprite.size * 0.5
+	return get_viewport_rect().size * 0.5
 
 func _to_main_menu() -> void:
 	get_tree().change_scene_to_file("res://scenes/main_menu.tscn")

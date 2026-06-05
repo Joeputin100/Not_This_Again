@@ -49,7 +49,10 @@ AAB="$(find "$STAGE" -name '*.aab' | head -1)"
 [ -n "$AAB" ] || { echo "FATAL: no .aab inside the artifact"; exit 1; }
 
 echo "==> bundletool -> universal APK ..."
-java -jar "$BUNDLETOOL" build-apks --mode=universal --bundle="$AAB" --output="$STAGE/nta.apks" --overwrite >/dev/null
+# -Djava.io.tmpdir keeps bundletool's scratch (AutoValue_BuildApksCommand*, ApkSigner*,
+# uncompressed.zip — ~1.5GB/run) inside $STAGE so it's wiped with $OUT_DIR each run,
+# instead of piling up in the system /tmp forever and filling the disk.
+java -Djava.io.tmpdir="$STAGE" -jar "$BUNDLETOOL" build-apks --mode=universal --bundle="$AAB" --output="$STAGE/nta.apks" --overwrite >/dev/null
 unzip -o "$STAGE/nta.apks" universal.apk -d "$STAGE" >/dev/null
 mv "$STAGE/universal.apk" "$OUT"
 rm -rf "$STAGE"

@@ -18,4 +18,6 @@ terrain = "mountain"
 display_name = "MOUNTAIN PASS PERIL"
 weather_type = "SNOW"
 seed = 4
+star_thresholds = Array[int]([0, 3000, 7000])
+outlaw_quota = 120
 events = Array[ExtResource("1_hrksf")]([SubResource("Resource_7xi47")])

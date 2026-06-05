@@ -18,4 +18,6 @@ terrain = "farm"
 display_name = "FARM ROAD FRACAS"
 weather_type = "RAIN"
 seed = 3
+star_thresholds = Array[int]([0, 2400, 5500])
+outlaw_quota = 85
 events = Array[ExtResource("1_onuep")]([SubResource("Resource_mnyl5")])

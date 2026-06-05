@@ -54,6 +54,9 @@ const BuildInfo = preload("res://scripts/build_info.gd")
 # only the cowboy uses one — followers fire on the cowboy's fire event).
 const GunScript = preload("res://scripts/gun.gd")
 const GunStateScript = preload("res://scripts/gun_state.gd")
+const WIN_MODAL_SCENE := preload("res://scenes/ui/win_modal.tscn")
+const FAIL_MODAL_SCENE := preload("res://scenes/ui/fail_modal.tscn")
+var _end_modal: Control = null
 # Iter 99: moved up from mid-file (was between _ready and
 # _build_3d_content). The mid-file `const := preload(...)` after func
 # definitions appears to fail at Godot Android runtime — the script
@@ -116,6 +119,13 @@ const BULL_CHARGE_MULT: float = 2.4    # z-speed vs other obstacles (charge feel
 const BULL_CONFUSED_FWD_MULT: float = 0.35
 const BULL_DRIFT_SPEED: float = 4.0    # lateral veer-off speed while fleeing
 const BULL_CONTACT_POSSE_LOSS: int = 8 # posse members gored if a bull reaches them
+# winflow R3: a bull is a heavy charging hazard. If one spawns in the very first
+# obstacle wave it reaches the posse (~3-4s) before the player has crossed the
+# first GATE to grow the posse, so a small starting posse gets wiped (device
+# report, level 2). Suppress bulls for an opening grace window so the first gate
+# appears + is crossable first. Longer on L2 (smaller start posse, mine terrain).
+const BULL_GRACE_DEFAULT: float = 10.0  # seconds before the first bull can charge
+const BULL_GRACE_LEVEL2: float = 16.0   # L2: extra lead time to reach the first gate
 
 # iter411: chicken coop set-piece (ported from the 2D prototype). A destructible
 # decorative prop; shoot it down and it bursts into scattering chickens + a cloud of
@@ -220,7 +230,8 @@ var boss_root: Node3D
 @onready var back_button: Button = $UI/BackButton
 @onready var info_label: Label = $UI/InfoLabel
 # Iter 79: dedicated HUD labels.
-@onready var hearts_label: HeartRow = $UI/HeartsLabel
+@onready var hearts_label: HeartCookieRow = $UI/HeartsCutout/HeartCookieRow
+@onready var _hud_outlaws: Label = $UI/HeartsCutout/OutlawNumber
 @onready var posse_label: Label = $UI/PosseLabel
 @onready var hits_label: Label = $UI/HitsLabel
 # Iter 95: also created in _build_3d_content().
@@ -251,8 +262,11 @@ enum LevelState { COUNTDOWN, PLAYING, BOSS, FINISHED }
 var _level_state: int = LevelState.COUNTDOWN
 # SP2: data-driven level (LevelDef timeline played by LevelPlayer).
 var _level_def: LevelDef = null
+var _level_num: int = 1   # winflow R3: current level (1-based); drives bull grace
+var _first_bull_logged: bool = false   # winflow R3: one-shot debug of first bull timing
 var _level_player: LevelPlayer = null
 var _level_distance: float = 0.0      # world distance scrolled (drives the timeline)
+var _bounty_at_start: int = 0   # GameState.bounty when this level began (for run-bounty)
 var _boss_from_data: bool = false     # true when the LevelDef has a BOSS event (legacy timer yields)
 var _director: LevelDirector = null   # SP2 slice2: pacing (variable scroll speed + approach-zone halts)
 # iter417: per-level weather, driven by LevelDef.weather_type. The visual layer is
@@ -303,6 +317,8 @@ const OUTLAW_BULLET_HIT_X: float = 0.5  # iter 119: bullet only hits if within t
 const OUTLAW_HIT_RADIUS_SQ: float = 1.5 * 1.5
 const OUTLAW_HP: int = 10  # iter 118: 3 → 10 (1 cowboy firing 6/clip+1s reload = ~3.5 bullets/sec, dies in ~3s)
 var _outlaw_spawn_timer: float = 0.0
+var _outlaws_remaining: int = 0   # ticks down as outlaws leave the field; 0 -> boss
+var _outlaws_spawned: int = 0     # stop spawning once this reaches the quota
 
 # Iter 77: Slippery Pete boss. Appears at PETE_SPAWN_DELAY into the
 # level. Slow approach, much higher HP, drops the WIN modal on defeat.
@@ -419,6 +435,11 @@ var _crowd_built_count: int = -1
 var _crowd_built_pitch: float = 999.0
 var _hole_lose_accum: float = 0.0
 var _over_hole: bool = false   # iter414b: pit-entry edge for the fall whistle
+# winflow: cumulative members already dropped during the CURRENT pit visit, so
+# the immediate-fall logic only drops the *newly* overlapping increment each
+# frame (reset to 0 the moment the crowd leaves the pit).
+var _hole_dropped_this_visit: int = 0
+var _dyn_hole_count: int = 0   # winflow: cycles candy fills across runtime-spawned holes
 
 # Iter 85: subtle y-bob animation gives life to the otherwise-static
 # billboards. Sine wave on position.y at each frame; followers get a
@@ -548,9 +569,16 @@ func _ready() -> void:
 	# SP2: load the data-driven level definition for the current level + play
 	# its timeline. The .tres exist at res://resources/levels/level_N.tres.
 	var _lvl: int = GameState.current_level if get_node_or_null("/root/GameState") else 1
+	_level_num = _lvl   # winflow R3: remember the level for bull-grace timing
 	var _def_path := "res://resources/levels/level_%d.tres" % _lvl
 	if ResourceLoader.exists(_def_path):
 		_level_def = load(_def_path)
+	if get_node_or_null("/root/GameState"):
+		_bounty_at_start = GameState.bounty
+	if _level_def != null and _level_def.outlaw_quota > 0:
+		_outlaws_remaining = _level_def.outlaw_quota
+	if _hud_outlaws != null:
+		_hud_outlaws.text = str(_outlaws_remaining)
 	# SP2: starting posse size from the level definition (default 5).
 	if _level_def != null and _level_def.start_posse > 0 and _level_def.start_posse != _posse_count_3d:
 		_posse_count_3d = _level_def.start_posse
@@ -1516,6 +1544,11 @@ func _drop_bonus_at(landing: Vector3, value: int, color: Color, label: String = 
 	tw.tween_callback(_spawn_popup_3d.bind(landing + Vector3(0, 1.5, 0), popup_label, color, 64))
 	tw.tween_callback(c.queue_free)
 	tw.tween_callback(_add_bounty.bind(value))
+
+func _run_bounty() -> int:
+	if get_node_or_null("/root/GameState") == null:
+		return 0
+	return maxi(0, GameState.bounty - _bounty_at_start)
 
 func _add_bounty(amount: int) -> void:
 	if get_node_or_null("/root/GameState") != null:
@@ -2835,6 +2868,7 @@ func _skill_kill_outlaw(outlaw: Node3D) -> void:
 	outlaw.set_meta("hp", 0)
 	outlaw.set_meta("dying", true)
 	outlaw.set_meta("death_timer", VAGRANT_DEATH_LIFETIME)
+	_outlaw_left_field(outlaw)
 	var death_sprite: Sprite3D = outlaw.get_meta("sprite_3d", null)
 	if death_sprite != null and is_instance_valid(death_sprite):
 		var death_sv: SubViewport = _get_or_create_shared_video_viewport(VAGRANT_DEATH_STREAM)
@@ -3155,7 +3189,9 @@ func _build_quake_bar() -> void:
 		_weapon_label.add_theme_font_size_override("font_size", 26)
 		_weapon_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 		_reparent_into_bar(_weapon_label, Vector2(2, 160), Vector2(280, 36))
-	_reparent_into_bar(hearts_label, Vector2(286, 124), Vector2(330, 58))
+	# iter370 winflow: hearts no longer live on the Quake bar — they're pinned
+	# in the top-left taffy cutout ($UI/HeartsCutout/HeartCookieRow) where the
+	# cookies dance, so the reparent into the bar is removed.
 	if posse_label != null:
 		posse_label.visible = false  # absorbed into the bar
 
@@ -3451,7 +3487,7 @@ func _set_pete_anim(pete: Node3D, stream: VideoStream, duration: float = 0.0) ->
 func _dispatch_level_event(ev: LevelEvent) -> void:
 	match ev.kind:
 		LevelEvent.EventKind.BOSS:
-			if not _pete_spawned and not _test_range_mode:
+			if not _pete_spawned and not _test_range_mode and not _quota_driven():
 				_pete_spawned = true
 				if String(ev.params.get("boss", "pete")) == "rustler":
 					_spawn_candy_rustler()
@@ -3499,6 +3535,10 @@ func _spawn_hole(params: Dictionary) -> void:
 	hole.position = Vector3(float(params.get("x", 0.0)), 0.02, OBSTACLE_SPAWN_Z)
 	hole.set_meta("x_half", float(params.get("x_half", 1.2)))
 	hole.set_meta("z_half", float(params.get("z_half", 1.6)))
+	# winflow: dynamic holes also get a candy fill (cycles with the spawn count).
+	var fill: String = _PIT_FILLS[_dyn_hole_count % _PIT_FILLS.size()]
+	_dyn_hole_count += 1
+	hole.set_meta("pit_fill", fill)
 	var mi := MeshInstance3D.new()
 	var pm := PlaneMesh.new()  # PlaneMesh lies flat on XZ (normal up)
 	pm.size = Vector2(hole.get_meta("x_half") * 2.0, hole.get_meta("z_half") * 2.0)
@@ -3506,7 +3546,11 @@ func _spawn_hole(params: Dictionary) -> void:
 	var m := StandardMaterial3D.new()
 	m.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
 	m.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
-	m.albedo_texture = load("res://assets/sprites/props/pit_hole.png")
+	var dyn_path: String = "res://assets/sprites/ui/winflow/pit_%s.png" % fill
+	if ResourceLoader.exists(dyn_path):
+		m.albedo_texture = load(dyn_path)
+	else:
+		m.albedo_texture = load("res://assets/sprites/props/pit_hole.png")
 	m.cull_mode = BaseMaterial3D.CULL_DISABLED
 	mi.material_override = m
 	hole.add_child(mi)
@@ -3995,15 +4039,8 @@ func _show_fail() -> void:
 	# doesn't keep playing after the firefight ends.
 	if get_node_or_null("/root/AudioBus") and AudioBus.has_method("stop_gunfire"):
 		AudioBus.stop_gunfire()
-	# Deduct one heart from the autoloaded GameState (Murderbot voice
-	# context: 'one less posse for next time').
-	if get_node_or_null("/root/GameState"):
-		GameState.spend_heart()
 	info_label.text = "DEAD  ·  posse 0  ·  hits %d" % _hits
-	if fail_label:
-		fail_label.text = "DEAD\n%d hits" % _hits
-	if fail_overlay:
-		fail_overlay.visible = true
+	_present_fail_modal()
 
 # Iter 77/81: trigger the win flow. Pop the WIN overlay AFTER playing
 # the iter 81 Gold Rush salute ceremony — each remaining posse member
@@ -4026,11 +4063,8 @@ func _show_win(boss_label: String = "Pete", cleanup_node: Node = null, cleanup_v
 	if ui_canvas != null:
 		FlourishBanner.spawn(ui_canvas, "PERFECT_VOLLEY")
 	await _gold_rush_salute_3d()
-	if win_label:
-		win_label.text = "BOUNTY!\nposse %d · hits %d" % [_posse_count_3d, _hits]
-	if win_overlay:
-		win_overlay.visible = true
 	AudioBus.play_gate_pass()
+	_present_win_modal()
 	# Iter 157: free the boss node + its SubViewport when passed in. Pete
 	# frees himself before calling _show_win; the Rustler is kept alive
 	# through the salute so his death scatter plays, then cleaned up here.
@@ -4038,6 +4072,66 @@ func _show_win(boss_label: String = "Pete", cleanup_node: Node = null, cleanup_v
 		cleanup_node.queue_free()
 	if cleanup_viewport != null and is_instance_valid(cleanup_viewport):
 		cleanup_viewport.queue_free()
+
+func _present_win_modal() -> void:
+	var diff: int = _level_def.difficulty if _level_def != null else 1
+	var thr: Array = _level_def.star_thresholds if _level_def != null else [0, 1500, 3500]
+	var rb: int = _run_bounty()
+	var stars: int = GameState.stars_for(rb, thr)
+	var next_needed: int = 0
+	for t in thr:
+		if rb < int(t):
+			next_needed = int(t) - rb
+			break
+	var lvl: int = GameState.current_level if get_node_or_null("/root/GameState") else 1
+	if get_node_or_null("/root/GameState"):
+		GameState.record_level_result(lvl, stars, rb)
+		GameState.current_level = lvl + 1
+		GameState.just_won_level = lvl
+	var hearts: int = GameState.hearts if get_node_or_null("/root/GameState") else 5
+	var hmax: int = GameState.MAX_HEARTS if get_node_or_null("/root/GameState") else 5
+	# Winflow: achievement-header banner (FLAWLESS / WHOLE POSSE / JACKPOT / ...).
+	var posse_start: int = _level_def.start_posse if _level_def != null else 0
+	var jackpot: int = int(int(thr[2]) * 1.5) if thr.size() > 2 else 999999
+	var hdr: Dictionary = GameState.win_header(
+		stars, _hits, _posse_count_3d, posse_start, rb, jackpot)
+	_end_modal = WIN_MODAL_SCENE.instantiate()
+	get_node("UI").add_child(_end_modal)
+	_end_modal.show_win(diff, rb, stars, next_needed, hearts, hmax, hdr)
+	_end_modal.continue_pressed.connect(_goto_map.bind(true))
+	_end_modal.replay_pressed.connect(_retry_level)
+	_end_modal.map_pressed.connect(_goto_map.bind(false))
+
+func _present_fail_modal() -> void:
+	var hearts: int = GameState.hearts if get_node_or_null("/root/GameState") else 5
+	var hmax: int = GameState.MAX_HEARTS if get_node_or_null("/root/GameState") else 5
+	var regen_text: String = ""
+	if get_node_or_null("/root/GameState") and GameState.has_method("regen_text"):
+		regen_text = GameState.regen_text()
+	_end_modal = FAIL_MODAL_SCENE.instantiate()
+	get_node("UI").add_child(_end_modal)
+	_end_modal.show_fail(_run_bounty(), hearts, hmax, regen_text)
+	_end_modal.retry_pressed.connect(_retry_level)
+	_end_modal.map_pressed.connect(_goto_map.bind(false))
+
+func _goto_map(continue_next: bool) -> void:
+	# just_won_level was set on win; level_select reads it to celebrate.
+	# continue_next: CONTINUE auto-starts the next level after the celebration;
+	# MAP (and fail's MAP) stay on the level-select map.
+	if get_node_or_null("/root/GameState"):
+		GameState.continue_to_next = continue_next
+	get_tree().change_scene_to_file("res://scenes/level_select.tscn")
+
+func _retry_level() -> void:
+	# Retry costs a heart, charged HERE (not on death). If broke, do nothing
+	# (the FailModal disables the button at 0 hearts).
+	if get_node_or_null("/root/GameState"):
+		if GameState.hearts <= 0:
+			return
+		GameState.spend_heart()
+	if get_node_or_null("/root/DebugPreview") and DebugPreview.has_method("clear"):
+		DebugPreview.clear()
+	get_tree().reload_current_scene()
 
 # Iter 81: Gold Rush A — Six-Shooter Salute, ported to 3D.
 # Each remaining posse member (leader + active followers) fires a
@@ -4113,11 +4207,20 @@ func _spawn_prospector() -> void:
 	# Iter 118: a tougher mid-tier enemy. Same scroll/fire/track behavior
 	# as the outlaw via the outlaws_root container; differentiated by HP
 	# meta + video stream. The _process outlaw loop handles both transparently.
+	# winflow R3: prospectors ARE enemies the player defeats (HP, fire back,
+	# death anim), so they now COUNT toward the outlaw quota — otherwise the
+	# top-left "outlaws remaining" number reads lower than the enemies the
+	# player can see on screen (device report: "3 visible, count said 1").
+	# They consume quota slots like a regular outlaw, so obey the same cap.
+	if _level_def != null and _level_def.outlaw_quota > 0 and _outlaws_spawned >= _level_def.outlaw_quota:
+		return   # quota fully emitted — no more enemies of any kind
 	var prosp := Node3D.new()
 	var lane_x: float = _rng.randf_range(-OUTLAW_SPAWN_X_MAX, OUTLAW_SPAWN_X_MAX)
 	prosp.position = Vector3(lane_x, 1.0, OBSTACLE_SPAWN_Z + 4.0)
 	prosp.set_meta("hp", PROSPECTOR_HP)
 	prosp.set_meta("fire_timer", _rng.randf() * OUTLAW_FIRE_INTERVAL)
+	prosp.set_meta("is_outlaw", true)   # winflow R3: counts toward the quota
+	_outlaws_spawned += 1
 	outlaws_root.add_child(prosp)
 	var billboard: Node3D = _make_video_billboard(PROSPECTOR_IDLE_STREAM, 2.6)
 	prosp.add_child(billboard)
@@ -4706,7 +4809,55 @@ func _refresh_outlaw_hp_bar(unit: Node3D) -> void:
 		c = Color(0.95, 0.25, 0.25, 1)
 	(fg.material_override as StandardMaterial3D).albedo_color = c
 
+func outlaws_remaining() -> int:
+	return _outlaws_remaining
+
+func _quota_driven() -> bool:
+	return _level_def != null and _level_def.outlaw_quota > 0
+
+# Single chokepoint: an outlaw has LEFT THE FIELD (defeated or scrolled past).
+# The `counted` meta guard makes a double-call safe.
+func _outlaw_left_field(outlaw: Node) -> void:
+	if _level_def == null or _level_def.outlaw_quota <= 0:
+		return
+	if outlaw == null or not outlaw.get_meta("is_outlaw", false):
+		return   # prospectors/pushers/captives don't count toward the outlaw quota
+	if outlaw != null and outlaw.get_meta("counted", false):
+		return
+	if outlaw != null:
+		outlaw.set_meta("counted", true)
+	_outlaws_remaining = maxi(0, _outlaws_remaining - 1)
+	DebugLog.add("outlaw left field -> remaining=%d" % _outlaws_remaining)
+	_set_outlaws_label(_outlaws_remaining)   # defined in the next task; guard if missing
+	if _outlaws_remaining == 0:
+		_trigger_quota_boss()
+
+# Set the taffy's outlaws-remaining number with a small bump on change.
+func _set_outlaws_label(n: int) -> void:
+	if _hud_outlaws == null:
+		return
+	_hud_outlaws.text = str(n)
+	_hud_outlaws.pivot_offset = _hud_outlaws.size * 0.5
+	var t := _hud_outlaws.create_tween()
+	t.tween_property(_hud_outlaws, "scale", Vector2(1.25, 1.25), 0.08)
+	t.tween_property(_hud_outlaws, "scale", Vector2.ONE, 0.12).set_trans(Tween.TRANS_BACK)
+
+func _trigger_quota_boss() -> void:
+	if _pete_spawned or _test_range_mode:
+		return
+	_pete_spawned = true
+	if _boss_kind() == "rustler":
+		_spawn_candy_rustler()
+	else:
+		_spawn_pete()
+	for _g in gates_root.get_children():
+		_g.queue_free()
+	_level_state = LevelState.BOSS
+	DebugLog.add("quota cleared -> boss (kind=%s)" % _boss_kind())
+
 func _spawn_outlaw() -> void:
+	if _level_def != null and _level_def.outlaw_quota > 0 and _outlaws_spawned >= _level_def.outlaw_quota:
+		return   # quota fully emitted — no more outlaws
 	# Iter 116: re-enable video billboard, but this time via SHARED top-
 	# level SubViewports (see _make_video_billboard) — iter 114 confirmed
 	# that nested-SubViewport video billboards don't render on Android.
@@ -4724,6 +4875,8 @@ func _spawn_outlaw() -> void:
 	outlaw.set_meta("dying", false)
 	outlaw.set_meta("death_timer", 0.0)
 	outlaws_root.add_child(outlaw)
+	outlaw.set_meta("is_outlaw", true)
+	_outlaws_spawned += 1
 	var billboard: Node3D = _make_video_billboard(VAGRANT_IDLE_STREAM, 2.5)
 	outlaw.add_child(billboard)
 	# Stash the Sprite3D ref so death-anim swap can replace its texture
@@ -5308,19 +5461,23 @@ func _process(delta: float) -> void:
 			continue
 		var hx: float = hole.get_meta("x_half", 1.2)
 		var hz: float = hole.get_meta("z_half", 1.6)
+		var hfill: String = hole.get_meta("pit_fill", "fudge")
 		for f in _followers.duplicate():
 			if is_instance_valid(f) and not f.get_meta("falling", false) \
 			and _in_box(f.position.x, f.position.z, hole.position.x, hole.position.z, hx, hz):
 				_followers.erase(f)
 				_posse_count_3d = maxi(0, _posse_count_3d - 1)
 				_fall_entity(f)
+				_spawn_pit_splash(f.position, hfill)
 				_refresh_hud()
 				if _posse_count_3d <= 0:
 					_show_fail()
 		for o in outlaws_root.get_children():
 			if is_instance_valid(o) and not o.get_meta("falling", false) and not o.get_meta("is_captive", false) \
 			and not o.get_meta("dying", false) and _in_box(o.position.x, o.position.z, hole.position.x, hole.position.z, hx, hz):
+				_outlaw_left_field(o)
 				_fall_entity(o)
+				_spawn_pit_splash(o.position, hfill)
 	# Iter 75: gates scroll like obstacles + check trigger when crossing z plane
 	_gate_spawn_timer -= delta
 	if _gate_spawn_timer <= 0.0 and _level_state == LevelState.PLAYING:
@@ -5413,6 +5570,7 @@ func _process(delta: float) -> void:
 				_outlaw_fire(outlaw)
 		outlaw.set_meta("fire_timer", ft)
 		if outlaw.position.z > OBSTACLE_DESPAWN_Z:
+			_outlaw_left_field(outlaw)
 			outlaw.queue_free()
 		# Bullet-vs-outlaw collision (use posse bullets)
 		for bullet in bullets_root.get_children():
@@ -5445,6 +5603,7 @@ func _process(delta: float) -> void:
 					# share one death-stream render (they sync, acceptable).
 					outlaw.set_meta("dying", true)
 					outlaw.set_meta("death_timer", VAGRANT_DEATH_LIFETIME)
+					_outlaw_left_field(outlaw)
 					var death_sprite: Sprite3D = outlaw.get_meta("sprite_3d", null)
 					if death_sprite != null and is_instance_valid(death_sprite):
 						var death_sv: SubViewport = _get_or_create_shared_video_viewport(VAGRANT_DEATH_STREAM)
@@ -5538,7 +5697,7 @@ func _process(delta: float) -> void:
 	# Iter 77: spawn Pete after PETE_SPAWN_DELAY.
 	# Iter 118: only counts elapsed during PLAYING.
 	# Iter 124: skip Pete in test range mode.
-	if _level_state == LevelState.PLAYING and not _pete_spawned and not _test_range_mode and not _boss_from_data and _level_elapsed >= PETE_SPAWN_DELAY:
+	if _level_state == LevelState.PLAYING and not _pete_spawned and not _test_range_mode and not _boss_from_data and not _quota_driven() and _level_elapsed >= PETE_SPAWN_DELAY:
 		_pete_spawned = true
 		# Iter 157: boss dispatch by level — level 2 → The Candy Rustler,
 		# every other level → Slippery Pete.
@@ -5907,12 +6066,13 @@ func _build_world_terrain() -> void:
 	# seemed to float over nothing. Render each authored hole as a world-anchored
 	# dark decal that scrolls + rides the hills exactly like the puddles, so it
 	# lines up with the _check_authored_holes trigger.
-	for hh in _HOLES:
+	for hi in range(_HOLES.size()):
+		var hh: Dictionary = _HOLES[hi]
 		var hd: float = (float(hh["d0"]) + float(hh["d1"])) * 0.5
 		var hgx: float = (float(hh["x0"]) + float(hh["x1"])) * 0.5
 		var hxh: float = (float(hh["x1"]) - float(hh["x0"])) * 0.5
 		var hzh: float = (float(hh["d1"]) - float(hh["d0"])) * 0.5
-		_world_root.add_child(_make_pit(hd, hgx, hxh, hzh))
+		_world_root.add_child(_make_pit(hd, hgx, hxh, hzh, _pit_fill_for(hi)))
 	# Retire the UV-scroll "treadmill": hide the flat ground + stop its auto-scroll.
 	var flat := get_node_or_null("Terrain3D/SubViewport/Ground")
 	if flat != null and flat is Node3D:
@@ -5933,7 +6093,28 @@ func _grab_ground_texture() -> Texture2D:
 # iter418: a visible pit decal — dark rectangle on the terrain at an authored
 # hole. World-anchored (placed via _terr_vertex) so it scrolls + follows hills
 # like the puddles and stays aligned with the gameplay kill-zone.
-func _make_pit(d: float, gx: float, x_half: float, z_half: float) -> MeshInstance3D:
+# winflow: deterministic fill assignment per authored hole. Cycles
+# fudge / honey / soda across the _HOLES entries (index-based), offset by the
+# current level so different levels lead with a different candy.
+const _PIT_FILLS: Array = ["fudge", "honey", "soda"]
+# Splash tint per fill — drives both the splash particles and a faint pit accent.
+const _PIT_TINTS: Dictionary = {
+	"fudge": Color(0.42, 0.24, 0.12),   # brown gloop
+	"honey": Color(0.95, 0.66, 0.10),   # golden
+	"soda":  Color(0.95, 0.95, 0.98),   # white foam
+}
+
+func _pit_fill_for(hole_index: int) -> String:
+	var lvl: int = 1
+	if get_node_or_null("/root/GameState") != null:
+		lvl = int(GameState.current_level)
+	return _PIT_FILLS[(hole_index + lvl) % _PIT_FILLS.size()]
+
+# winflow: a visible DEEP candy pit decal at an authored hole. World-anchored
+# (placed via _terr_vertex) so it scrolls + follows hills like the puddles and
+# stays aligned with the gameplay kill-zone. `fill` ∈ {fudge,honey,soda} picks
+# the deep-pit art res://assets/sprites/ui/winflow/pit_<fill>.png.
+func _make_pit(d: float, gx: float, x_half: float, z_half: float, fill: String = "fudge") -> MeshInstance3D:
 	var mi := MeshInstance3D.new()
 	var qm := QuadMesh.new()
 	qm.size = Vector2(x_half * 2.0, z_half * 2.0)
@@ -5941,10 +6122,14 @@ func _make_pit(d: float, gx: float, x_half: float, z_half: float) -> MeshInstanc
 	mi.mesh = qm
 	var pos: Vector3 = _terr_vertex(gx, -d)
 	mi.position = Vector3(pos.x, pos.y + 0.05, pos.z)
+	mi.set_meta("pit_fill", fill)
 	var mat := StandardMaterial3D.new()
-	if ResourceLoader.exists("res://assets/sprites/props/pit_hole.png"):
+	var tex_path: String = "res://assets/sprites/ui/winflow/pit_%s.png" % fill
+	if ResourceLoader.exists(tex_path):
+		mat.albedo_texture = load(tex_path)
+	elif ResourceLoader.exists("res://assets/sprites/props/pit_hole.png"):
 		mat.albedo_texture = load("res://assets/sprites/props/pit_hole.png")
-	mat.albedo_color = Color(0.04, 0.03, 0.05, 1.0)   # near-black pit floor
+	mat.albedo_color = Color(1.0, 1.0, 1.0, 1.0)
 	mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
 	mat.cull_mode = BaseMaterial3D.CULL_DISABLED
 	mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
@@ -6001,31 +6186,66 @@ func _check_authored_holes(delta: float) -> void:
 	var over: bool = false
 	var hx0: float = 0.0
 	var hx1: float = 0.0
-	for h in _HOLES:
+	var hfill: String = "fudge"
+	for hi in range(_HOLES.size()):
+		var h: Dictionary = _HOLES[hi]
+		# A pit "covers" the crowd when the crowd's x-span (leader ± COWBOY_X_BOUND)
+		# overlaps the pit's x-range while the pit is at the posse's distance.
+		var crowd_l: float = cowboy_3d.position.x - COWBOY_X_BOUND
+		var crowd_r: float = cowboy_3d.position.x + COWBOY_X_BOUND
 		if dd >= h["d0"] and dd <= h["d1"] \
-		and cowboy_3d.position.x >= h["x0"] and cowboy_3d.position.x <= h["x1"]:
+		and crowd_r >= float(h["x0"]) and crowd_l <= float(h["x1"]):
 			over = true
 			hx0 = float(h["x0"]); hx1 = float(h["x1"])
+			hfill = _pit_fill_for(hi)
 			break
 	if not over:
 		_hole_lose_accum = 0.0
 		_over_hole = false
+		_hole_dropped_this_visit = 0
 		return
-	# iter414b: entering a pit — whistle once + show the posse actually tumbling in
-	# (was a silent, invisible count drop, so you heard a fall with nothing visible).
+	# winflow: IMMEDIATE fall-on-contact. The posse is a COUNT spread evenly across
+	# the crowd x-span (leader ± COWBOY_X_BOUND, so span = 2*COWBOY_X_BOUND). The
+	# fraction of that span overlapping the pit = the fraction of members standing
+	# over the hole RIGHT NOW. We drop floor(frac * count) members the instant they
+	# overlap — so walking the whole crowd into a pit dumps nearly the whole crowd
+	# within a frame or two, not a slow 2/sec drip. _hole_dropped_this_visit tracks
+	# the cumulative drop for this visit so each frame only sheds the *new* increment
+	# as the crowd shifts deeper in.
 	if not _over_hole:
 		_over_hole = true
+		_hole_dropped_this_visit = 0
 		if get_node_or_null("/root/AudioBus") and AudioBus.has_method("play_sfx"):
 			AudioBus.play_sfx("hole_fall")
-	_hole_lose_accum += delta * 2.0
-	while _hole_lose_accum >= 1.0 and _posse_count_3d > 1:
-		_hole_lose_accum -= 1.0
-		_posse_count_3d = maxi(0, _posse_count_3d - 1)
-		var fx: float = _rng.randf_range(hx0, hx1)
-		_spawn_falling_cowboy(Vector3(fx, cowboy_3d.position.y, cowboy_3d.position.z + _rng.randf_range(-0.6, 0.6)))
-		_refresh_hud()
-		if _posse_count_3d <= 0:
-			_show_fail()
+	var span: float = 2.0 * COWBOY_X_BOUND
+	var crowd_l2: float = cowboy_3d.position.x - COWBOY_X_BOUND
+	var crowd_r2: float = cowboy_3d.position.x + COWBOY_X_BOUND
+	var overlap: float = minf(crowd_r2, hx1) - maxf(crowd_l2, hx0)
+	var frac: float = clampf(overlap / span, 0.0, 1.0)
+	# Total members the pit should have swallowed by now (cap to leave the leader).
+	var present: int = _posse_count_3d + _hole_dropped_this_visit
+	var target_dropped: int = mini(present - 1, int(floor(frac * float(present))))
+	var drop_now: int = maxi(0, target_dropped - _hole_dropped_this_visit)
+	if drop_now <= 0:
+		return
+	drop_now = mini(drop_now, _posse_count_3d - 1)   # never drop the leader
+	if drop_now <= 0:
+		return
+	_posse_count_3d = maxi(0, _posse_count_3d - drop_now)
+	_hole_dropped_this_visit += drop_now
+	_sync_followers_to_count(_posse_count_3d)
+	DebugLog.add("pit[%s]: dropped %d members (frac=%.2f, posse→%d)" % [hfill, drop_now, frac, _posse_count_3d])
+	# Cap the number of spawned falling sprites + splashes per frame (perf): show a
+	# representative sample, not one node per dropped member.
+	var visible: int = mini(drop_now, 12)
+	for i in range(visible):
+		var fx: float = _rng.randf_range(maxf(crowd_l2, hx0), minf(crowd_r2, hx1))
+		var fz: float = cowboy_3d.position.z + _rng.randf_range(-0.6, 0.6)
+		_spawn_falling_cowboy(Vector3(fx, cowboy_3d.position.y, fz))
+		_spawn_pit_splash(Vector3(fx, cowboy_3d.position.y, fz), hfill)
+	_refresh_hud()
+	if _posse_count_3d <= 0:
+		_show_fail()
 
 # A posse member tumbling into a pit (visual; the whistle plays once on pit entry).
 func _spawn_falling_cowboy(pos: Vector3) -> void:
@@ -6045,6 +6265,59 @@ func _spawn_falling_cowboy(pos: Vector3) -> void:
 	# Hold opacity, then fade only in the final stretch (was fading immediately).
 	t.tween_property(c, "modulate:a", 0.0, 0.3).set_delay(0.5)
 	t.chain().tween_callback(c.queue_free)
+
+# winflow: a quick fall-in SPLASH at the pit entry, tinted to the candy fill.
+#   fudge = brown gloopy blobs (slow, heavy, little spread)
+#   honey = golden droplets/strings (taller, slower fall, stringy)
+#   soda  = white foam + fizz (fast, wide, light)
+# Cheap CPUParticles3D one-shot, capped low; auto-frees after its lifetime.
+const _PIT_SPLASH_LIFETIME: float = 0.7
+func _spawn_pit_splash(pos: Vector3, fill: String) -> void:
+	var tint: Color = _PIT_TINTS.get(fill, Color(0.5, 0.4, 0.3))
+	var p := CPUParticles3D.new()
+	p.position = Vector3(pos.x, pos.y + 0.1, pos.z)
+	p.emitting = true
+	p.one_shot = true
+	p.explosiveness = 1.0
+	p.lifetime = _PIT_SPLASH_LIFETIME
+	p.local_coords = false
+	p.direction = Vector3(0, 1, 0)
+	p.gravity = Vector3(0, -9.0, 0)
+	p.mesh = SphereMesh.new()
+	p.color = tint
+	# Per-fill flavour.
+	match fill:
+		"honey":
+			p.amount = 10
+			p.initial_velocity_min = 1.6
+			p.initial_velocity_max = 3.0
+			p.spread = 18.0
+			p.scale_amount_min = 0.12
+			p.scale_amount_max = 0.22
+			p.gravity = Vector3(0, -6.0, 0)   # honey falls slow / stringy
+		"soda":
+			p.amount = 16
+			p.initial_velocity_min = 2.6
+			p.initial_velocity_max = 4.8
+			p.spread = 42.0                    # wide foamy fizz
+			p.scale_amount_min = 0.06
+			p.scale_amount_max = 0.14
+		_:  # fudge (default)
+			p.amount = 12
+			p.initial_velocity_min = 1.2
+			p.initial_velocity_max = 2.6
+			p.spread = 24.0
+			p.scale_amount_min = 0.14
+			p.scale_amount_max = 0.26
+			p.gravity = Vector3(0, -11.0, 0)   # heavy gloop drops fast
+	var mat := StandardMaterial3D.new()
+	mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	mat.albedo_color = tint
+	(p.mesh as SphereMesh).material = mat
+	popups_root.add_child(p)
+	var ft := p.create_tween()
+	ft.tween_interval(_PIT_SPLASH_LIFETIME + 0.2)
+	ft.tween_callback(p.queue_free)
 
 func _input(event: InputEvent) -> void:
 	# Translate drag x to cowboy world-x via the screen-to-plane mapping.
@@ -6213,13 +6486,26 @@ func _spawn_obstacle() -> void:
 			tw.position.y = 0.9  # ride a touch above ground so it reads as rolling
 			obstacle = tw
 		_:  # BULL
-			obstacle = _obstacle_prop("bull", lane_x)
-			obstacle.set_meta("is_bull", true)   # iter410: charging hazard, not a static prop
-			obstacle.set_meta("hp", BULL_HP)
-			obstacle.set_meta("confused", false)
-			if get_node_or_null("/root/AudioBus") and AudioBus.has_method("play_sfx"):
-				AudioBus.play_sfx("bull_snort")   # iter411: angry snort as it charges in
-				AudioBus.play_sfx("bull_charge")  # iter413: galloping hooves
+			# winflow R3: suppress bulls during the opening grace window so the
+			# player reaches + crosses the first GATE (growing the posse) before
+			# any bull charges. Without this a first-wave bull can gore a tiny
+			# starting posse to zero on L2. During grace, substitute a harmless
+			# barrel so the obstacle cadence/feel is unchanged.
+			var _bull_grace: float = BULL_GRACE_LEVEL2 if _level_num == 2 else BULL_GRACE_DEFAULT
+			if _level_elapsed < _bull_grace:
+				obstacle = _obstacle_prop("barrel", lane_x)
+			else:
+				obstacle = _obstacle_prop("bull", lane_x)
+				obstacle.set_meta("is_bull", true)   # iter410: charging hazard, not a static prop
+				obstacle.set_meta("hp", BULL_HP)
+				obstacle.set_meta("confused", false)
+				if not _first_bull_logged:
+					_first_bull_logged = true
+					DebugLog.add("first bull spawn: level=%d t=%.1fs dist=%.1f (grace=%.1fs)"
+						% [_level_num, _level_elapsed, _level_distance, _bull_grace])
+				if get_node_or_null("/root/AudioBus") and AudioBus.has_method("play_sfx"):
+					AudioBus.play_sfx("bull_snort")   # iter411: angry snort as it charges in
+					AudioBus.play_sfx("bull_charge")  # iter413: galloping hooves
 	obstacles_root.add_child(obstacle)
 
 # Iter 334: build a registry-driven breathing-sprite obstacle, grounded so its
