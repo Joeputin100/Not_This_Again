@@ -813,18 +813,24 @@ func _place_cowboy_marker(cam: Camera3D, terrain, gnd: Node3D) -> void:
 		var ph: float = float(Time.get_ticks_msec()) * 0.001 * COWBOY_BOB_HZ * TAU
 		bob_y = -absf(sin(ph)) * COWBOY_BOB_PX * sc   # feet lift (up) on each step
 		waddle_x = sin(ph * 0.5) * COWBOY_WADDLE_PX * sc
-	# Fix 3 (off-screen-right): clamp his feet point into a safe horizontal band so
-	# the perpendicular side offset at a switchback orb can never fling him off the
-	# right (or left) edge. He rests ON/near the path and stays fully visible.
+	# R4b (pan-drift fix): the cowboy is anchored to his arc-length _cowboy_s and must
+	# project EXACTLY with the path every frame — identical to the level orbs, which use
+	# the raw unproject_position with NO on-screen clamp (so they scroll off naturally as
+	# you pan away). The earlier per-frame feet-x clamp pinned him inside the viewport, so
+	# during a free pan his true projection slid off-screen while the clamp dragged him
+	# back to the edge => the "drift". Use the raw projected x. The reduced COWBOY_SIDE
+	# (-0.9) keeps his rest position at the focus orb on-screen WITHOUT any clamp, so a
+	# switchback orb can no longer fling him off either edge.
 	var vw: float = get_viewport_rect().size.x
-	var foot_x: float = clampf(c.x + waddle_x, dw * 0.5 + 8.0, vw - dw * 0.5 - 8.0)
+	var foot_x: float = c.x + waddle_x  # raw path projection — no per-frame on-screen clamp
 	_cowboy_sprite.size = Vector2(dw, dh)
 	_cowboy_sprite.pivot_offset = Vector2(dw, dh) * 0.5  # tap-pops scale around his middle
 	_cowboy_sprite.position = Vector2(foot_x - dw * 0.5, c.y - 0.953 * dh + bob_y)  # feet on the ground
-	# DebugLog the resting screen pos + scale at the focus orb (for the device test).
+	# DebugLog projected vs final feet-x so the device test can confirm no clamp engages
+	# during a pan (projected == final means he tracks the path exactly).
 	if not _walking and absf(_cowboy_s - _path_s) < 0.01 and Engine.get_process_frames() % 120 == 0:
-		DebugLog.add("cowboy@focus L%d pos=(%.0f,%.0f) sc=%.2f persp=%.2f vw=%.0f" % [
-			_focus_level + 1, foot_x, c.y - 0.953 * dh, sc, persp, vw])
+		DebugLog.add("cowboy@focus L%d proj_x=%.0f foot_x=%.0f y=%.0f sc=%.2f persp=%.2f vw=%.0f" % [
+			_focus_level + 1, c.x + waddle_x, foot_x, c.y - 0.953 * dh, sc, persp, vw])
 
 # Iter 339: rendered orbs as 3D breathing billboards on the terrain (depth-sort
 # with the sign/props — fixes the old 2D-orb-over-3D-sign layering), each with a
