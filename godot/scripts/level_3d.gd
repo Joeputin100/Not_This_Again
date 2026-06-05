@@ -406,7 +406,7 @@ var _scenery_spawn_timer: float = 0.0
 
 # Iter 88: bullet fire modes. Each pickup changes how _spawn_bullet
 # colors / sizes its bullets. Default = candy palette random.
-enum FireMode { CANDY, RIFLE, FROSTBITE, FRENZY }
+enum FireMode { CANDY, RIFLE, FROSTBITE, FRENZY, RAINBOW }
 var _fire_mode: int = FireMode.CANDY
 var _pete_spawned: bool = false
 var _pete_defeated: bool = false
@@ -2947,11 +2947,13 @@ const BONUS_COLORS: Dictionary = {
 	"rifle":     Color(0.55, 0.32, 0.16, 1),    # brown wood-stock
 	"frostbite": Color(0.55, 0.85, 1.00, 1),    # icy cyan
 	"frenzy":    Color(1.00, 0.55, 0.85, 1),    # pink frenzy
+	"rainbow":   Color(0.7, 0.5, 1.0, 1),
 }
 const BONUS_LABELS: Dictionary = {
 	"rifle":     "R",
 	"frostbite": "❄",
 	"frenzy":    "J!",
+	"rainbow":   "★",
 }
 
 func _spawn_bonus() -> void:
@@ -2998,6 +3000,7 @@ func _collect_bonus(bonus: Node3D) -> void:
 		"rifle":     _fire_mode = FireMode.RIFLE
 		"frostbite": _fire_mode = FireMode.FROSTBITE
 		"frenzy":    _fire_mode = FireMode.FRENZY
+		"rainbow":   _fire_mode = FireMode.RAINBOW
 	_update_weapon_label()
 	_spawn_popup_3d(bonus.position + Vector3(0, 2.0, 0),
 		t.to_upper(), BONUS_COLORS[t], 56)
@@ -3008,14 +3011,17 @@ func _collect_bonus(bonus: Node3D) -> void:
 const WEAPON_NAMES := {
 	FireMode.CANDY: "JELLY BEAN", FireMode.RIFLE: "RIFLE",
 	FireMode.FROSTBITE: "FROSTBITE", FireMode.FRENZY: "FRENZY",
+	FireMode.RAINBOW: "RAINBOW",
 }
 const WEAPON_ICONS := {
 	FireMode.CANDY: "candy_red.png", FireMode.RIFLE: "candy_choc_stripe.png",
 	FireMode.FROSTBITE: "candy_freezeray.png", FireMode.FRENZY: "candy_bomb.png",
+	FireMode.RAINBOW: "../props/weapon_rainbow.png",
 }
 const WEAPON_COLORS := {
 	FireMode.CANDY: Color(1.0, 0.62, 0.80, 1), FireMode.RIFLE: Color(0.88, 0.66, 0.40, 1),
 	FireMode.FROSTBITE: Color(0.60, 0.86, 1.0, 1), FireMode.FRENZY: Color(1.0, 0.58, 0.88, 1),
+	FireMode.RAINBOW: Color(0.7, 0.5, 1.0, 1),
 }
 var _weapon_label: Label = null
 var _weapon_icon: TextureRect = null
@@ -3077,20 +3083,24 @@ const WEAPON_HERO := {
 	FireMode.RIFLE: "res://assets/sprites/props/weapon_six_shooter.png",
 	FireMode.FROSTBITE: "res://assets/sprites/props/weapon_six_shooter.png",
 	FireMode.FRENZY: "res://assets/sprites/props/weapon_six_shooter.png",
+	FireMode.RAINBOW: "res://assets/sprites/props/weapon_six_shooter.png",
 }
 # Per-weapon magazine size — drives both the gun + the ammo clip pip count.
 const CLIP_BY_MODE := {
 	FireMode.CANDY: 6, FireMode.RIFLE: 4, FireMode.FROSTBITE: 5, FireMode.FRENZY: 8,
+	FireMode.RAINBOW: 7,
 }
 # Per-weapon rate of fire (seconds between shots) — lower = faster.
 const FIRE_INTERVAL_BY_MODE := {
 	FireMode.CANDY: 0.18, FireMode.RIFLE: 0.34, FireMode.FROSTBITE: 0.26, FireMode.FRENZY: 0.07,
+	FireMode.RAINBOW: 0.10,
 }
 # Per-weapon range: the z a bullet travels to before despawning (more negative
 # = longer reach; outlaws spawn at z=-24, so the rifle reaches them, the
 # short-range frostbite only hits close).
 const RANGE_Z_BY_MODE := {
 	FireMode.CANDY: -10.0, FireMode.RIFLE: -26.0, FireMode.FROSTBITE: -6.0, FireMode.FRENZY: -13.0,
+	FireMode.RAINBOW: -20.0,
 }
 var _bullet_despawn_z: float = -10.0   # current weapon's bullet range (set on weapon change)
 
@@ -6565,6 +6575,7 @@ const CANDY_BULLET_TEX := {
 	FireMode.FROSTBITE: ["candy_freezeray.png"],
 	FireMode.FRENZY: ["candy_red.png", "candy_green.png", "candy_blue.png", "candy_amber.png",
 		"candy_cotton.png", "candy_bomb.png", "candy_fireball.png", "candy_jawbreaker.png"],
+	FireMode.RAINBOW: ["../props/candy_rainbow.png"],
 }
 
 # iter404: the chain-lightning overlay sits on the UI CanvasLayer, behind the HUD
