@@ -18,4 +18,6 @@ terrain = "mine"
 display_name = "MINE SHAFT MAYHEM"
 weather_type = "DUST_STORM"
 seed = 2
+star_thresholds = Array[int]([0, 1800, 4200])
+outlaw_quota = 60
 events = Array[ExtResource("1_or7n4")]([SubResource("Resource_o1k3p")])

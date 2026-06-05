@@ -27,6 +27,15 @@ extends Resource
 # Future: weather override. Empty = inherit project default.
 @export var weather_type: String = ""
 
+# Win/retry flow: ascending bounty cutoffs for 1/2/3 stars. t1 should be
+# reachable simply by finishing (a win always grants >= 1 star). Tuned per level.
+@export var star_thresholds: Array[int] = [0, 1500, 3500]
+
+# Win/retry flow: number of outlaws to clear before the boss appears. The
+# top-left taffy badge counts this down; reaching 0 triggers the boss. 0 = use
+# the legacy distance/timer boss trigger instead.
+@export var outlaw_quota: int = 60
+
 # SP2 Level Toolkit: the level as data. `events` is a distance-indexed timeline
 # (LevelPlayer fires each as the scrolled distance crosses it); `goal` is the
 # win condition. See docs/superpowers/specs/2026-05-31-sp2-level-toolkit-design.md.
