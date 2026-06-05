@@ -117,7 +117,18 @@ var _cowboy_sprite: VideoStreamPlayer   # idle-looping marker on the cowboy's le
 var _cowboy_s: float = 0.0              # the cowboy's arc-length position along the path
 var _walking: bool = false              # true while the cowboy strides to a selected orb
 var _cowboy_half_h: float = 128.0       # half the idle texture height (for grounding his feet)
-const COWBOY_SIDE: float = -1.9         # he stands this far to the side of the path/orb
+const COWBOY_SIDE: float = -0.9         # he stands just beside the path/orb (small so switchbacks don't fling him off-screen)
+# Walk-bob: while striding, overlay a periodic up/down step + slight side waddle
+# on the projected marker so he reads as WALKING, not gliding. Time-based so the
+# cadence is independent of frame rate / tween pacing.
+const COWBOY_BOB_HZ: float = 2.2        # steps per second (a couple of paces/sec)
+const COWBOY_BOB_PX: float = 9.0        # vertical bob amplitude (px at sc==1)
+const COWBOY_WADDLE_PX: float = 5.0     # side-to-side waddle amplitude (px at sc==1)
+# The perspective scale at the focus orb is roughly constant (the view always
+# pans the focus path point to the same screen depth), so clamp the cowboy's
+# scale to a tight band: he should NOT shrink to half as he walks up the path.
+const COWBOY_SC_MIN: float = 0.78
+const COWBOY_SC_MAX: float = 1.05
 # Iter 344: tap the cowboy → a random one of 6 warm Murderbot reactions; after
 # COWBOY_QUICK_TAPS taps inside COWBOY_QUICK_WINDOW he gets abrasively annoyed.
 var _cowboy_vo_player: AudioStreamPlayer
@@ -575,6 +586,9 @@ func _build_orb_stars() -> void:
 		# Map orbs drive their pulse from the orb's breathe, so kill the widget's
 		# own per-candy breathe to avoid a competing double-pulse.
 		sr.breathe_enabled = false
+		# On the MAP the candies sit directly on the orb — hide the oval boat dish
+		# (the win/fail modals keep theirs, default show_dish=true).
+		sr.set_dish_visible(false)
 		# Draw the glow + stars ON TOP of the orb billboard (the Terrain3D Sprite2D)
 		# and the invisible tap buttons.
 		glow.z_index = 50
@@ -779,14 +793,38 @@ func _place_cowboy_marker(cam: Camera3D, terrain, gnd: Node3D) -> void:
 		return
 	_cowboy_sprite.visible = true
 	var c: Vector2 = cam.unproject_position(world)
-	var sc: float = clampf(ORB_NEAR_DIST / cam.global_position.distance_to(world), 0.08, 1.6) * ORB_SIZE_MULT * 0.62 * _fov_mag()
+	# Fix 4 (shrink): the raw perspective factor (ORB_NEAR_DIST/dist) drops as the
+	# focus orb recedes up the path, halving his size L2->L3. The view always pans
+	# the focus point to the same screen depth, so his on-screen size SHOULD be
+	# near-constant — clamp the perspective factor to a tight band so he stays a
+	# consistent, readable size across orbs instead of shrinking with depth.
+	var persp: float = ORB_NEAR_DIST / cam.global_position.distance_to(world)
+	var sc: float = clampf(persp, COWBOY_SC_MIN, COWBOY_SC_MAX) * ORB_SIZE_MULT * 0.62 * _fov_mag()
 	# The clip is 720×1280 with the cowboy's feet at ~0.953 down the frame.
 	# Size to match the old sprite's on-screen height (~559·sc), feet at c.
 	var dh: float = 559.0 * sc
 	var dw: float = dh * (720.0 / 1280.0)
+	# Fix 2 (walk bob): while striding, lift his feet in a periodic step + add a
+	# slight side waddle so he reads as walking rather than gliding. Scaled by sc
+	# so the bob stays proportional. Zero while idle so resting is rock-steady.
+	var bob_y: float = 0.0
+	var waddle_x: float = 0.0
+	if _walking:
+		var ph: float = float(Time.get_ticks_msec()) * 0.001 * COWBOY_BOB_HZ * TAU
+		bob_y = -absf(sin(ph)) * COWBOY_BOB_PX * sc   # feet lift (up) on each step
+		waddle_x = sin(ph * 0.5) * COWBOY_WADDLE_PX * sc
+	# Fix 3 (off-screen-right): clamp his feet point into a safe horizontal band so
+	# the perpendicular side offset at a switchback orb can never fling him off the
+	# right (or left) edge. He rests ON/near the path and stays fully visible.
+	var vw: float = get_viewport_rect().size.x
+	var foot_x: float = clampf(c.x + waddle_x, dw * 0.5 + 8.0, vw - dw * 0.5 - 8.0)
 	_cowboy_sprite.size = Vector2(dw, dh)
 	_cowboy_sprite.pivot_offset = Vector2(dw, dh) * 0.5  # tap-pops scale around his middle
-	_cowboy_sprite.position = Vector2(c.x - dw * 0.5, c.y - 0.953 * dh)  # feet on the ground
+	_cowboy_sprite.position = Vector2(foot_x - dw * 0.5, c.y - 0.953 * dh + bob_y)  # feet on the ground
+	# DebugLog the resting screen pos + scale at the focus orb (for the device test).
+	if not _walking and absf(_cowboy_s - _path_s) < 0.01 and Engine.get_process_frames() % 120 == 0:
+		DebugLog.add("cowboy@focus L%d pos=(%.0f,%.0f) sc=%.2f persp=%.2f vw=%.0f" % [
+			_focus_level + 1, foot_x, c.y - 0.953 * dh, sc, persp, vw])
 
 # Iter 339: rendered orbs as 3D breathing billboards on the terrain (depth-sort
 # with the sign/props — fixes the old 2D-orb-over-3D-sign layering), each with a
@@ -1659,7 +1697,8 @@ func _start_level(btn: Button, level_num: int) -> void:
 	# view following), then the level loads.
 	_walking = true
 	var target_s: float = ORB_START_S + float(level_num - 1) * ORB_GAP_S
-	var dur: float = clampf(absf(target_s - _cowboy_s) / 14.0, 0.25, 1.6)  # ~14 arc units/sec
+	# A clear, watchable stroll: one orb gap (~7 arc units) reads as ~2-4.5s.
+	var dur: float = clampf(absf(target_s - _cowboy_s) / 4.0, 2.0, 4.5)
 	var walk := create_tween().set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN_OUT)
 	walk.tween_method(_set_cowboy_s, _cowboy_s, target_s, dur)
 	await walk.finished
@@ -1707,8 +1746,8 @@ func _maybe_celebrate_win() -> void:
 	_pop_completed_orb_stars(from_idx)
 	_gold_dust_on_orb(to_idx)
 	var target_s: float = ORB_START_S + float(to_idx) * ORB_GAP_S
-	# Slower, clearly-watchable stride: a single orb gap reads as ~2-3.5s.
-	var dur: float = clampf(absf(target_s - _cowboy_s) / 5.0, 1.4, 3.5)
+	# Slower, clearly-watchable stride: a single orb gap reads as ~2-4.5s.
+	var dur: float = clampf(absf(target_s - _cowboy_s) / 4.0, 2.0, 4.5)
 	var walk := create_tween().set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN_OUT)
 	walk.tween_method(_set_cowboy_s, _cowboy_s, target_s, dur)
 	await walk.finished

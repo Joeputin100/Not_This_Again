@@ -27,6 +27,12 @@ static func slots_for(stars: int) -> Array:
 
 @onready var _dish: TextureRect = $Dish
 
+# When false the oval boat Dish is hidden so the candy stars sit directly on the
+# level-select orb (the map instances set this false). Defaults true so the
+# win/fail MODALS keep their dish exactly as before. Candy slot positions are
+# fractions of the WIDGET size (not the dish), so hiding the dish is safe.
+var show_dish: bool = true
+
 var _difficulty: int = 1
 var _earned: int = 0
 var _candies: Array = []   # holds spawned candy/ghost nodes
@@ -48,17 +54,32 @@ func set_rating(difficulty: int, earned: int, animate: bool = false) -> void:
 	_earned = clampi(earned, 0, 3)
 	_rebuild(animate)
 
+# Map orbs hide the oval boat dish so the candies sit directly on the orb.
+# Defaults true (modals keep their dish). Safe because candy positions are
+# fractions of the widget size, not of the dish.
+func set_dish_visible(v: bool) -> void:
+	show_dish = v
+	if _dish == null:
+		_dish = get_node_or_null("Dish") as TextureRect
+	if _dish != null:
+		_dish.visible = v
+	_rebuild(false)
+
 func _rebuild(animate: bool) -> void:
 	for c in _candies:
 		if is_instance_valid(c): c.queue_free()
 	_candies.clear()
-	if _dish == null: return
+	if _dish != null:
+		_dish.visible = show_dish
 	var box: Vector2 = size
 	var tex := load(candy_tex_path(_difficulty)) as Texture2D
 	var lit: Array = slots_for(_earned)
+	# Without the dish the candies read alone on the orb, so size them a touch
+	# bigger so they stay legible; with the dish, keep the original size.
+	var candy_frac: float = 0.36 if not show_dish else 0.30
 	for i in range(3):
 		var frac: Vector2 = SLOT_FRACS[i]
-		var sz: float = box.x * 0.30 * SLOT_SIZE[i]
+		var sz: float = box.x * candy_frac * SLOT_SIZE[i]
 		var node := TextureRect.new()
 		node.texture = tex
 		node.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
