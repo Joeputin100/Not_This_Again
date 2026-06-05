@@ -58,7 +58,9 @@ Replaces the current vector-drawn `HeartRow` (procedural `_draw_heart`) with a s
 
 **Where used:** main menu (2D splash), win/fail modals, and the in-level HUD — all swap to `HeartCookieRow`.
 
-**In-level placement (changed).** The lives are currently drawn on the bottom **Quake bar**. They move OFF the Quake bar to a dedicated **organic candy cutout** badge anchored in the **top-left of the gameplay viewport** — a **wrapped-taffy** frame (twist-ended caramel/cream candy with a flat center panel) that the heart cookies sit and dance inside. The cutout is a fixed UI sprite on the HUD `CanvasLayer`; the `HeartCookieRow` is parented inside it. Remove the Quake-bar hearts entirely.
+**In-level placement (changed).** The lives are currently drawn on the bottom **Quake bar**. They move OFF the Quake bar to a dedicated **organic candy cutout** badge anchored in the **top-left of the gameplay viewport** — a **wrapped-taffy** frame (twist-ended caramel/cream candy with a flat center panel) that the heart cookies sit and dance inside. The cutout is a fixed UI sprite on the HUD `CanvasLayer`; the `HeartCookieRow` is parented inside it, **inset to the taffy's flat centre panel only** (not the twist-ends). Remove the Quake-bar hearts entirely.
+
+**Outlaws-remaining counter.** The taffy badge also shows a **large number** = outlaws remaining in the level (see §6a). It sits prominently in the panel (the heart cookies become a smaller row beneath it). The number ticks down as outlaws are defeated.
 
 ---
 
@@ -106,6 +108,22 @@ Same bounce-in panel, muted palette.
 - `level_best: Dictionary` mapping level number → `{stars:int, bounty:int}`, persisted; updated with the max on each win. Drives the map orbs' displayed stars.
 - `just_won_level: int = 0` — transient (not persisted) handoff so `level_select` knows to play the celebration on its next `_ready`.
 - A signal or existing `hearts_changed` hook the `HeartCookieRow` uses to detect a regen (current increased) and fire the pop+cheer.
+
+---
+
+## 6a. Outlaw quota & boss trigger
+
+A per-level **fixed quota** of outlaws becomes the level's objective and the boss trigger, replacing the current distance/timer-based boss spawn.
+
+**LevelDef** gains `@export var outlaw_quota: int = 60` — the number of outlaws to clear before the boss appears (hand-tuned per level; scales with difficulty).
+
+**In-level behaviour (`level_3d`):**
+- At level start, `_outlaws_remaining = _level_def.outlaw_quota`. The taffy badge shows this number.
+- Each outlaw that **leaves the field decrements it** — primarily by being **defeated** (the normal kill path), but also if one **escapes past** the player (despawns un-defeated), so the count cannot soft-lock at >0. The number ticks down with a small bump animation on change.
+- Stop spawning new outlaws once `outlaw_quota` have been **spawned** (the level emits exactly the quota).
+- When `_outlaws_remaining` reaches **0**, trigger the boss via the existing boss-spawn path (`_spawn_candy_rustler`/`_spawn_pete`, clear gates, set state `BOSS`). This **replaces** the current triggers: the distance-based data `BOSS` event and the `PETE_SPAWN_DELAY` timer are gated off when a level uses a quota (`outlaw_quota > 0`), so the boss appears exactly when the outlaws are cleared. (Levels may keep the boss as a `BOSS` data event for *which* boss to spawn, but the *timing* is quota-driven.)
+
+This keeps the win condition intact (defeat the boss) while giving the player a readable countdown objective. Star/bounty logic is unchanged.
 
 ---
 

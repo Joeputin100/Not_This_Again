@@ -37,10 +37,10 @@
 - `godot/test/test_star_rules.gd`, `godot/test/test_game_state_progress.gd`, `godot/test/test_star_rating_widget.gd`, `godot/test/test_heart_cookie_row.gd`.
 
 **Modify:**
-- `godot/scripts/level_def.gd` — add `star_thresholds`.
+- `godot/scripts/level_def.gd` — add `star_thresholds` + `outlaw_quota`.
 - `godot/resources/levels/level_1..4.tres` — set thresholds.
 - `godot/scripts/game_state.gd` — persist `current_level`; add `level_best`, `record_level_result`, `stars_for`, `just_won_level`.
-- `godot/scripts/level_3d.gd` — snapshot level bounty; use modals; move heart-spend; wire signals.
+- `godot/scripts/level_3d.gd` — snapshot level bounty; use modals; move heart-spend; wire signals; outlaw-quota countdown + boss-on-zero; taffy outlaw number.
 - `godot/scenes/level_3d.tscn` — add taffy cutout + HeartCookieRow top-left; remove WinOverlay/FailOverlay children's reliance (modals instanced at runtime).
 - `godot/scripts/level_select.gd` + `godot/scenes/*level_select*.tscn` — celebration + per-orb stars.
 - `tools/gen_creature_sfx.py` — add `heart_regen_cheer`.
@@ -178,6 +178,14 @@ In `godot/scripts/level_def.gd`, after the `weather_type` export, add:
 @export var star_thresholds: Array[int] = [0, 1500, 3500]
 ```
 
+Also add the outlaw quota (the level objective + boss trigger, §6a):
+```gdscript
+# Win/retry flow: number of outlaws to clear before the boss appears. The
+# top-left taffy badge counts this down; reaching 0 triggers the boss. 0 = use
+# the legacy distance/timer boss trigger instead.
+@export var outlaw_quota: int = 60
+```
+
 - [ ] **Step 2: Set per-level thresholds**
 
 In each `godot/resources/levels/level_N.tres`, in the `[resource]` block, add a line (tuned by difficulty):
@@ -185,6 +193,12 @@ In each `godot/resources/levels/level_N.tres`, in the `[resource]` block, add a 
 - `level_2.tres`: `star_thresholds = Array[int]([0, 1800, 4200])`
 - `level_3.tres`: `star_thresholds = Array[int]([0, 2400, 5500])`
 - `level_4.tres`: `star_thresholds = Array[int]([0, 3000, 7000])`
+
+Also add an `outlaw_quota` line per level (scaling with difficulty):
+- `level_1.tres`: `outlaw_quota = 40`
+- `level_2.tres`: `outlaw_quota = 60`
+- `level_3.tres`: `outlaw_quota = 85`
+- `level_4.tres`: `outlaw_quota = 120`
 
 - [ ] **Step 3: Verify it loads**
 
@@ -195,7 +209,7 @@ Run the full GUT suite (Conventions). Expected: still `All tests passed!` (no pa
 ```bash
 cd /home/projects/Not_This_Again
 git add godot/scripts/level_def.gd godot/resources/levels/level_*.tres
-git commit -m "winflow: LevelDef.star_thresholds + per-level values"
+git commit -m "winflow: LevelDef.star_thresholds + outlaw_quota + per-level values"
 ```
 
 ### Task 4: Star computation helper (GUT)
@@ -1026,6 +1040,99 @@ git commit -m "winflow: wire Win/Fail modals into level_3d (retry spends heart, 
 
 ---
 
+## Phase 4b — Outlaw quota (objective + boss trigger)
+
+### Task 10b: Outlaw quota tracking + boss-on-zero (level_3d)
+
+**Files:**
+- Modify: `godot/scripts/level_3d.gd`
+
+Spec §6a: the per-level `outlaw_quota` becomes the objective; reaching 0 remaining triggers the boss, replacing the distance/timer trigger when `outlaw_quota > 0`.
+
+- [ ] **Step 1: Add the counters + getter**
+
+Near the other `_level_*` vars in `level_3d.gd`:
+```gdscript
+var _outlaws_remaining: int = 0   # ticks down as outlaws leave the field; 0 -> boss
+var _outlaws_spawned: int = 0     # stop spawning once this reaches the quota
+```
+In `_ready()`, after `_level_def` is loaded:
+```gdscript
+	if _level_def != null and _level_def.outlaw_quota > 0:
+		_outlaws_remaining = _level_def.outlaw_quota
+```
+Add a getter the HUD reads:
+```gdscript
+func outlaws_remaining() -> int:
+	return _outlaws_remaining
+```
+
+- [ ] **Step 2: Gate outlaw spawning to the quota**
+
+Find the outlaw spawner (`grep -n "func _spawn_outlaw\|outlaw spawn #\|_outlaw_spawn_timer" godot/scripts/level_3d.gd`). At the top of the spawn function (or where the timer decides to spawn), add the cap:
+```gdscript
+	if _level_def != null and _level_def.outlaw_quota > 0 and _outlaws_spawned >= _level_def.outlaw_quota:
+		return   # quota fully emitted — no more outlaws
+```
+Immediately after a real outlaw node is created, `_outlaws_spawned += 1`.
+
+- [ ] **Step 3: Decrement remaining when an outlaw leaves the field**
+
+Add a single chokepoint so both defeat and escape decrement exactly once:
+```gdscript
+func _outlaw_left_field() -> void:
+	if _level_def == null or _level_def.outlaw_quota <= 0:
+		return
+	_outlaws_remaining = maxi(0, _outlaws_remaining - 1)
+	_set_outlaws_label(_outlaws_remaining)   # updates the taffy number + bump (Task 11)
+	if _outlaws_remaining == 0:
+		_trigger_quota_boss()
+```
+Call `_outlaw_left_field()` from BOTH the outlaw-defeated path (where an outlaw is killed/removed) and the outlaw-despawn-past path (where an un-defeated outlaw is `queue_free()`d for leaving the screen). Use a per-outlaw `set_meta("counted", true)` guard so an outlaw that is both killed and then freed only decrements once:
+```gdscript
+	if not outlaw.get_meta("counted", false):
+		outlaw.set_meta("counted", true)
+		_outlaw_left_field()
+```
+
+- [ ] **Step 4: Trigger the boss at zero; gate the legacy triggers**
+
+Add:
+```gdscript
+func _trigger_quota_boss() -> void:
+	if _pete_spawned or _test_range_mode:
+		return
+	_pete_spawned = true
+	if _boss_kind() == "rustler":
+		_spawn_candy_rustler()
+	else:
+		_spawn_pete()
+	for _g in gates_root.get_children():
+		_g.queue_free()
+	_level_state = LevelState.BOSS
+	DebugLog.add("quota cleared -> boss (kind=%s)" % _boss_kind())
+```
+Gate the existing triggers so they do not double-fire when a quota is in use. In the data-event `BOSS` handler (Task: spawns boss from data) and the `PETE_SPAWN_DELAY` timer block, add to each guard:
+```gdscript
+	# Skip the legacy timing trigger when this level is quota-driven.
+	var _quota_driven: bool = _level_def != null and _level_def.outlaw_quota > 0
+```
+and add `and not _quota_driven` to both `if` conditions (the distance data-BOSS fire and the `PETE_SPAWN_DELAY` fire). The data event may still set which boss via `_boss_kind()`; only the *timing* is quota-driven.
+
+- [ ] **Step 5: Verify (device-dependent)**
+
+Run full GUT — `All tests passed!` (parse + no regression). The countdown→boss is motion/gameplay; verify on the Task 15 device pass that the number ticks down per kill and the boss appears at 0. For a quick local sanity check, add a temporary `DebugLog` line in `_outlaw_left_field()` printing `_outlaws_remaining`, sideload, watch the log, then remove it.
+
+- [ ] **Step 6: Commit**
+
+```bash
+cd /home/projects/Not_This_Again
+git add godot/scripts/level_3d.gd
+git commit -m "winflow: outlaw quota countdown drives the boss trigger"
+```
+
+---
+
 ## Phase 5 — In-level hearts cutout
 
 ### Task 11: Move hearts to the top-left taffy cutout; remove Quake-bar hearts
@@ -1041,6 +1148,8 @@ Run: `grep -n "hearts_label\|HeartsLabel\|HeartRow\|_build_quake_bar\|hearts" go
 
 In `godot/scenes/level_3d.tscn`, under the `UI` CanvasLayer, add a top-left `TextureRect` named `HeartsCutout` (texture = `res://assets/sprites/ui/winflow/cutout_taffy.png`, anchored top-left, e.g. position ~ (12, 12), size ~ (300, 150)), and inside it an instance of `heart_cookie_row.tscn` named `HeartCookieRow` positioned over the taffy's flat centre panel.
 
+Also add, inside `HeartsCutout`, a `Label` named `OutlawNumber` for the large outlaws-remaining count — big bold candy font, centred in the upper part of the taffy panel; the `HeartCookieRow` becomes a smaller row beneath it. Both must sit within the flat centre panel (next step).
+
 **Fit the hearts to the taffy's centre panel (not its bounding box).** The taffy sprite's twist-ended ends are decorative; the cookies must sit only within the flat caramel panel in the middle, or they spill onto the wrapper. Measure the panel's inner rect once (a quick Python pass over `cutout_taffy.png`: the panel is the large smooth caramel region — find its bounding box the way the dish-lip trace sampled colour), then inset `HeartCookieRow`'s position+size to that rect (expect roughly the central ~62% width × ~46% height; confirm by measuring). Verify in the Step 5 screenshot that all cookies land inside the panel with margin.
 
 - [ ] **Step 3: Repoint the hearts update to the new row**
@@ -1050,6 +1159,26 @@ In `level_3d.gd`, change the `@onready var hearts_label: HeartRow = $UI/HeartsLa
 @onready var hearts_label: HeartCookieRow = $UI/HeartsCutout/HeartCookieRow
 ```
 Find every `hearts_label.set_hearts(...)` call — they keep working unchanged (same `set_hearts(current, max)` contract). Ensure hearts are refreshed on `_ready` and whenever they change (connect to `GameState.hearts_changed` if not already).
+
+Add the outlaw-number wiring:
+```gdscript
+@onready var _hud_outlaws: Label = $UI/HeartsCutout/OutlawNumber
+
+# Set the taffy's outlaws-remaining number with a small bump on change.
+func _set_outlaws_label(n: int) -> void:
+	if _hud_outlaws == null:
+		return
+	_hud_outlaws.text = str(n)
+	_hud_outlaws.pivot_offset = _hud_outlaws.size * 0.5
+	var t := _hud_outlaws.create_tween()
+	t.tween_property(_hud_outlaws, "scale", Vector2(1.25, 1.25), 0.08)
+	t.tween_property(_hud_outlaws, "scale", Vector2.ONE, 0.12).set_trans(Tween.TRANS_BACK)
+```
+In `_ready()` (after `_outlaws_remaining` is initialised in Task 10b), seed the label without the bump:
+```gdscript
+	if _hud_outlaws != null:
+		_hud_outlaws.text = str(_outlaws_remaining)
+```
 
 - [ ] **Step 4: Remove the Quake-bar hearts**
 
@@ -1244,6 +1373,7 @@ Confirm: win modal bounce-in + star reveal + bounty count-up; fail modal; RETRY 
 - §4 Win modal (bounce-in, reveal, count-up, persistence, current_level++) → Tasks 8, 10. ✓
 - §5 Fail modal (retry-costs-heart-on-press, spend moved out of `_show_fail`, 0-hearts disable) → Tasks 9, 10. ✓
 - §6 Data + persistence (star_thresholds, current_level, level_best, just_won_level) → Tasks 3, 4, 5. ✓
+- §6a Outlaw quota + boss trigger + taffy number → Tasks 3, 10b, 11. ✓
 - §7 Map celebration + per-orb stars → Tasks 12, 13. ✓
 - §8 Assets (green-key pipeline, regen cheer SFX) → Tasks 1, 2. ✓
 - §9 Verification (GUT/screenshot/device) → present in each task + Task 15. ✓
