@@ -20,9 +20,9 @@ const BuildInfo = preload("res://scripts/build_info.gd")
 @onready var copy_toast: Label = $UI/CopyToast
 # Iter 40c: hearts row — 5 slots, each ♥ when full, faded for spent.
 # Subscribes to GameState.hearts_changed in _ready and re-renders.
-# iter 333: now a vector-drawn HeartRow (the Rye theme font has no ♥ glyph,
+# winflow: now a sprite-based HeartCookieRow (the Rye theme font has no ♥ glyph,
 # so the old Label rendered a missing-glyph dot on the Android export).
-@onready var hearts_label: HeartRow = $UI/Hearts
+@onready var hearts_label: HeartCookieRow = $UI/Hearts
 # Iter 45: DEBUG button — visible only in debug builds. _ready toggles
 # its visibility from OS.has_feature("debug").
 @onready var debug_button: Button = $UI/DebugButton

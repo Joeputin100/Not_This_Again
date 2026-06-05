@@ -6,7 +6,7 @@
 [ext_resource type="Texture2D" path="res://assets/sprites/professor_humbug.png" id="4_humbug"]
 [ext_resource type="Texture2D" path="res://assets/sprites/slippery_pete.png" id="5_pete"]
 [ext_resource type="Script" path="res://scripts/candy_rustler_rig.gd" id="6_rustler_rig"]
-[ext_resource type="Script" path="res://scripts/heart_row.gd" id="7_hearts"]
+[ext_resource type="PackedScene" path="res://scenes/ui/heart_cookie_row.tscn" id="7_hearts"]
 
 [node name="MainMenu" type="Node2D"]
 script = ExtResource("1_main")
@@ -68,7 +68,7 @@ texture = ExtResource("4_humbug")
 expand_mode = 1
 stretch_mode = 5
 
-[node name="Hearts" type="Control" parent="UI"]
+[node name="Hearts" parent="UI" instance=ExtResource("7_hearts")]
 anchors_preset = -1
 anchor_right = 1.0
 offset_left = 230.0
@@ -76,7 +76,6 @@ offset_top = 36.0
 offset_right = -230.0
 offset_bottom = 150.0
 mouse_filter = 2
-script = ExtResource("7_hearts")
 
 [node name="Title" type="Label" parent="UI"]
 anchors_preset = -1
