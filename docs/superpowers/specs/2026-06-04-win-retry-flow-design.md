@@ -56,7 +56,9 @@ Replaces the current vector-drawn `HeartRow` (procedural `_draw_heart`) with a s
 
 **Regen pop + cheer.** When `GameState` regenerates a heart (an empty slot becomes full), that slot plays a one-shot: the dough cookie fades out and the frosted heart **pops in** with a scale-overshoot bounce and a **sugar-sparkle burst**, accompanied by a short **cheer SFX** (new ElevenLabs effect, e.g. a warm "yee-haw"/celebration ~0.8 s). This fires wherever the row is visible when regen occurs (and at minimum on the main menu / map where the player waits for hearts).
 
-**Where used:** main menu, win/fail modals, in-level HUD — all swap to `HeartCookieRow`.
+**Where used:** main menu (2D splash), win/fail modals, and the in-level HUD — all swap to `HeartCookieRow`.
+
+**In-level placement (changed).** The lives are currently drawn on the bottom **Quake bar**. They move OFF the Quake bar to a dedicated **organic candy cutout** badge anchored in the **top-left of the gameplay viewport** — a **wrapped-taffy** frame (twist-ended caramel/cream candy with a flat center panel) that the heart cookies sit and dance inside. The cutout is a fixed UI sprite on the HUD `CanvasLayer`; the `HeartCookieRow` is parented inside it. Remove the Quake-bar hearts entirely.
 
 ---
 
@@ -119,14 +121,14 @@ Reuses the map's existing walk machinery (`_walking`, `_walk_step`, `_cowboy_s`,
 
 If `just_won_level == 0` (normal entry), behaviour is unchanged (focus snaps to the current orb).
 
-The completed orb shows its **best stars** (StarRating, static) from `GameState.level_best`.
+**Star count on completed orbs.** Every completed level's candy orb on the map shows its **best earned star count** from `GameState.level_best` — a small static StarRating (the difficulty's candies on the boat dish, 1–3 filled) tucked under/over the orb. Uncompleted/locked orbs show no stars. After a win celebration, the just-completed orb updates to its new best.
 
 ---
 
 ## 8. Assets
 
 Locked source art (green-screen renders) is staged at `docs/superpowers/assets/winflow_2026-06-04/`:
-`g_pepper, g_hard, g_gummy, g_sugar` (star candies), `td_oval` (dish), `heart_full`, `heart_empty`.
+`g_pepper, g_hard, g_gummy, g_sugar` (star candies), `td_oval` (dish), `heart_full`, `heart_empty`, `cutout_taffy` (top-left hearts frame).
 
 Production pipeline: green-key each (the keyer used in brainstorm: greenness `G − max(R,B)` with despill + alpha feather), autocrop, export to `godot/assets/sprites/ui/winflow/` as clean transparent PNGs, and add Godot `.import` sidecars. A small contact-shadow ellipse sprite is authored (or drawn at runtime). The dish needs **no** back/front split (top-down). One new SFX (`heart_regen_cheer`) via the ElevenLabs pipeline into `godot/assets/sfx/creatures/`.
 
