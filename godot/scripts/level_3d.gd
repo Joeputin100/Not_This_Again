@@ -119,6 +119,13 @@ const BULL_CHARGE_MULT: float = 2.4    # z-speed vs other obstacles (charge feel
 const BULL_CONFUSED_FWD_MULT: float = 0.35
 const BULL_DRIFT_SPEED: float = 4.0    # lateral veer-off speed while fleeing
 const BULL_CONTACT_POSSE_LOSS: int = 8 # posse members gored if a bull reaches them
+# winflow R3: a bull is a heavy charging hazard. If one spawns in the very first
+# obstacle wave it reaches the posse (~3-4s) before the player has crossed the
+# first GATE to grow the posse, so a small starting posse gets wiped (device
+# report, level 2). Suppress bulls for an opening grace window so the first gate
+# appears + is crossable first. Longer on L2 (smaller start posse, mine terrain).
+const BULL_GRACE_DEFAULT: float = 10.0  # seconds before the first bull can charge
+const BULL_GRACE_LEVEL2: float = 16.0   # L2: extra lead time to reach the first gate
 
 # iter411: chicken coop set-piece (ported from the 2D prototype). A destructible
 # decorative prop; shoot it down and it bursts into scattering chickens + a cloud of
@@ -255,6 +262,8 @@ enum LevelState { COUNTDOWN, PLAYING, BOSS, FINISHED }
 var _level_state: int = LevelState.COUNTDOWN
 # SP2: data-driven level (LevelDef timeline played by LevelPlayer).
 var _level_def: LevelDef = null
+var _level_num: int = 1   # winflow R3: current level (1-based); drives bull grace
+var _first_bull_logged: bool = false   # winflow R3: one-shot debug of first bull timing
 var _level_player: LevelPlayer = null
 var _level_distance: float = 0.0      # world distance scrolled (drives the timeline)
 var _bounty_at_start: int = 0   # GameState.bounty when this level began (for run-bounty)
@@ -560,6 +569,7 @@ func _ready() -> void:
 	# SP2: load the data-driven level definition for the current level + play
 	# its timeline. The .tres exist at res://resources/levels/level_N.tres.
 	var _lvl: int = GameState.current_level if get_node_or_null("/root/GameState") else 1
+	_level_num = _lvl   # winflow R3: remember the level for bull-grace timing
 	var _def_path := "res://resources/levels/level_%d.tres" % _lvl
 	if ResourceLoader.exists(_def_path):
 		_level_def = load(_def_path)
@@ -4197,11 +4207,20 @@ func _spawn_prospector() -> void:
 	# Iter 118: a tougher mid-tier enemy. Same scroll/fire/track behavior
 	# as the outlaw via the outlaws_root container; differentiated by HP
 	# meta + video stream. The _process outlaw loop handles both transparently.
+	# winflow R3: prospectors ARE enemies the player defeats (HP, fire back,
+	# death anim), so they now COUNT toward the outlaw quota — otherwise the
+	# top-left "outlaws remaining" number reads lower than the enemies the
+	# player can see on screen (device report: "3 visible, count said 1").
+	# They consume quota slots like a regular outlaw, so obey the same cap.
+	if _level_def != null and _level_def.outlaw_quota > 0 and _outlaws_spawned >= _level_def.outlaw_quota:
+		return   # quota fully emitted — no more enemies of any kind
 	var prosp := Node3D.new()
 	var lane_x: float = _rng.randf_range(-OUTLAW_SPAWN_X_MAX, OUTLAW_SPAWN_X_MAX)
 	prosp.position = Vector3(lane_x, 1.0, OBSTACLE_SPAWN_Z + 4.0)
 	prosp.set_meta("hp", PROSPECTOR_HP)
 	prosp.set_meta("fire_timer", _rng.randf() * OUTLAW_FIRE_INTERVAL)
+	prosp.set_meta("is_outlaw", true)   # winflow R3: counts toward the quota
+	_outlaws_spawned += 1
 	outlaws_root.add_child(prosp)
 	var billboard: Node3D = _make_video_billboard(PROSPECTOR_IDLE_STREAM, 2.6)
 	prosp.add_child(billboard)
@@ -6467,13 +6486,26 @@ func _spawn_obstacle() -> void:
 			tw.position.y = 0.9  # ride a touch above ground so it reads as rolling
 			obstacle = tw
 		_:  # BULL
-			obstacle = _obstacle_prop("bull", lane_x)
-			obstacle.set_meta("is_bull", true)   # iter410: charging hazard, not a static prop
-			obstacle.set_meta("hp", BULL_HP)
-			obstacle.set_meta("confused", false)
-			if get_node_or_null("/root/AudioBus") and AudioBus.has_method("play_sfx"):
-				AudioBus.play_sfx("bull_snort")   # iter411: angry snort as it charges in
-				AudioBus.play_sfx("bull_charge")  # iter413: galloping hooves
+			# winflow R3: suppress bulls during the opening grace window so the
+			# player reaches + crosses the first GATE (growing the posse) before
+			# any bull charges. Without this a first-wave bull can gore a tiny
+			# starting posse to zero on L2. During grace, substitute a harmless
+			# barrel so the obstacle cadence/feel is unchanged.
+			var _bull_grace: float = BULL_GRACE_LEVEL2 if _level_num == 2 else BULL_GRACE_DEFAULT
+			if _level_elapsed < _bull_grace:
+				obstacle = _obstacle_prop("barrel", lane_x)
+			else:
+				obstacle = _obstacle_prop("bull", lane_x)
+				obstacle.set_meta("is_bull", true)   # iter410: charging hazard, not a static prop
+				obstacle.set_meta("hp", BULL_HP)
+				obstacle.set_meta("confused", false)
+				if not _first_bull_logged:
+					_first_bull_logged = true
+					DebugLog.add("first bull spawn: level=%d t=%.1fs dist=%.1f (grace=%.1fs)"
+						% [_level_num, _level_elapsed, _level_distance, _bull_grace])
+				if get_node_or_null("/root/AudioBus") and AudioBus.has_method("play_sfx"):
+					AudioBus.play_sfx("bull_snort")   # iter411: angry snort as it charges in
+					AudioBus.play_sfx("bull_charge")  # iter413: galloping hooves
 	obstacles_root.add_child(obstacle)
 
 # Iter 334: build a registry-driven breathing-sprite obstacle, grounded so its

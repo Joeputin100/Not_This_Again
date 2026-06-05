@@ -1,4 +1,4 @@
-[gd_scene load_steps=5 format=3 uid="uid://b0nttg_lvl3d_001"]
+[gd_scene load_steps=6 format=3 uid="uid://b0nttg_lvl3d_001"]
 
 ; Iter 96: replaced the inline SubViewport + dirt material + Camera3D
 ; + lights + Ground with a terrain_3d.tscn INSTANCE — the same pattern
@@ -18,6 +18,7 @@
 [ext_resource type="Theme" path="res://assets/theme.tres" id="3_theme"]
 [ext_resource type="Texture2D" path="res://assets/sprites/ui/winflow/cutout_taffy.png" id="5_taffy"]
 [ext_resource type="PackedScene" path="res://scenes/ui/heart_cookie_row.tscn" id="6_heartrow"]
+[ext_resource type="FontFile" path="res://assets/fonts/Rye-Regular.ttf" id="7_rye"]
 
 [node name="Level3D" type="Node2D"]
 script = ExtResource("1_lvl3d")
@@ -93,6 +94,7 @@ mouse_filter = 2
 theme_override_colors/font_color = Color(0.99, 0.93, 0.78, 1)
 theme_override_colors/font_outline_color = Color(0.18, 0.07, 0.04, 1)
 theme_override_constants/outline_size = 10
+theme_override_fonts/font = ExtResource("7_rye")
 theme_override_font_sizes/font_size = 104
 text = "0"
 horizontal_alignment = 1
