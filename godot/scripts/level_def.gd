@@ -47,3 +47,19 @@ enum Goal { REACH_END, DEFEAT_BOSS, SURVIVE }
 @export var start_posse: int = 5      # posse size the level begins with
 @export var events: Array[LevelEvent] = []
 
+# Soda-Crush level-start modal: a short human goal string derived from the
+# win condition + outlaw quota + boss. `level_num` picks the boss (level 2 is
+# The Candy Rustler, every other DEFEAT_BOSS level is Slippery Pete) — matching
+# level_3d's _boss_kind() mapping.
+static func goal_text(def: LevelDef, level_num: int = 1) -> String:
+	if def == null:
+		return "Reach the end of the trail!"
+	match def.goal:
+		Goal.DEFEAT_BOSS:
+			var boss_name: String = "The Candy Rustler" if level_num == 2 else "Slippery Pete"
+			return "Clear %d outlaws, then defeat %s!" % [def.outlaw_quota, boss_name]
+		Goal.SURVIVE:
+			return "Survive %d seconds!" % int(def.goal_param)
+		_:
+			return "Reach the end of the trail!"
+

@@ -1607,6 +1607,47 @@ func _on_level_2_pressed() -> void:
 # a brief Candy-Crush squish, then enter the 3D level. The squish tweens
 # around the node's CURRENT (perspective-scaled) scale so it doesn't snap
 # back to full size.
+const LEVEL_START_MODAL := preload("res://scenes/ui/level_start_modal.tscn")
+var _level_start_modal: LevelStartModal = null
+
+# Instance the Soda-Crush level-start modal over the map (on its own CanvasLayer
+# so it sits above the 3D viewport + 2D markers), load the level's .tres and
+# fill in title + derived goal, then wire PLAY/X. _walking stays true while it's
+# up so a stray tap can't kick off another walk; X clears it (cancel back to the
+# map), PLAY loads level_3d (GameState.current_level is already this level).
+func _show_level_start_modal(level_num: int) -> void:
+	if _level_start_modal != null and is_instance_valid(_level_start_modal):
+		return
+	if get_node_or_null("/root/GameState"):
+		GameState.current_level = level_num
+	var path := "res://resources/levels/level_%d.tres" % level_num
+	var def: LevelDef = load(path) if ResourceLoader.exists(path) else null
+	var title := def.display_name if def != null else "LEVEL %d" % level_num
+	var goal := LevelDef.goal_text(def, level_num)
+	var layer := CanvasLayer.new()
+	layer.name = "LevelStartLayer"
+	layer.layer = 80
+	add_child(layer)
+	var modal: LevelStartModal = LEVEL_START_MODAL.instantiate()
+	layer.add_child(modal)
+	_level_start_modal = modal
+	modal.play_pressed.connect(_on_level_start_play)
+	modal.close_pressed.connect(_on_level_start_close)
+	modal.show_level(title, goal)
+
+func _on_level_start_play() -> void:
+	get_tree().change_scene_to_file("res://scenes/level_3d.tscn")
+
+func _on_level_start_close() -> void:
+	if _level_start_modal != null and is_instance_valid(_level_start_modal):
+		var layer: Node = _level_start_modal.get_parent()
+		if layer != null:
+			layer.queue_free()
+		else:
+			_level_start_modal.queue_free()
+	_level_start_modal = null
+	_walking = false  # cancel: stay on the map, allow taps again
+
 func _start_level(btn: Button, level_num: int) -> void:
 	if _drag_dist > 30.0:
 		return  # this press was the tail of a pan-drag, not a tap
@@ -1630,7 +1671,11 @@ func _start_level(btn: Button, level_num: int) -> void:
 	tween.tween_property(btn, "scale", cur, 0.18) \
 		.set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
 	await tween.finished
-	get_tree().change_scene_to_file("res://scenes/level_3d.tscn")
+	btn.disabled = false
+	# Soda-Crush flow: show the level-start modal (title + goal + PLAY!) instead
+	# of loading the level straight away. PLAY loads level_3d; X cancels back to
+	# the map. GameState.current_level is already set to level_num above.
+	_show_level_start_modal(level_num)
 
 # One step of the cowboy's walk: advance his arc-length and pan the view to
 # follow (which also repositions his marker via _place_cowboy_marker).
@@ -1679,7 +1724,9 @@ func _maybe_celebrate_win() -> void:
 	if get_node_or_null("/root/GameState") and GameState.continue_to_next:
 		GameState.continue_to_next = false
 		await get_tree().create_timer(0.4).timeout
-		get_tree().change_scene_to_file("res://scenes/level_3d.tscn")
+		# Continue also routes through the level-start modal for the now-current
+		# level: PLAY loads it, X stays on the map.
+		_show_level_start_modal(GameState.current_level)
 
 # Scale-pops the just-completed orb's StarRating (0 -> 1.2 -> 1, TRANS_BACK) with
 # a small sparkle, so the earned stars visibly "land" during the celebration.
