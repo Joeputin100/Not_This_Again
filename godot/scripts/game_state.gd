@@ -23,8 +23,21 @@ const MAX_HEARTS: int = 5
 const REGEN_INTERVAL_S: float = 1800.0
 const SAVE_PATH: String = "user://gamestate.cfg"
 
+# Tests set this to a temp path; empty = use SAVE_PATH.
+var SAVE_PATH_OVERRIDE: String = ""
+
+func _save_path() -> String:
+	return SAVE_PATH_OVERRIDE if SAVE_PATH_OVERRIDE != "" else SAVE_PATH
+
 # Iter 82: timestamp when hearts last dropped below MAX. 0 = at full.
 var _last_spend_unix: int = 0
+
+# Win/retry flow: per-level best result {level:int -> {stars:int, bounty:int}}.
+# Persisted. Drives the map orbs' star display.
+var level_best: Dictionary = {}
+# Transient (NOT persisted) handoff: set to the level number just won so
+# level_select plays the celebration walk on its next _ready, then cleared.
+var just_won_level: int = 0
 
 var hearts: int = MAX_HEARTS:
 	set(value):
@@ -106,6 +119,15 @@ func reset() -> void:
 	current_level = 1
 	_last_spend_unix = 0
 
+# Win/retry flow: record a level result, keeping the best stars and bounty.
+func record_level_result(level: int, stars: int, run_bounty: int) -> void:
+	var prev: Dictionary = level_best.get(level, {"stars": 0, "bounty": 0})
+	level_best[level] = {
+		"stars": maxi(int(prev["stars"]), stars),
+		"bounty": maxi(int(prev["bounty"]), run_bounty),
+	}
+	_save_to_disk()
+
 # Iter 82: persistence to user://gamestate.cfg. ConfigFile (INI-style)
 # is the simplest portable Godot save format. Only ITER 82 persisted
 # fields are hearts + _last_spend_unix; bounty + current_level will
@@ -116,29 +138,32 @@ func _ready() -> void:
 func _save_to_disk() -> void:
 	# Iter 82: skip persistence for standalone test instances (autofree
 	# instances aren't in the scene tree). Only the autoload at
-	# /root/GameState writes to disk.
-	if not is_inside_tree():
+	# /root/GameState writes to disk. Win/retry flow: tests may opt into
+	# persistence by setting SAVE_PATH_OVERRIDE to a temp path.
+	if not is_inside_tree() and SAVE_PATH_OVERRIDE == "":
 		return
 	var cfg := ConfigFile.new()
 	cfg.set_value("hearts", "current", hearts)
 	cfg.set_value("hearts", "last_spend_unix", _last_spend_unix)
 	cfg.set_value("meta", "bounty", bounty)
-	var _err: int = cfg.save(SAVE_PATH)
+	cfg.set_value("meta", "current_level", current_level)
+	cfg.set_value("meta", "level_best", level_best)
+	var _err: int = cfg.save(_save_path())
 
 func _load_from_disk() -> void:
-	if not FileAccess.file_exists(SAVE_PATH):
+	if not FileAccess.file_exists(_save_path()):
 		return
 	var cfg := ConfigFile.new()
-	var err: int = cfg.load(SAVE_PATH)
-	if err != OK:
+	if cfg.load(_save_path()) != OK:
 		return
 	# Directly assign without going through the setter (we don't want
 	# to trigger _save_to_disk in a load loop or emit signals before
 	# subscribers are wired).
-	var saved_hearts: int = int(cfg.get_value("hearts", "current", MAX_HEARTS))
-	hearts = clampi(saved_hearts, 0, MAX_HEARTS)
+	hearts = clampi(int(cfg.get_value("hearts", "current", MAX_HEARTS)), 0, MAX_HEARTS)
 	_last_spend_unix = int(cfg.get_value("hearts", "last_spend_unix", 0))
 	bounty = int(cfg.get_value("meta", "bounty", 0))
+	current_level = maxi(1, int(cfg.get_value("meta", "current_level", 1)))
+	level_best = cfg.get_value("meta", "level_best", {})
 	# Apply any regen that happened while the app was closed.
 	apply_regen()
 
