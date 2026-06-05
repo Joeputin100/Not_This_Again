@@ -1,7 +1,39 @@
-[gd_scene load_steps=3 format=3]
+[gd_scene load_steps=8 format=3]
 
 [ext_resource type="Script" path="res://scripts/fail_modal.gd" id="1"]
 [ext_resource type="PackedScene" path="res://scenes/ui/heart_cookie_row.tscn" id="2"]
+[ext_resource type="Texture2D" path="res://assets/sprites/ui/winflow/panel_candy.png" id="3"]
+[ext_resource type="Texture2D" path="res://assets/sprites/ui/winflow/sunburst.png" id="4"]
+[ext_resource type="Texture2D" path="res://assets/sprites/ui/winflow/header_pill.png" id="5"]
+
+[sub_resource type="StyleBoxFlat" id="btn_orange"]
+content_margin_left = 40.0
+content_margin_top = 24.0
+content_margin_right = 40.0
+content_margin_bottom = 28.0
+bg_color = Color(0.95, 0.55, 0.18, 1)
+border_width_bottom = 10
+border_color = Color(0.68, 0.36, 0.08, 1)
+corner_radius_top_left = 34
+corner_radius_top_right = 34
+corner_radius_bottom_left = 34
+corner_radius_bottom_right = 34
+shadow_color = Color(0, 0, 0, 0.45)
+shadow_size = 12
+shadow_offset = Vector2(0, 7)
+
+[sub_resource type="StyleBoxFlat" id="btn_orange_disabled"]
+content_margin_left = 40.0
+content_margin_top = 24.0
+content_margin_right = 40.0
+content_margin_bottom = 28.0
+bg_color = Color(0.7, 0.6, 0.5, 1)
+border_width_bottom = 8
+border_color = Color(0.5, 0.42, 0.34, 1)
+corner_radius_top_left = 34
+corner_radius_top_right = 34
+corner_radius_bottom_left = 34
+corner_radius_bottom_right = 34
 
 [node name="FailModal" type="Control"]
 layout_mode = 3
@@ -15,27 +47,78 @@ layout_mode = 1
 anchors_preset = 15
 anchor_right = 1.0
 anchor_bottom = 1.0
-color = Color(0, 0, 0, 0.5)
+color = Color(0, 0, 0, 0.6)
 
-[node name="Panel" type="Panel" parent="."]
+[node name="Panel" type="NinePatchRect" parent="."]
 layout_mode = 1
 anchors_preset = 8
 anchor_left = 0.5
 anchor_top = 0.5
 anchor_right = 0.5
 anchor_bottom = 0.5
-offset_left = -360.0
-offset_top = -450.0
-offset_right = 360.0
-offset_bottom = 450.0
+offset_left = -420.0
+offset_top = -560.0
+offset_right = 420.0
+offset_bottom = 440.0
+modulate = Color(0.86, 0.83, 0.84, 1)
+texture = ExtResource("3")
+patch_margin_left = 100
+patch_margin_top = 100
+patch_margin_right = 100
+patch_margin_bottom = 120
 
-[node name="Title" type="Label" parent="Panel"]
+[node name="Sunburst" type="TextureRect" parent="Panel"]
+self_modulate = Color(0.75, 0.7, 0.72, 0.6)
+layout_mode = 1
+anchors_preset = 5
+anchor_left = 0.5
+anchor_right = 0.5
+offset_left = -320.0
+offset_top = 200.0
+offset_right = 320.0
+offset_bottom = 840.0
+texture = ExtResource("4")
+expand_mode = 1
+stretch_mode = 5
+
+[node name="HeaderPill" type="TextureRect" parent="Panel"]
+self_modulate = Color(0.62, 0.45, 0.5, 1)
+layout_mode = 1
+anchors_preset = 5
+anchor_left = 0.5
+anchor_right = 0.5
+offset_left = -320.0
+offset_top = 18.0
+offset_right = 320.0
+offset_bottom = 198.0
+texture = ExtResource("5")
+expand_mode = 1
+stretch_mode = 5
+
+[node name="HeaderLabel" type="Label" parent="Panel/HeaderPill"]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+offset_top = -8.0
+theme_override_colors/font_color = Color(1, 0.95, 0.93, 1)
+theme_override_colors/font_outline_color = Color(0.3, 0.18, 0.2, 1)
+theme_override_constants/outline_size = 8
+theme_override_font_sizes/font_size = 52
+text = "POSSE SCATTERED!"
+horizontal_alignment = 1
+vertical_alignment = 1
+
+[node name="BountyLabel" type="Label" parent="Panel"]
 layout_mode = 1
 anchors_preset = 10
 anchor_right = 1.0
-offset_top = 60.0
-offset_bottom = 130.0
-text = "POSSE SCATTERED!"
+offset_top = 300.0
+offset_bottom = 360.0
+theme_override_colors/font_color = Color(0.45, 0.3, 0.13, 1)
+theme_override_constants/outline_size = 0
+theme_override_font_sizes/font_size = 44
+text = "BOUNTY REACHED"
 horizontal_alignment = 1
 vertical_alignment = 1
 
@@ -43,56 +126,77 @@ vertical_alignment = 1
 layout_mode = 1
 anchors_preset = 10
 anchor_right = 1.0
-offset_top = 180.0
-offset_bottom = 260.0
+offset_top = 350.0
+offset_bottom = 480.0
+theme_override_colors/font_color = Color(0.36, 0.22, 0.08, 1)
+theme_override_colors/font_outline_color = Color(1, 0.95, 0.8, 1)
+theme_override_constants/outline_size = 10
+theme_override_font_sizes/font_size = 110
+text = "0"
 horizontal_alignment = 1
 vertical_alignment = 1
 
 [node name="HeartCookieRow" parent="Panel" instance=ExtResource("2")]
 layout_mode = 1
-anchors_preset = 8
+anchors_preset = 5
 anchor_left = 0.5
-anchor_top = 0.5
 anchor_right = 0.5
-anchor_bottom = 0.5
-offset_left = -130.0
-offset_top = -26.0
-offset_right = 130.0
-offset_bottom = 26.0
+offset_left = -150.0
+offset_top = 510.0
+offset_right = 150.0
+offset_bottom = 572.0
 
 [node name="RetryButton" type="Button" parent="Panel"]
 layout_mode = 1
-anchors_preset = 8
+anchors_preset = 7
 anchor_left = 0.5
-anchor_top = 0.5
+anchor_top = 1.0
 anchor_right = 0.5
-anchor_bottom = 0.5
-offset_left = -200.0
-offset_top = 120.0
-offset_right = 200.0
-offset_bottom = 200.0
+anchor_bottom = 1.0
+offset_left = -260.0
+offset_top = -340.0
+offset_right = 260.0
+offset_bottom = -220.0
+theme_override_styles/normal = SubResource("btn_orange")
+theme_override_styles/hover = SubResource("btn_orange")
+theme_override_styles/pressed = SubResource("btn_orange")
+theme_override_styles/focus = SubResource("btn_orange")
+theme_override_styles/disabled = SubResource("btn_orange_disabled")
+theme_override_colors/font_color = Color(1, 1, 1, 1)
+theme_override_colors/font_outline_color = Color(0.45, 0.22, 0.05, 1)
+theme_override_constants/outline_size = 8
+theme_override_font_sizes/font_size = 64
 text = "RETRY"
 
 [node name="CostLabel" type="Label" parent="Panel"]
 layout_mode = 1
-anchors_preset = 10
-anchor_right = 1.0
-offset_top = 620.0
-offset_bottom = 680.0
+anchors_preset = 7
+anchor_left = 0.5
+anchor_top = 1.0
+anchor_right = 0.5
+anchor_bottom = 1.0
+offset_left = -300.0
+offset_top = -210.0
+offset_right = 300.0
+offset_bottom = -160.0
+theme_override_colors/font_color = Color(0.5, 0.35, 0.18, 1)
+theme_override_constants/outline_size = 0
+theme_override_font_sizes/font_size = 38
 horizontal_alignment = 1
 vertical_alignment = 1
 
 [node name="MapButton" type="Button" parent="Panel"]
 layout_mode = 1
-anchors_preset = 8
+anchors_preset = 7
 anchor_left = 0.5
-anchor_top = 0.5
+anchor_top = 1.0
 anchor_right = 0.5
-anchor_bottom = 0.5
-offset_left = -200.0
-offset_top = 720.0
-offset_right = 200.0
-offset_bottom = 800.0
+anchor_bottom = 1.0
+offset_left = -180.0
+offset_top = -150.0
+offset_right = 180.0
+offset_bottom = -50.0
+theme_override_font_sizes/font_size = 48
 text = "MAP"
 
 [connection signal="pressed" from="Panel/RetryButton" to="." method="_on_retry"]

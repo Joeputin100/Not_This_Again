@@ -4067,9 +4067,14 @@ func _present_win_modal() -> void:
 		GameState.just_won_level = lvl
 	var hearts: int = GameState.hearts if get_node_or_null("/root/GameState") else 5
 	var hmax: int = GameState.MAX_HEARTS if get_node_or_null("/root/GameState") else 5
+	# Winflow: achievement-header banner (FLAWLESS / WHOLE POSSE / JACKPOT / ...).
+	var posse_start: int = _level_def.start_posse if _level_def != null else 0
+	var jackpot: int = int(int(thr[2]) * 1.5) if thr.size() > 2 else 999999
+	var hdr: Dictionary = GameState.win_header(
+		stars, _hits, _posse_count_3d, posse_start, rb, jackpot)
 	_end_modal = WIN_MODAL_SCENE.instantiate()
 	get_node("UI").add_child(_end_modal)
-	_end_modal.show_win(diff, rb, stars, next_needed, hearts, hmax)
+	_end_modal.show_win(diff, rb, stars, next_needed, hearts, hmax, hdr)
 	_end_modal.continue_pressed.connect(_goto_map.bind(true))
 	_end_modal.replay_pressed.connect(_retry_level)
 	_end_modal.map_pressed.connect(_goto_map.bind(false))

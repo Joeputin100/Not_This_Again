@@ -1,8 +1,9 @@
 class_name FailModal
 extends Control
 
-# Bounce-in fail panel. RETRY costs 1 heart on press (chomp the rightmost
-# cookie, then emit). If hearts == 0, RETRY is disabled with a regen note.
+# Candy fail panel (muted skin of the win modal). RETRY costs 1 heart on press
+# (chomp the rightmost cookie, then emit). If hearts == 0, RETRY is disabled
+# with a regen note.
 
 signal retry_pressed
 signal map_pressed

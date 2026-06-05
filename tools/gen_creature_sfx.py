@@ -97,6 +97,11 @@ SFX: dict[str, tuple[str, float]] = {
         "refilling in a candy mobile game, upbeat and brief",
         1.0,
     ),
+    # --- winflow: candy victory fanfare ---
+    "win_fanfare_candy": (
+        "a short triumphant candy-western victory fanfare, bright brass + sparkle, celebratory, ~1.5s",
+        1.5,
+    ),
 }
 
 

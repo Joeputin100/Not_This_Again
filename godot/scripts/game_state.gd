@@ -175,6 +175,23 @@ func _load_from_disk() -> void:
 	# Apply any regen that happened while the app was closed.
 	apply_regen()
 
+# Winflow: pick the achievement-header banner for a win, by PRIORITY (first
+# match wins). Returns {"text": String, "color": Color}. The caller computes
+# jackpot_threshold (typically star_thresholds[2] * 1.5). Pure + testable.
+static func win_header(stars: int, hits: int, posse_end: int, posse_start: int,
+		run_bounty: int, jackpot_threshold: int) -> Dictionary:
+	if hits == 0:
+		return {"text": "FLAWLESS!", "color": Color(0.25, 0.85, 0.75)}
+	if posse_end >= posse_start:
+		return {"text": "WHOLE POSSE!", "color": Color(1.0, 0.48, 0.66)}
+	if run_bounty >= jackpot_threshold:
+		return {"text": "JACKPOT!", "color": Color(1.0, 0.82, 0.25)}
+	if stars >= 3:
+		return {"text": "TOP GUMDROP!", "color": Color(0.69, 0.42, 1.0)}
+	if stars == 2:
+		return {"text": "TRIGGER TREAT!", "color": Color(1.0, 0.62, 0.17)}
+	return {"text": "SWEET SHOT!", "color": Color(1.0, 0.62, 0.17)}
+
 # Win/retry flow: stars (1..3) earned for a run's bounty against ascending
 # thresholds. A win always grants >= 1 star; result is clamped to 3.
 static func stars_for(run_bounty: int, thresholds: Array) -> int:
