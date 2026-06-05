@@ -60,39 +60,43 @@ mouse_filter = 2
 
 ; Iter370 winflow: in-level lives moved off the bottom Quake bar into an
 ; organic wrapped-taffy cutout pinned top-left, where the heart cookies dance.
-; A big outlaws-remaining number sits in the upper half of the flat caramel
-; centre panel; the dancing cookie row sits in the lower half. Panel rect
-; (fractions of the 846×828 sprite): L0.195 T0.260 R0.755 B0.720.
+; winflow v2: badge enlarged ~1.8x and the heart cookies now scatter in a
+; staggered ring AROUND the big outlaws-remaining number inside the flat
+; caramel centre panel (hearts behind, number on top). Panel rect (fractions
+; of the 846×828 sprite): L0.195 T0.260 R0.755 B0.720; on the 576x563 badge
+; that is roughly x[112..435] y[146..405].
 [node name="HeartsCutout" type="TextureRect" parent="UI"]
 offset_left = 12.0
 offset_top = 8.0
-offset_right = 332.0
-offset_bottom = 321.0
+offset_right = 588.0
+offset_bottom = 571.0
 mouse_filter = 2
 texture = ExtResource("5_taffy")
 expand_mode = 1
 stretch_mode = 5
 
+; Hearts come BEFORE the number in the tree so the number draws on top.
+[node name="HeartCookieRow" parent="UI/HeartsCutout" instance=ExtResource("6_heartrow")]
+offset_left = 112.0
+offset_top = 146.0
+offset_right = 435.0
+offset_bottom = 405.0
+custom_minimum_size = Vector2(323, 259)
+staggered = true
+
 [node name="OutlawNumber" type="Label" parent="UI/HeartsCutout"]
-offset_left = 62.0
-offset_top = 81.0
-offset_right = 242.0
-offset_bottom = 153.0
+offset_left = 193.0
+offset_top = 205.0
+offset_right = 353.0
+offset_bottom = 345.0
 mouse_filter = 2
 theme_override_colors/font_color = Color(0.99, 0.93, 0.78, 1)
 theme_override_colors/font_outline_color = Color(0.18, 0.07, 0.04, 1)
-theme_override_constants/outline_size = 8
-theme_override_font_sizes/font_size = 72
+theme_override_constants/outline_size = 10
+theme_override_font_sizes/font_size = 104
 text = "0"
 horizontal_alignment = 1
 vertical_alignment = 1
-
-[node name="HeartCookieRow" parent="UI/HeartsCutout" instance=ExtResource("6_heartrow")]
-offset_left = 62.0
-offset_top = 153.0
-offset_right = 242.0
-offset_bottom = 226.0
-custom_minimum_size = Vector2(180, 73)
 
 [node name="PosseLabel" type="Label" parent="UI"]
 anchors_preset = -1

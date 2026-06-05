@@ -10,6 +10,12 @@ const DIR := "res://assets/sprites/ui/winflow/"
 const FULL := preload("res://assets/sprites/ui/winflow/heart_full.png")
 const EMPTY := preload("res://assets/sprites/ui/winflow/heart_empty.png")
 
+# Default layout is a flat horizontal row (used by the win/fail modals, the
+# main menu and the splash). The in-level taffy HUD sets `staggered = true`,
+# which scatters the cookies in a ring around a central gap so a big outlaw
+# number can sit in the middle, framed by the hearts.
+@export var staggered: bool = false
+
 var _current: int = 5
 var _max: int = 5
 var _slots: Array = []   # TextureRect per slot
@@ -32,20 +38,54 @@ func set_hearts(current: int, maximum: int) -> void:
 	if regen and regen_slot < _slots.size():
 		_play_regen(regen_slot)
 
+# Returns [centre_pos, size] for slot `i` in the current layout. The position
+# is the cookie's top-left; centre_pos is the visual centre used as the tween
+# anchor (so dance/lonely/regen behave the same in either layout).
+func _slot_geometry(i: int) -> Array:
+	if staggered:
+		return _slot_geometry_staggered(i)
+	var slot_w: float = size.x / float(_max)
+	var sz: float = minf(slot_w * 0.9, size.y)
+	var pos := Vector2(slot_w * (float(i) + 0.5) - sz * 0.5, (size.y - sz) * 0.5)
+	return [pos, sz]
+
+# Scatters the cookies in a staggered ring around the row's centre, leaving a
+# clear central gap (for the big outlaw number). Cookies alternate up/down and
+# fan out across the width; bigger than the flat row so they read clearly.
+func _slot_geometry_staggered(i: int) -> Array:
+	var n: int = maxi(_max, 1)
+	var sz: float = minf(size.x / float(n) * 1.18, size.y * 0.62)
+	var cx: float = size.x * 0.5
+	var cy: float = size.y * 0.5
+	# Spread the cookies across the width, framing a central gap. Fraction in
+	# [-1, 1] from left to right; the centre slots are pushed outward so the
+	# number is not crowded.
+	var frac: float = 0.0
+	if n > 1:
+		frac = (float(i) / float(n - 1)) * 2.0 - 1.0
+	var x: float = cx + frac * (size.x * 0.5 - sz * 0.5)
+	# Alternate the vertical offset so the ring staggers; the outermost cookies
+	# ride a touch lower so the whole cluster hugs the number.
+	var stagger: float = (1.0 if (i % 2 == 0) else -1.0) * size.y * 0.18
+	var dip: float = absf(frac) * size.y * 0.10
+	var y: float = cy + stagger + dip
+	return [Vector2(x - sz * 0.5, y - sz * 0.5), sz]
+
 func _rebuild() -> void:
 	for s in _slots:
 		if is_instance_valid(s): s.queue_free()
 	_slots.clear()
-	var slot_w: float = size.x / float(_max)
 	for i in range(_max):
 		var node := TextureRect.new()
 		node.texture = FULL if i < _current else EMPTY
 		node.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
 		node.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
-		var sz: float = minf(slot_w * 0.9, size.y)
+		var geo: Array = _slot_geometry(i)
+		var pos: Vector2 = geo[0]
+		var sz: float = geo[1]
 		node.custom_minimum_size = Vector2(sz, sz)
 		node.size = Vector2(sz, sz)
-		node.position = Vector2(slot_w * (float(i) + 0.5) - sz * 0.5, (size.y - sz) * 0.5)
+		node.position = pos
 		node.pivot_offset = Vector2(sz * 0.5, sz)   # pivot at the bottom-centre
 		add_child(node)
 		_slots.append(node)
