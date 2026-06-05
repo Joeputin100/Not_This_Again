@@ -307,6 +307,8 @@ const OUTLAW_BULLET_HIT_X: float = 0.5  # iter 119: bullet only hits if within t
 const OUTLAW_HIT_RADIUS_SQ: float = 1.5 * 1.5
 const OUTLAW_HP: int = 10  # iter 118: 3 → 10 (1 cowboy firing 6/clip+1s reload = ~3.5 bullets/sec, dies in ~3s)
 var _outlaw_spawn_timer: float = 0.0
+var _outlaws_remaining: int = 0   # ticks down as outlaws leave the field; 0 -> boss
+var _outlaws_spawned: int = 0     # stop spawning once this reaches the quota
 
 # Iter 77: Slippery Pete boss. Appears at PETE_SPAWN_DELAY into the
 # level. Slow approach, much higher HP, drops the WIN modal on defeat.
@@ -557,6 +559,8 @@ func _ready() -> void:
 		_level_def = load(_def_path)
 	if get_node_or_null("/root/GameState"):
 		_bounty_at_start = GameState.bounty
+	if _level_def != null and _level_def.outlaw_quota > 0:
+		_outlaws_remaining = _level_def.outlaw_quota
 	# SP2: starting posse size from the level definition (default 5).
 	if _level_def != null and _level_def.start_posse > 0 and _level_def.start_posse != _posse_count_3d:
 		_posse_count_3d = _level_def.start_posse
@@ -2846,6 +2850,7 @@ func _skill_kill_outlaw(outlaw: Node3D) -> void:
 	outlaw.set_meta("hp", 0)
 	outlaw.set_meta("dying", true)
 	outlaw.set_meta("death_timer", VAGRANT_DEATH_LIFETIME)
+	_outlaw_left_field(outlaw)
 	var death_sprite: Sprite3D = outlaw.get_meta("sprite_3d", null)
 	if death_sprite != null and is_instance_valid(death_sprite):
 		var death_sv: SubViewport = _get_or_create_shared_video_viewport(VAGRANT_DEATH_STREAM)
@@ -3462,7 +3467,7 @@ func _set_pete_anim(pete: Node3D, stream: VideoStream, duration: float = 0.0) ->
 func _dispatch_level_event(ev: LevelEvent) -> void:
 	match ev.kind:
 		LevelEvent.EventKind.BOSS:
-			if not _pete_spawned and not _test_range_mode:
+			if not _pete_spawned and not _test_range_mode and not _quota_driven():
 				_pete_spawned = true
 				if String(ev.params.get("boss", "pete")) == "rustler":
 					_spawn_candy_rustler()
@@ -4758,7 +4763,47 @@ func _refresh_outlaw_hp_bar(unit: Node3D) -> void:
 		c = Color(0.95, 0.25, 0.25, 1)
 	(fg.material_override as StandardMaterial3D).albedo_color = c
 
+func outlaws_remaining() -> int:
+	return _outlaws_remaining
+
+func _quota_driven() -> bool:
+	return _level_def != null and _level_def.outlaw_quota > 0
+
+# Single chokepoint: an outlaw has LEFT THE FIELD (defeated or scrolled past).
+# The `counted` meta guard makes a double-call safe.
+func _outlaw_left_field(outlaw: Node) -> void:
+	if _level_def == null or _level_def.outlaw_quota <= 0:
+		return
+	if outlaw != null and outlaw.get_meta("counted", false):
+		return
+	if outlaw != null:
+		outlaw.set_meta("counted", true)
+	_outlaws_remaining = maxi(0, _outlaws_remaining - 1)
+	DebugLog.add("outlaw left field -> remaining=%d" % _outlaws_remaining)
+	_set_outlaws_label(_outlaws_remaining)   # defined in the next task; guard if missing
+	if _outlaws_remaining == 0:
+		_trigger_quota_boss()
+
+# Temporary safe stub — replaced in the taffy-cutout task with the real label update.
+func _set_outlaws_label(_n: int) -> void:
+	pass
+
+func _trigger_quota_boss() -> void:
+	if _pete_spawned or _test_range_mode:
+		return
+	_pete_spawned = true
+	if _boss_kind() == "rustler":
+		_spawn_candy_rustler()
+	else:
+		_spawn_pete()
+	for _g in gates_root.get_children():
+		_g.queue_free()
+	_level_state = LevelState.BOSS
+	DebugLog.add("quota cleared -> boss (kind=%s)" % _boss_kind())
+
 func _spawn_outlaw() -> void:
+	if _level_def != null and _level_def.outlaw_quota > 0 and _outlaws_spawned >= _level_def.outlaw_quota:
+		return   # quota fully emitted — no more outlaws
 	# Iter 116: re-enable video billboard, but this time via SHARED top-
 	# level SubViewports (see _make_video_billboard) — iter 114 confirmed
 	# that nested-SubViewport video billboards don't render on Android.
@@ -4776,6 +4821,7 @@ func _spawn_outlaw() -> void:
 	outlaw.set_meta("dying", false)
 	outlaw.set_meta("death_timer", 0.0)
 	outlaws_root.add_child(outlaw)
+	_outlaws_spawned += 1
 	var billboard: Node3D = _make_video_billboard(VAGRANT_IDLE_STREAM, 2.5)
 	outlaw.add_child(billboard)
 	# Stash the Sprite3D ref so death-anim swap can replace its texture
@@ -5465,6 +5511,7 @@ func _process(delta: float) -> void:
 				_outlaw_fire(outlaw)
 		outlaw.set_meta("fire_timer", ft)
 		if outlaw.position.z > OBSTACLE_DESPAWN_Z:
+			_outlaw_left_field(outlaw)
 			outlaw.queue_free()
 		# Bullet-vs-outlaw collision (use posse bullets)
 		for bullet in bullets_root.get_children():
@@ -5497,6 +5544,7 @@ func _process(delta: float) -> void:
 					# share one death-stream render (they sync, acceptable).
 					outlaw.set_meta("dying", true)
 					outlaw.set_meta("death_timer", VAGRANT_DEATH_LIFETIME)
+					_outlaw_left_field(outlaw)
 					var death_sprite: Sprite3D = outlaw.get_meta("sprite_3d", null)
 					if death_sprite != null and is_instance_valid(death_sprite):
 						var death_sv: SubViewport = _get_or_create_shared_video_viewport(VAGRANT_DEATH_STREAM)
@@ -5590,7 +5638,7 @@ func _process(delta: float) -> void:
 	# Iter 77: spawn Pete after PETE_SPAWN_DELAY.
 	# Iter 118: only counts elapsed during PLAYING.
 	# Iter 124: skip Pete in test range mode.
-	if _level_state == LevelState.PLAYING and not _pete_spawned and not _test_range_mode and not _boss_from_data and _level_elapsed >= PETE_SPAWN_DELAY:
+	if _level_state == LevelState.PLAYING and not _pete_spawned and not _test_range_mode and not _boss_from_data and not _quota_driven() and _level_elapsed >= PETE_SPAWN_DELAY:
 		_pete_spawned = true
 		# Iter 157: boss dispatch by level — level 2 → The Candy Rustler,
 		# every other level → Slippery Pete.
