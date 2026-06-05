@@ -2574,10 +2574,11 @@ func _spawn_gate() -> void:
 	right_door.position = Vector3(GATE_WIDTH * 0.25, 0, 0)
 	gate.add_child(right_door)
 	gate.set_meta("right_door", right_door)
-	# Math value labels (Label3D billboards above each door)
+	# Math value labels (Label3D billboards centered across each door face — iter424:
+	# was at GATE_HEIGHT*0.55 (above the gate); the gates are tall now, so center them)
 	var llabel := Label3D.new()
 	llabel.text = "%s%d" % [operators[0], values[0]]
-	llabel.position = Vector3(-GATE_WIDTH * 0.25, GATE_HEIGHT * 0.55, 0.35)
+	llabel.position = Vector3(-GATE_WIDTH * 0.25, 0.0, 0.35)
 	llabel.no_depth_test = true
 	llabel.font_size = 180
 	llabel.outline_size = 24
@@ -2586,7 +2587,7 @@ func _spawn_gate() -> void:
 	gate.set_meta("left_label", llabel)  # iter 110: bullets update label text via meta
 	var rlabel := Label3D.new()
 	rlabel.text = "%s%d" % [operators[1], values[1]]
-	rlabel.position = Vector3(GATE_WIDTH * 0.25, GATE_HEIGHT * 0.55, 0.35)
+	rlabel.position = Vector3(GATE_WIDTH * 0.25, 0.0, 0.35)
 	rlabel.no_depth_test = true
 	rlabel.font_size = 180
 	rlabel.outline_size = 24

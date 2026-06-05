@@ -40,7 +40,7 @@ Built on three existing systems (most of this is new content on proven rails):
 ### 2c. The Sugar Rush (`_rush_kimmy()`)
 Dispatched on rescue (directly, or via `_play_rush_3d("KIMMY")` styled like the other rushes):
 - **Transform:** swap the caged plain-stallion art → **Rainbow Kimmy** (`kimmy_rainbow.png`, shades + guitar); pop her to the fore with a bounce.
-- **Skittles screen-clear:** iterate `outlaws_root` (and destructible obstacles in `obstacles_root` — barrels, etc., excluding bulls/captives if desired) and destroy each with a rainbow Skittles burst; award bounty per kill via `_add_bounty`. A big rainbow-Skittles particle wave sells it (in-engine `CPUParticles`, rainbow palette — **no custom shaders**).
+- **Skittles screen-clear:** iterate `outlaws_root` AND the destructible obstacles in `obstacles_root` — barrels, cacti, **and bulls** (everything destructible on screen) — and destroy each with a rainbow Skittles burst; award bounty per kill via `_add_bounty`. The only thing NOT destroyed is the captive/cage itself (Kimmy) and the player's own posse. A big rainbow-Skittles particle wave sells it (in-engine `CPUParticles`, rainbow palette — **no custom shaders**).
 - **Audio/flourish:** play the ~3s crescendo rock-guitar riff SFX (`kimmy_riff`), show a `FlourishBanner` "RAINBOW KIMMY!" / "SUGAR RUSH!".
 - **Resolve:** after the riff, clear the cage, resume scroll, continue. Counts toward the outlaw quota appropriately (destroyed outlaws decrement `_outlaws_remaining` via the existing `_outlaw_left_field` chokepoint).
 
