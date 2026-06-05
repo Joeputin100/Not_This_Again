@@ -56,8 +56,13 @@ from pathlib import Path
 
 SRC = Path("docs/superpowers/assets/kimmy_2026-06-05")
 DST = Path("godot/assets/sprites/props")
+# green-screen sources -> green-keyed game sprite names
 MAP = {"kimmy_caged": "kimmy_caged", "kimmy_rainbow": "kimmy_rainbow",
-       "crate_rainbow": "bonus_crate_rainbow", "bullet_rainbow": "candy_rainbow"}
+       "crate_rainbow": "bonus_crate_rainbow", "bullet_rainbow": "candy_rainbow",
+       "cage_back": "kimmy_cage_back", "cage_front": "kimmy_cage_front",
+       "weapon_rainbow_icon": "weapon_rainbow", "kimmy_explosion_bomb": "kimmy_bomb"}
+# black-bg premium VFX -> copied AS-IS (used with ADDITIVE blend in-engine, black drops out; do NOT green-key)
+VFX = {"vfx_rainbow_chain": "vfx_rainbow_chain", "vfx_rainbow_shock": "vfx_rainbow_shock"}
 
 def greenkey(src, low=14, high=52):
     a = np.array(Image.open(src).convert("RGBA")).astype(np.float32)
@@ -76,6 +81,11 @@ for stem, name in MAP.items():
     src = SRC / f"{stem}.png"
     if not src.exists(): raise SystemExit(f"missing {src}")
     greenkey(src).save(DST / f"{name}.png"); print("wrote", DST / f"{name}.png")
+import shutil
+for stem, name in VFX.items():
+    src = SRC / f"{stem}.png"
+    if not src.exists(): raise SystemExit(f"missing {src}")
+    shutil.copyfile(src, DST / f"{name}.png"); print("copied(VFX additive)", DST / f"{name}.png")
 ```
 
 - [ ] **Step 2: Run it + import.**
@@ -85,7 +95,17 @@ Verify the 4 `.png` + `.png.import` exist. Programmatically assert each PNG is R
 
 - [ ] **Step 3: Commit.**
 ```bash
-git add tools/kimmy_assets.py godot/assets/sprites/props/kimmy_caged.png godot/assets/sprites/props/kimmy_rainbow.png godot/assets/sprites/props/bonus_crate_rainbow.png godot/assets/sprites/props/candy_rainbow.png godot/assets/sprites/props/*kimmy*.import godot/assets/sprites/props/bonus_crate_rainbow.png.import godot/assets/sprites/props/candy_rainbow.png.import
+git add tools/kimmy_assets.py \
+  godot/assets/sprites/props/kimmy_caged.png godot/assets/sprites/props/kimmy_rainbow.png \
+  godot/assets/sprites/props/bonus_crate_rainbow.png godot/assets/sprites/props/candy_rainbow.png \
+  godot/assets/sprites/props/kimmy_cage_back.png godot/assets/sprites/props/kimmy_cage_front.png \
+  godot/assets/sprites/props/weapon_rainbow.png godot/assets/sprites/props/kimmy_bomb.png \
+  godot/assets/sprites/props/vfx_rainbow_chain.png godot/assets/sprites/props/vfx_rainbow_shock.png \
+  godot/assets/sprites/props/kimmy_caged.png.import godot/assets/sprites/props/kimmy_rainbow.png.import \
+  godot/assets/sprites/props/bonus_crate_rainbow.png.import godot/assets/sprites/props/candy_rainbow.png.import \
+  godot/assets/sprites/props/kimmy_cage_back.png.import godot/assets/sprites/props/kimmy_cage_front.png.import \
+  godot/assets/sprites/props/weapon_rainbow.png.import godot/assets/sprites/props/kimmy_bomb.png.import \
+  godot/assets/sprites/props/vfx_rainbow_chain.png.import godot/assets/sprites/props/vfx_rainbow_shock.png.import
 git commit -m "kimmy: green-key art into prop sprites"
 ```
 
@@ -201,7 +221,7 @@ git commit -m "kimmy: pure rules (cage rainbow-only dmg, rescue outcome, screen-
   - `enum FireMode { CANDY, RIFLE, FROSTBITE, FRENZY }` → add `, RAINBOW`.
   - `CANDY_BULLET_TEX` → `FireMode.RAINBOW: ["candy_rainbow.png"]` (match the existing value shape — it maps to an Array of filenames under `_CANDY_DIR`; confirm `_CANDY_DIR` and put `candy_rainbow.png` there, or use the props path the others use).
   - `FIRE_INTERVAL_BY_MODE` → `FireMode.RAINBOW: 0.10` · `RANGE_Z_BY_MODE` → `FireMode.RAINBOW: -20.0` · `CLIP_BY_MODE` → `FireMode.RAINBOW: 7`.
-  - `WEAPON_NAMES` → `FireMode.RAINBOW: "RAINBOW"` · `WEAPON_ICONS` → `FireMode.RAINBOW: "candy_rainbow.png"` · `WEAPON_COLORS` → `FireMode.RAINBOW: Color(0.7, 0.5, 1.0, 1)`.
+  - `WEAPON_NAMES` → `FireMode.RAINBOW: "RAINBOW"` · `WEAPON_ICONS` → `FireMode.RAINBOW: "weapon_rainbow.png"` (the swirl ray-gun) · `WEAPON_COLORS` → `FireMode.RAINBOW: Color(0.7, 0.5, 1.0, 1)`.
   - `WEAPON_HERO` → `FireMode.RAINBOW: "res://assets/sprites/props/weapon_six_shooter.png"` (reuse the six-shooter hero).
   - `BONUS_COLORS` → `"rainbow": Color(0.7, 0.5, 1.0, 1)` · `BONUS_LABELS` → `"rainbow": "★"`.
   *(Confirm the `_CANDY_DIR` base path by reading `_make_candy_billboard`; if `candy_rainbow.png` lives in `assets/sprites/props/`, ensure `CANDY_BULLET_TEX[RAINBOW]` resolves there the way the other modes resolve their files.)*

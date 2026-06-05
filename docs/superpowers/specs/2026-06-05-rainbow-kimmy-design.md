@@ -28,9 +28,11 @@ Built on three existing systems (most of this is new content on proven rails):
 - A **special Rainbow crate**: reuse the `_spawn_bonus`/bonus-crate path but as a **designer-placed `BONUS` event** with `type = "rainbow"` (NOT added to the random `BONUS_TYPES` rotation). Art: `bonus_crate_rainbow.png`. Collecting sets `_fire_mode = RAINBOW` (same as the other weapon pickups).
 - Bullets: `CANDY_BULLET_TEX[RAINBOW]` = rainbow Skittles art. Behaves like a normal weapon vs outlaws (damage, fire interval, range — pick values comparable to FRENZY).
 - **Unique rule:** only `RAINBOW` bullets damage Kimmy's cage; all other fire modes do 0 cage damage (and surface a brief "RAINBOW ONLY" popup the first time the player hits the cage with the wrong weapon).
+- **Signature effect — Rainbow Prism Chain (FROSTBITE-caliber).** Like FROSTBITE, firing the Rainbow weapon ALSO emits a chain effect: `_emit_rainbow_chain()` reuses `_frost_chain_targets(muzzle, 3)` to find up to 3 nearby enemies and draws a premium **additive** rainbow-prism bolt sprite (`vfx_rainbow_chain.png`) along the cowboy→enemy path, popping a Skittles **shockwave** (`vfx_rainbow_shock.png`) at each link (chaining damage to those outlaws). Pre-rendered VFX sprites + additive blend (the orb-water-halo trick) — no custom shaders. The plain rainbow bullets still fly (and are what crack the cage).
+- **HUD icon:** the swirl ray-gun (`weapon_rainbow_icon.png`).
 
 ### 2b. Kimmy rescue set-piece
-- Reuse `_spawn_captive_hero(container_slug, hero_slug, ...)` (it already makes a captive `Node3D` with `hp`/`max_hp`/`is_captive` meta). Spawn the cage-wagon with `hero = "kimmy_caged"` (plain stallion), a **high cage HP** (`KIMMY_CAGE_HP`, tuned high — a multi-second sustained-fire crack), and a cage-HP bar.
+- Reuse `_spawn_captive_hero(container_slug, hero_slug, ...)` (it already makes a captive `Node3D` with `hp`/`max_hp`/`is_captive` meta). Spawn the cage as a TWO-LAYER sprite — `cage_back.png` (wagon bed + rear crystals) BEHIND the `kimmy_caged` stallion and `cage_front.png` (front rock-candy bars + padlock) IN FRONT of him (so she reads as inside) — with a **high cage HP** (`KIMMY_CAGE_HP`, tuned high — a multi-second sustained-fire crack), and a cage-HP bar.
 - **Blocks the path:** when the cage reaches its hold position, halt the world scroll (reuse the boss-engagement scroll-stop) until resolved.
 - **Rainbow-only damage:** in the bullet↔captive collision, a bullet reduces `KIMMY` cage HP only if `_fire_mode == RAINBOW` (or the bullet carries a `rainbow` meta); otherwise 0 (+ the "RAINBOW ONLY" cue).
 - **Rescue timer** (`KIMMY_RESCUE_WINDOW`, generous enough that a focused player with Rainbow can win): on expiry → **haul-away** (pushers tow the cage off / it scrolls away), resume scroll, "SHE GOT AWAY!" flourish, no rush.
@@ -40,6 +42,7 @@ Built on three existing systems (most of this is new content on proven rails):
 ### 2c. The Sugar Rush (`_rush_kimmy()`)
 Dispatched on rescue (directly, or via `_play_rush_3d("KIMMY")` styled like the other rushes):
 - **Transform:** swap the caged plain-stallion art → **Rainbow Kimmy** (`kimmy_rainbow.png`, shades + guitar); pop her to the fore with a bounce.
+- **Explosion visual:** the screen-clear is centered on a big **gumball-bomb** detonation (`kimmy_explosion_bomb.png`) + the rainbow **shockwave** (`vfx_rainbow_shock.png`), additive.
 - **Skittles screen-clear:** iterate `outlaws_root` AND the destructible obstacles in `obstacles_root` — barrels, cacti, **and bulls** (everything destructible on screen) — and destroy each with a rainbow Skittles burst; award bounty per kill via `_add_bounty`. The only thing NOT destroyed is the captive/cage itself (Kimmy) and the player's own posse. A big rainbow-Skittles particle wave sells it (in-engine `CPUParticles`, rainbow palette — **no custom shaders**).
 - **Audio/flourish:** play the ~3s crescendo rock-guitar riff SFX (`kimmy_riff`), show a `FlourishBanner` "RAINBOW KIMMY!" / "SUGAR RUSH!".
 - **Resolve:** after the riff, clear the cage, resume scroll, continue. Counts toward the outlaw quota appropriately (destroyed outlaws decrement `_outlaws_remaining` via the existing `_outlaw_left_field` chokepoint).
@@ -59,7 +62,9 @@ Dispatched on rescue (directly, or via `_play_rush_3d("KIMMY")` styled like the 
 - `kimmy_rainbow.png` — Rainbow Kimmy: peppermint stallion in **sunglasses holding an electric guitar**, rockstar pose. NB Pro.
 - `bonus_crate_rainbow.png` — the Rainbow weapon crate (matches the existing `bonus_crate_*` style, rainbow).
 - Rainbow Skittles **bullet** art for `CANDY_BULLET_TEX[RAINBOW]` (rainbow candy disc).
-- Cage-wagon art (reuse an existing wagon/container sprite if one fits, else a new `kimmy_cage.png`).
+- `cage_back.png` (wagon bed + rear rock-candy bars) + `cage_front.png` (front rock-candy bars + padlock) — the two-layer cage.
+- `weapon_rainbow_icon.png` (swirl ray-gun, HUD) · `kimmy_explosion_bomb.png` (gumball bomb, the rush detonation).
+- `vfx_rainbow_chain.png` (prism bolt) + `vfx_rainbow_shock.png` (Skittles shockwave) — additive VFX sprites for the Rainbow Prism Chain + the rush. All staged at `docs/superpowers/assets/kimmy_2026-06-05/`.
 - Skittles **burst** — in-engine `CPUParticles` with a rainbow color ramp (no shader).
 - `kimmy_riff` SFX — a ~3s **crescendo rock-guitar riff** via the ElevenLabs text-to-sound pipeline (`tools/gen_creature_sfx.py`, duration ~3s) → `godot/assets/sfx/creatures/kimmy_riff.mp3`, played by `AudioBus.play_sfx("kimmy_riff")`.
 
