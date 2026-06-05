@@ -4774,6 +4774,8 @@ func _quota_driven() -> bool:
 func _outlaw_left_field(outlaw: Node) -> void:
 	if _level_def == null or _level_def.outlaw_quota <= 0:
 		return
+	if outlaw == null or not outlaw.get_meta("is_outlaw", false):
+		return   # prospectors/pushers/captives don't count toward the outlaw quota
 	if outlaw != null and outlaw.get_meta("counted", false):
 		return
 	if outlaw != null:
@@ -4821,6 +4823,7 @@ func _spawn_outlaw() -> void:
 	outlaw.set_meta("dying", false)
 	outlaw.set_meta("death_timer", 0.0)
 	outlaws_root.add_child(outlaw)
+	outlaw.set_meta("is_outlaw", true)
 	_outlaws_spawned += 1
 	var billboard: Node3D = _make_video_billboard(VAGRANT_IDLE_STREAM, 2.5)
 	outlaw.add_child(billboard)
@@ -5418,6 +5421,7 @@ func _process(delta: float) -> void:
 		for o in outlaws_root.get_children():
 			if is_instance_valid(o) and not o.get_meta("falling", false) and not o.get_meta("is_captive", false) \
 			and not o.get_meta("dying", false) and _in_box(o.position.x, o.position.z, hole.position.x, hole.position.z, hx, hz):
+				_outlaw_left_field(o)
 				_fall_entity(o)
 	# Iter 75: gates scroll like obstacles + check trigger when crossing z plane
 	_gate_spawn_timer -= delta
