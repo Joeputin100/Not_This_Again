@@ -2957,7 +2957,9 @@ const BONUS_LABELS: Dictionary = {
 }
 
 func _spawn_bonus() -> void:
-	var t: String = BONUS_TYPES[_rng.randi() % BONUS_TYPES.size()]
+	_spawn_bonus_typed(BONUS_TYPES[_rng.randi() % BONUS_TYPES.size()])
+
+func _spawn_bonus_typed(t: String) -> void:
 	var glitz: Dictionary = GlitzPrefs.get_bonus_glitz(t)
 	# Iter 179: the bonus crate is a glitz sprite — breathing-shader plane
 	# textured with the crate PNG, with the per-bonus glitz uniforms applied.
@@ -3550,6 +3552,8 @@ func _dispatch_level_event(ev: LevelEvent) -> void:
 				DebugLog.add("SP2: approach zone (%s) at dist %.1f" % [exit_name, ev.distance])
 		LevelEvent.EventKind.HOLE:
 			_spawn_hole(ev.params)
+		LevelEvent.EventKind.BONUS:
+			_spawn_bonus_typed(String(ev.params.get("type", "frenzy")))
 
 # SP2: live (non-captive) enemy count — drives the director's reactive damping
 # + the CLEAR approach-zone exit. Mirrors the dynamic-camera threat count.
@@ -6694,6 +6698,7 @@ func _spawn_bullet_at(world_x: float, world_z: float) -> void:
 		despawn = minf(despawn, bz - 2.0)
 	bullet.set_meta("despawn_z", despawn)
 	bullet.set_meta("dmg", _volley_dmg)   # iter406: posse-scaled damage
+	bullet.set_meta("rainbow", _fire_mode == FireMode.RAINBOW)
 	bullets_root.add_child(bullet)
 
 # Shared candy-sprite factory: a camera-facing Sprite3D sized to world_diam,
