@@ -87,6 +87,7 @@ const PATH_SWITCHBACKS: float = 5.0
 const VIEW_FOCUS_Z: float = -2.0 # world z where the focused (cowboy's) level sits — near the bottom
 var _orb_anchors: Array[Vector2] = []   # plane-local (x, z) per orb
 var _orb_local_centers: Array[Vector3] = []  # 3D centre of each orb billboard (for aligned tap targets)
+var _orb_nodes: Array = []               # the orb billboard MeshInstance3Ds (for the unlock flourish pop)
 var _orb_stars: Array = []              # StarRating per orb (or null); built once, repositioned each frame
 var _orb_stars_built: bool = false
 var _trail_anchors: Array[Vector2] = [] # plane-local (x, z) densely along the path
@@ -709,6 +710,7 @@ func _build_orb_visuals() -> void:
 	if get_node_or_null("/root/GameState"):  # know the current level before tagging the halo orb
 		_focus_level = clampi(GameState.current_level - 1, 0, ORB_COUNT - 1)
 	_orb_local_centers.clear()
+	_orb_nodes.clear()
 	for i in ORB_COUNT:
 		var level: int = i + 1
 		var tex: Texture2D = load("res://assets/sprites/props/%s.png" % ORB_TEX.get(level, "orb_locked"))
@@ -719,6 +721,7 @@ func _build_orb_visuals() -> void:
 		var orb := _make_prop(tex, w, h, 0.04)  # gentle breathe via breathing_prop
 		orb.position = Vector3(a.x, gy + h * 0.5, a.y)
 		_orb_local_centers.append(orb.position)  # for aligned tap targets
+		_orb_nodes.append(orb)                    # for the unlock flourish pop
 		# Current (last-unlocked) orb: a gentle breathe marks it (no halo).
 		if i == _focus_level:
 			_add_orb_breathe(orb)
@@ -1570,6 +1573,12 @@ func _maybe_celebrate_win() -> void:
 	var walk := create_tween().set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN_OUT)
 	walk.tween_method(_set_cowboy_s, _cowboy_s, target_s, dur)
 	await walk.finished
+	# The cowboy now rests ON the newly-unlocked orb: make it the focus so the
+	# drift-back snap keeps the view centred on him (leaving _focus_level at
+	# from_idx made the first tap snap the camera away from the cowboy, which is
+	# why he appeared to vanish off the map on device).
+	_focus_level = to_idx
+	_unlock_orb_flourish(to_idx)
 	_walking = false
 
 # Projects the newly-unlocked orb's 3D centre to screen (same projection
@@ -1592,6 +1601,20 @@ func _gold_dust_on_orb(idx: int) -> void:
 	if get_node_or_null("/root/AudioBus"):
 		AudioBus.play_sfx("bonus_pickup")
 	get_tree().create_timer(1.5).timeout.connect(p.queue_free)
+
+# Orb-unlock flourish: a quick scale-pop on the newly-unlocked orb billboard so
+# it visibly "pops in" as the cowboy arrives (reuses the orb MeshInstance3D from
+# _build_orb_visuals). Pairs with the gold-dust burst for a clear unlock read.
+func _unlock_orb_flourish(idx: int) -> void:
+	if idx < 0 or idx >= _orb_nodes.size():
+		return
+	var orb = _orb_nodes[idx]
+	if orb == null or not is_instance_valid(orb):
+		return
+	var base: Vector3 = Vector3.ONE
+	var t := create_tween().set_trans(Tween.TRANS_BACK)
+	t.tween_property(orb, "scale", base * 1.45, 0.18).set_ease(Tween.EASE_OUT)
+	t.tween_property(orb, "scale", base, 0.34).set_ease(Tween.EASE_OUT)
 
 # On-screen pixel centre of an orb, mirroring _place_orbs_on_terrain's
 # projection of _orb_local_centers through the Ground transform + camera.
