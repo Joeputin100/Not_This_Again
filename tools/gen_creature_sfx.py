@@ -92,6 +92,11 @@ SFX: dict[str, tuple[str, float]] = {
         "a big cascading candy chain reaction, rising sparkles and chimes into a "
         "rewarding burst, candy crush combo",
         2.4),
+    "heart_regen_cheer": (
+        "a short warm celebratory cheer with a tiny sparkle chime, like a heart "
+        "refilling in a candy mobile game, upbeat and brief",
+        1.0,
+    ),
 }
 
 
