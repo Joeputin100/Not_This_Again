@@ -185,10 +185,8 @@ func _build_sections() -> void:
 	var range_btn := _make_button("OPEN CACTUS FIELD (weapon + posse test)")
 	range_btn.pressed.connect(_on_open_test_range)
 	content.add_child(range_btn)
-	# Iter 64: 3D level prototype preview.
-	var level3d_btn := _make_button("PREVIEW 3D LEVEL (iter 64 prototype)")
-	level3d_btn.pressed.connect(_on_open_level_3d)
-	content.add_child(level3d_btn)
+	# iter435: the "PREVIEW 3D LEVEL" button (which actually loaded the LEGACY 2D
+	# level.tscn) was removed — the 3D level is canonical; the dead 2D path is gone.
 
 	_add_section_header("FLOURISH PREVIEWS (in-place)")
 	for key in FLOURISH_KEYS:
@@ -309,15 +307,6 @@ func _on_open_test_range() -> void:
 	# than the legacy 2D version since gameplay is now 3D-canonical.
 	DebugLog.add("debug: open test range (3D)")
 	get_tree().change_scene_to_file("res://scenes/level_3d.tscn")
-
-func _on_open_level_3d() -> void:
-	AudioBus.play_tap()
-	# Iter 123: button label says '3D PREVIEW' but the underlying scene
-	# this opens is now the LEGACY 2D gameplay. Swap is intentional —
-	# the 3D level is canonical (via PLAY + test-range buttons); this
-	# button preserves access to the 2D version for comparison/debugging.
-	DebugLog.add("debug: open legacy 2D level (button labeled 3D PREVIEW)")
-	get_tree().change_scene_to_file("res://scenes/level.tscn")
 
 # Flourish previews: fire on the local CanvasLayer immediately. No scene
 # change. Banner appears centered, plays its animation, frees itself.
