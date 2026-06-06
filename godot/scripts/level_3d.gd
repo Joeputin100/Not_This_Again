@@ -4609,40 +4609,145 @@ func _kimmy_haul_away(captive: Node3D) -> void:
 func _kimmy_resume_scroll() -> void:
 	_set_cart_encounter(false)
 
+const KIMMY_BOMB_TEX := preload("res://assets/sprites/props/kimmy_bomb.png")
+const KIMMY_RAINBOW_TEX := preload("res://assets/sprites/props/kimmy_rainbow.png")
+var _kimmy_glow_tex: GradientTexture2D = null   # cached soft radial glow (blooms + embers)
+
+# A soft white radial glow that fades to transparent — the additive building block
+# for the Skittles Bloom (bloom core + each candy ember) and the 2D overlay glow.
+func _kimmy_soft_glow() -> GradientTexture2D:
+	if _kimmy_glow_tex != null:
+		return _kimmy_glow_tex
+	var g := Gradient.new()
+	g.set_color(0, Color(1, 1, 1, 1))
+	g.set_color(1, Color(1, 1, 1, 0))
+	g.add_point(0.35, Color(1, 1, 1, 0.55))
+	var t := GradientTexture2D.new()
+	t.gradient = g
+	t.width = 128
+	t.height = 128
+	t.fill = GradientTexture2D.FILL_RADIAL
+	t.fill_from = Vector2(0.5, 0.5)
+	t.fill_to = Vector2(1.0, 0.5)
+	_kimmy_glow_tex = t
+	return t
+
+# kimmy: the sugar rush. The cage is gone, a big 2D Rainbow Kimmy overlay takes the
+# screen (bounce in -> crescendo glow -> launch off the top), and gumball bombs rock
+# down onto every on-screen outlaw + destructible obstacle, each detonating in a
+# Skittles Bloom. Posse + the cage are never targeted.
 func _rush_kimmy(freed_captive: Node3D) -> void:
-	# Transform: swap the caged stallion's hero sprite to Rainbow Kimmy + pop.
 	if is_instance_valid(freed_captive):
-		var hs = freed_captive.get_meta("hero_sprite", null)
-		if hs is Sprite3D:
-			(hs as Sprite3D).texture = load("res://assets/sprites/props/kimmy_rainbow.png")
-			var pop := (hs as Sprite3D).create_tween()
-			pop.tween_property(hs, "scale", (hs as Sprite3D).scale * 1.4, 0.25) \
-				.set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
-		# Also hide the front cage bars so she reads as freed (front_bars meta set in _spawn_kimmy_cage).
-		var fb = freed_captive.get_meta("front_bars", null)
-		if fb is Node3D and is_instance_valid(fb):
-			var ft := (fb as Node3D).create_tween().set_parallel(true)
-			ft.tween_property(fb, "scale", (fb as Node3D).scale * 0.01, 0.3).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_IN)
-			ft.tween_property(fb, "modulate:a", 0.0, 0.3)
-	# Audio + banner.
+		freed_captive.queue_free()
+	_kimmy_clear_countdown()
 	if get_node_or_null("/root/AudioBus") and AudioBus.has_method("play_sfx"):
 		AudioBus.play_sfx("kimmy_riff")
 	var ui: Node = get_node_or_null("UI")
 	if ui != null:
 		FlourishBanner.spawn(ui, "RAINBOW KIMMY")
-	# Skittles screen-clear: outlaws + destructible obstacles (incl bulls), never the cage/posse.
-	_kimmy_skittles_burst()
+	_play_kimmy_overlay()
+	var targets: Array = []
 	for o in outlaws_root.get_children():
 		if o is Node3D and kimmy_clears_node(_node_meta_flags(o)):
-			_kimmy_zap(o)
+			targets.append(o)
 	for ob in obstacles_root.get_children():
 		if ob is Node3D and kimmy_clears_node(_node_meta_flags(ob)):
-			_kimmy_zap(ob)
-	# Resolve: free the cage + resume after the riff.
-	await get_tree().create_timer(3.0).timeout
-	if is_instance_valid(freed_captive):
-		freed_captive.queue_free()
+			targets.append(ob)
+	# Candy-bomb cascade, staggered so it reads as a wave rolling across the screen.
+	var i: int = 0
+	for t in targets:
+		get_tree().create_timer(1.2 + float(i) * 0.06).timeout.connect(_kimmy_drop_bomb.bind(t))
+		i += 1
+	await get_tree().create_timer(3.4).timeout
 	_kimmy_resume_scroll()
+
+# kimmy: the 2D cinematic. Rainbow Kimmy bounces up from the bottom, pulse/glows with
+# the riff crescendo, then launches up and off the top. CanvasLayer overlay only.
+func _play_kimmy_overlay() -> void:
+	var ui: Node = get_node_or_null("UI")
+	if ui == null:
+		return
+	var screen := Vector2(1080.0, 1920.0)
+	var root := Control.new()
+	root.name = "KimmyOverlay"
+	root.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	root.set_anchors_preset(Control.PRESET_FULL_RECT)
+	ui.add_child(root)
+	# Additive glow behind her.
+	var glow := TextureRect.new()
+	glow.texture = _kimmy_soft_glow()
+	glow.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	glow.size = Vector2(1200.0, 1200.0)
+	glow.position = Vector2(screen.x * 0.5 - 600.0, screen.y * 0.66 - 600.0)
+	glow.modulate = Color(1.0, 0.72, 0.32, 0.0)
+	var gmat := CanvasItemMaterial.new()
+	gmat.blend_mode = CanvasItemMaterial.BLEND_MODE_ADD
+	glow.material = gmat
+	root.add_child(glow)
+	# Kimmy.
+	var kim := TextureRect.new()
+	kim.texture = KIMMY_RAINBOW_TEX
+	kim.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	kim.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+	kim.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	var kw := 760.0
+	var kh := kw * float(KIMMY_RAINBOW_TEX.get_height()) / float(KIMMY_RAINBOW_TEX.get_width())
+	kim.size = Vector2(kw, kh)
+	kim.pivot_offset = Vector2(kw * 0.5, kh * 0.5)
+	var cx := screen.x * 0.5 - kw * 0.5
+	var rest_y := screen.y - kh * 0.92      # planted near the bottom, mostly on-screen
+	kim.position = Vector2(cx, screen.y + kh)   # start fully below
+	root.add_child(kim)
+	# Position track: rise (small overshoot) -> settle -> hold -> launch off top -> free.
+	var pos := kim.create_tween()
+	pos.tween_property(kim, "position:y", rest_y - 36.0, 0.34).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
+	pos.tween_property(kim, "position:y", rest_y, 0.18).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN_OUT)
+	pos.tween_interval(1.7)
+	pos.tween_property(kim, "position:y", -kh, 0.55).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_IN)
+	pos.tween_callback(root.queue_free)
+	# Scale pulse track: pulses START small and GROW toward the crescendo peak.
+	var scl := kim.create_tween()
+	scl.tween_interval(0.5)
+	for amp in [1.04, 1.07, 1.10, 1.15]:
+		scl.tween_property(kim, "scale", Vector2(amp, amp), 0.20).set_trans(Tween.TRANS_SINE)
+		scl.tween_property(kim, "scale", Vector2.ONE, 0.20).set_trans(Tween.TRANS_SINE)
+	# Glow track: fade in, swell with the crescendo, then fade as she launches.
+	var gt := glow.create_tween()
+	gt.tween_property(glow, "modulate:a", 0.55, 0.5)
+	gt.tween_property(glow, "modulate:a", 1.0, 1.6)
+	gt.tween_property(glow, "modulate:a", 0.0, 0.5)
+
+# kimmy: a gumball bomb rocks down onto `target` and detonates in a Skittles Bloom.
+func _kimmy_drop_bomb(target: Node3D) -> void:
+	if not is_instance_valid(target):
+		return
+	var land: Vector3 = target.position + Vector3(0, 0.6, 0)
+	var bomb := Sprite3D.new()
+	bomb.texture = KIMMY_BOMB_TEX
+	bomb.shaded = false
+	bomb.no_depth_test = true
+	bomb.render_priority = 6
+	bomb.pixel_size = 0.010
+	bomb.position = land + Vector3(0, 9.0, 0)
+	bomb.rotation.z = deg_to_rad(-12.0)
+	popups_root.add_child(bomb)
+	var fall := bomb.create_tween()
+	fall.tween_property(bomb, "position", land, 0.5).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_IN)
+	fall.tween_callback(_kimmy_bomb_land.bind(target, land, bomb))
+	# Rock while falling (independent loop; auto-stops when the bomb frees).
+	var rock := bomb.create_tween().set_loops()
+	rock.tween_property(bomb, "rotation:z", deg_to_rad(12.0), 0.14).set_trans(Tween.TRANS_SINE)
+	rock.tween_property(bomb, "rotation:z", deg_to_rad(-12.0), 0.14).set_trans(Tween.TRANS_SINE)
+
+func _kimmy_bomb_land(target: Node3D, land: Vector3, bomb: Node3D) -> void:
+	_kimmy_skittles_bloom(land)
+	if is_instance_valid(target):
+		_add_bounty(50)
+		if target.get_meta("is_outlaw", false):
+			_outlaw_left_field(target)   # decrement the quota via the existing path
+		target.queue_free()
+	if is_instance_valid(bomb):
+		bomb.queue_free()
 
 # Collect the flags kimmy_clears_node() checks from a live node's meta.
 func _node_meta_flags(n: Node) -> Dictionary:
@@ -4654,40 +4759,76 @@ func _node_meta_flags(n: Node) -> Dictionary:
 		"dying": n.get_meta("dying", false),
 	}
 
-# Destroy one target with a rainbow burst + bounty, routing outlaws through the
-# existing quota chokepoint so the count stays correct.
-func _kimmy_zap(n: Node3D) -> void:
-	_kimmy_skittles_burst_at(n.position)
-	_add_bounty(50)
-	if n.get_meta("is_outlaw", false):
-		_outlaw_left_field(n)   # decrements _outlaws_remaining via the existing path
-	n.queue_free()
-
-func _kimmy_skittles_burst() -> void:
-	_kimmy_skittles_burst_at(Vector3(0.0, 1.0, COWBOY_Z - 4.0))
-
-func _kimmy_skittles_burst_at(pos: Vector3) -> void:
+# kimmy: the "Skittles Bloom" explosion — additive, FROSTBITE/Prism-caliber. A warm
+# bloom core flash + an expanding rainbow shock ring + a burst of soft glowing candy
+# embers that drift out and fade. All additive sprites/particles — no shaders.
+func _kimmy_skittles_bloom(pos: Vector3) -> void:
+	_kimmy_bloom_flash(pos)
+	_spawn_rainbow_shock(pos)
 	var p := CPUParticles3D.new()
 	p.position = pos
-	p.amount = 24
-	p.lifetime = 0.8
+	p.amount = 40
+	p.lifetime = 0.9
 	p.one_shot = true
-	p.explosiveness = 0.9
-	p.emitting = true
+	p.explosiveness = 0.92
+	p.spread = 180.0
 	p.direction = Vector3(0, 1, 0)
-	p.spread = 80.0
-	p.initial_velocity_min = 3.0
-	p.initial_velocity_max = 8.0
-	p.gravity = Vector3(0, -6, 0)
-	p.scale_amount_min = 0.2
-	p.scale_amount_max = 0.5
-	# rainbow color ramp
-	var ramp := Gradient.new()
-	ramp.colors = PackedColorArray([Color(1,0.2,0.2), Color(1,0.8,0.2), Color(0.3,1,0.3), Color(0.3,0.6,1), Color(0.7,0.3,1)])
-	# CPUParticles3D.color_ramp is typed Gradient (not a GradientTexture, unlike GPUParticles3D).
-	p.color_ramp = ramp
+	p.initial_velocity_min = 2.5
+	p.initial_velocity_max = 7.0
+	p.gravity = Vector3(0, -5.0, 0)
+	p.damping_min = 1.0
+	p.damping_max = 2.5
+	p.scale_amount_min = 0.22
+	p.scale_amount_max = 0.55
+	# Per-ember random candy colour (color_initial_ramp), faded out over life (color_ramp).
+	var candy := Gradient.new()
+	candy.offsets = PackedFloat32Array([0.0, 0.25, 0.5, 0.75, 1.0])
+	candy.colors = PackedColorArray([Color(1,0.25,0.25), Color(1,0.82,0.25),
+		Color(0.35,1,0.42), Color(0.3,0.65,1), Color(0.78,0.38,1)])
+	p.color_initial_ramp = candy
+	var fade := Gradient.new()
+	fade.set_color(0, Color(1, 1, 1, 1))
+	fade.set_color(1, Color(1, 1, 1, 0))
+	p.color_ramp = fade
+	# Each ember draws a soft additive glow quad (a meshless CPUParticles3D is invisible).
+	var quad := QuadMesh.new()
+	quad.size = Vector2(0.5, 0.5)
+	var mat := StandardMaterial3D.new()
+	mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	mat.blend_mode = BaseMaterial3D.BLEND_MODE_ADD
+	mat.billboard_mode = BaseMaterial3D.BILLBOARD_ENABLED
+	mat.albedo_texture = _kimmy_soft_glow()
+	mat.vertex_color_use_as_albedo = true
+	mat.texture_filter = BaseMaterial3D.TEXTURE_FILTER_LINEAR
+	quad.material = mat
+	p.mesh = quad
 	popups_root.add_child(p)
-	get_tree().create_timer(1.2).timeout.connect(p.queue_free)
+	p.emitting = true
+	get_tree().create_timer(1.6).timeout.connect(p.queue_free)
+
+# kimmy: warm additive bloom core that pops + fades — the bright heart of the bloom.
+func _kimmy_bloom_flash(pos: Vector3) -> void:
+	var s := Sprite3D.new()
+	s.texture = _kimmy_soft_glow()
+	s.shaded = false
+	s.no_depth_test = true
+	s.render_priority = 7
+	s.modulate = Color(1.0, 0.86, 0.5, 1.0)
+	s.pixel_size = 0.012
+	s.position = pos
+	var mat := StandardMaterial3D.new()
+	mat.blend_mode = BaseMaterial3D.BLEND_MODE_ADD
+	mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	mat.albedo_texture = _kimmy_soft_glow()
+	mat.billboard_mode = BaseMaterial3D.BILLBOARD_ENABLED
+	s.material_override = mat
+	popups_root.add_child(s)
+	var t := s.create_tween().set_parallel(true)
+	t.tween_property(s, "pixel_size", 0.032, 0.30).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
+	t.tween_property(s, "modulate:a", 0.0, 0.30)
+	t.chain().tween_callback(s.queue_free)
 
 # Iter 133: container shatters → hero pops out → flips to face forward
 # → joins posse formation.
