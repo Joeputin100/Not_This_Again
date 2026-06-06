@@ -245,6 +245,7 @@ var _world_root: Node3D = null   # SP2 slice3/iter400: static curved+hilly terra
 var _terr_cliff_side: String = ""   # terrain: "left"/"right" cliff edge (mountain), "" = none
 var _terr_cliff_depth: float = 0.0
 var _hill_scale: float = 1.0   # terrain: per-theme hill amplitude (mountain = steeper)
+var _cliff_fall_accum: float = 0.0   # terrain: fractional posse lost over the cliff edge
 const FrostBoltsScript = preload("res://scripts/frost_bolts.gd")
 var _frost_bolts: Node2D = null   # iter404: FROSTBITE chain-lightning overlay
 const RainbowBoltsScript = preload("res://scripts/rainbow_bolts.gd")
@@ -5821,6 +5822,7 @@ func _process(delta: float) -> void:
 	cowboy_3d.position.y = 0.45 + sin(_bob_time * BOB_FREQUENCY) * BOB_AMPLITUDE
 	_update_posse_crowd(delta)   # iter401: posse mob follows + reframes
 	_check_authored_holes(delta)
+	_check_cliff_fall(delta)
 	for i in range(_followers.size()):
 		var f := _followers[i]
 		if not is_instance_valid(f):
@@ -6555,6 +6557,28 @@ func _build_world_terrain() -> void:
 		(flat as Node3D).visible = false
 	if terrain_3d_node != null and "auto_scroll" in terrain_3d_node:
 		terrain_3d_node.auto_scroll = false
+
+# terrain: the mountain cliff is a FALL-TO-DEATH edge. If the posse strays past the
+# cliff lip, members tumble off the ledge (drain the crowd while over the edge). Floors
+# at 1 like the pit hazard.
+func _check_cliff_fall(delta: float) -> void:
+	if _terr_cliff_side == "" or _level_state != LevelState.PLAYING:
+		return
+	if cowboy_3d == null or _posse_count_3d <= 1:
+		return
+	var lip: float = 2.6
+	var off: bool = (_terr_cliff_side == "left" and cowboy_3d.position.x < -lip) \
+		or (_terr_cliff_side == "right" and cowboy_3d.position.x > lip)
+	if not off:
+		_cliff_fall_accum = 0.0
+		return
+	_cliff_fall_accum += delta * 4.0   # ~4 members/sec lost over the edge
+	var drop: int = int(_cliff_fall_accum)
+	if drop >= 1:
+		_cliff_fall_accum -= float(drop)
+		_posse_count_3d = maxi(1, _posse_count_3d - drop)
+		_sync_followers_to_count(_posse_count_3d)
+		_refresh_hud()
 
 # terrain: a small lateral wobble for a trail edge at depth lz (phase shifts the two
 # edges so the width varies irregularly). Periodic over PATH_PATTERN_LEN for a seamless wrap.
