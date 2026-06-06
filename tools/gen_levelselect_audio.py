@@ -19,7 +19,8 @@ from elevenlabs.client import ElevenLabs
 
 ROOT = Path(__file__).resolve().parents[1]
 SFX_DIR = ROOT / "godot" / "assets" / "sfx"
-VOICE = "61Qg29Wr3AuLLXn122Hd"   # Murderbot narrator (shared with flourish VO)
+COWBOY_VOICE = "FF7KdobWPaiR0vkcALHF"  # cowboy/narrator re-record voice (2026-06)
+VOICE = COWBOY_VOICE             # cowboy tap lines
 MODEL = "eleven_v3"              # inline delivery tags
 
 REGULAR = [   # warm, dry, loyal — deadpan but on the player's side
@@ -75,7 +76,8 @@ def to_ogg(mp3: Path, ogg: Path) -> None:
 def gen_vo(client: ElevenLabs, text: str, dst: Path) -> None:
     audio = client.text_to_speech.convert(
         voice_id=VOICE, text="[deadpan, dry] " + text,
-        model_id=MODEL, output_format="mp3_44100_128")
+        model_id=MODEL, output_format="mp3_44100_128",
+        apply_text_normalization="on")  # text-to-SPEECH: normalization applies
     mp3 = dst.with_suffix(".mp3")
     with open(mp3, "wb") as f:
         for ch in audio:
@@ -107,8 +109,11 @@ def main() -> None:
         gen_vo(client, t, SFX_DIR / ("cowboy_tap_%d.ogg" % i))
     for i, t in enumerate(ANNOYED):
         gen_vo(client, t, SFX_DIR / ("cowboy_annoyed_%d.ogg" % i))
-    for slug, (p, d) in PROPS.items():
-        gen_sfx(key, p, d, SFX_DIR / (slug + ".ogg"))
+    # Prop SFX are not voice lines; only regenerate them when explicitly asked
+    # (pass --sfx) so a VO re-record doesn't churn the cactus/wagon/rock/etc.
+    if "--sfx" in sys.argv:
+        for slug, (p, d) in PROPS.items():
+            gen_sfx(key, p, d, SFX_DIR / (slug + ".ogg"))
     print("done")
 
 

@@ -48,7 +48,8 @@ from elevenlabs.client import ElevenLabs
 
 ROOT = Path(__file__).resolve().parents[1]
 OUT_DIR = ROOT / "godot" / "assets" / "audio" / "flourishes"
-FLOURISH_VOICE = "61Qg29Wr3AuLLXn122Hd"   # ElevenLabs — new flourish voice
+NARRATOR_VOICE = "FF7KdobWPaiR0vkcALHF"   # cowboy/narrator re-record voice (2026-06)
+FLOURISH_VOICE = NARRATOR_VOICE           # narrator/announcer flourish + countdown VO
 MODEL = "eleven_v3"                        # required for inline delivery tags
 OUTPUT_FMT = "mp3_44100_128"
 
