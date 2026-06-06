@@ -89,6 +89,7 @@ var _orb_anchors: Array[Vector2] = []   # plane-local (x, z) per orb
 var _orb_local_centers: Array[Vector3] = []  # 3D centre of each orb billboard (for aligned tap targets)
 var _orb_nodes: Array = []               # the orb billboard MeshInstance3Ds (for the unlock flourish pop)
 var _orb_stars: Array = []              # StarRating per orb (or null); built once, repositioned each frame
+var _orb_star_planes: Array = []        # MeshInstance3D billboard (in the map viewport) per orb (or null)
 var _orb_stars_built: bool = false
 var _trail_anchors: Array[Vector2] = [] # plane-local (x, z) densely along the path
 var _path_pts: Array[Vector2] = []      # dense path samples for arc-length lookup
@@ -114,6 +115,7 @@ const _CREAK_SFX: AudioStream = preload("res://assets/sfx/sign_creak.ogg")
 var _props: Array = []                  # [{node, anchor, h}] — swaying, tappable props
 var _prop_player: AudioStreamPlayer
 var _cowboy_sprite: VideoStreamPlayer   # idle-looping marker on the cowboy's level (chroma-keyed Veo clip)
+var _cowboy_plane: MeshInstance3D       # the cowboy rendered as a 3D billboard in the map viewport (depth-sorts with props/sign)
 var _cowboy_s: float = 0.0              # the cowboy's arc-length position along the path
 var _walking: bool = false              # true while the cowboy strides to a selected orb
 var _cowboy_half_h: float = 128.0       # half the idle texture height (for grounding his feet)
@@ -149,6 +151,16 @@ const STAR_BASE_SIZE: Vector2 = Vector2(150, 100)
 const STAR_SCALE_MULT: float = 1.35
 const STAR_GLOW_MULT: float = 1.35   # softened: the resting per-orb star glow is a subtle halo, not a big persistent golden bloom
 const ORB_SIZE_MULT: float = 2.0  # iter339: orbs much bigger (×3 overlapped)
+# 3D-billboard sizing (world units). The star widget + glow render into a square
+# SubViewport, so the plane is square; sized to read like the prior on-orb stars.
+const STAR_PLANE_VP: Vector2i = Vector2i(256, 256)
+const STAR_PLANE_W: float = 1.4       # world width of the star billboard (matches ~orb diameter)
+const STAR_PLANE_LIFT: float = 0.18   # nudge toward camera so stars sit IN FRONT of the orb billboard
+# Cowboy 3D billboard: keyed video renders into a tall SubViewport, plane sized in
+# world units (perspective scales it naturally — no per-frame distance scaling).
+const COWBOY_PLANE_VP: Vector2i = Vector2i(256, 384)
+const COWBOY_PLANE_H: float = 1.9     # world height of the cowboy billboard (feet-to-hat)
+const COWBOY_TAP_PX: float = 90.0     # screen-space tap radius around his projected centre
 # Iter 339: rendered (Imagen) orb art per level. L1-4 are dual-themed
 # (difficulty × terrain); L5-8 share the locked orb.
 const ORB_TEX := {1: "orb_l1", 2: "orb_l2", 3: "orb_l3", 4: "orb_l4"}
@@ -563,11 +575,13 @@ func _build_orb_stars() -> void:
 	if _orb_stars_built:
 		return
 	_orb_stars_built = true
+	var gnd: Node3D = get_node_or_null("Terrain3D/SubViewport/Ground")
 	var has_gs: bool = get_node_or_null("/root/GameState") != null
 	for i in ORB_COUNT:
 		var lvl: int = i + 1
-		if not has_gs or not GameState.level_best.has(lvl):
+		if not has_gs or not GameState.level_best.has(lvl) or gnd == null:
 			_orb_stars.append(null)
+			_orb_star_planes.append(null)
 			continue
 		var sr := preload("res://scenes/ui/star_rating.tscn").instantiate()
 		# A soft golden radial glow sits BEHIND the stars so they read as lit
@@ -576,12 +590,27 @@ func _build_orb_stars() -> void:
 		# additive blend for a warm bloom. It is a sibling added just before the
 		# StarRating so the stars paint on top of it.
 		var glow := _make_star_glow()
-		add_child(glow)
-		add_child(sr)
+		# 3D-billboard conversion: instead of adding the widget over the screen
+		# (which drew IN FRONT of the 3D sign), render it into a transparent
+		# SubViewport and texture a 3D plane that depth-sorts with the props.
+		var vp := SubViewport.new()
+		vp.transparent_bg = true
+		vp.disable_3d = true
+		vp.render_target_update_mode = SubViewport.UPDATE_ALWAYS
+		vp.size = STAR_PLANE_VP
+		add_child(vp)
+		# Centre the (square) viewport content on the dish + glow.
+		var off: Vector2 = (Vector2(STAR_PLANE_VP) - STAR_BASE_SIZE) * 0.5
+		var goff: Vector2 = (Vector2(STAR_PLANE_VP) - STAR_BASE_SIZE * STAR_GLOW_MULT) * 0.5
+		glow.position = goff
+		glow.size = STAR_BASE_SIZE * STAR_GLOW_MULT
+		vp.add_child(glow)
+		vp.add_child(sr)
 		# Bigger, centred dish; pivot at centre so the orb-synced scale grows
 		# from the middle and stays seated on the orb.
 		sr.custom_minimum_size = STAR_BASE_SIZE
 		sr.size = STAR_BASE_SIZE
+		sr.position = off
 		sr.pivot_offset = STAR_BASE_SIZE * 0.5
 		# Map orbs drive their pulse from the orb's breathe, so kill the widget's
 		# own per-candy breathe to avoid a competing double-pulse.
@@ -589,18 +618,29 @@ func _build_orb_stars() -> void:
 		# On the MAP the candies sit directly on the orb — hide the oval boat dish
 		# (the win/fail modals keep theirs, default show_dish=true).
 		sr.set_dish_visible(false)
-		# Draw the glow + stars ON TOP of the orb billboard (the Terrain3D Sprite2D)
-		# and the invisible tap buttons.
-		glow.z_index = 50
-		sr.z_index = 51
 		sr.set_rating(_orb_difficulty(lvl), int(GameState.level_best[lvl].get("stars", 0)), false)
 		sr.set_meta("glow", glow)
-		# The stars + glow sit ON TOP of the orb tap areas (z 50/51). They must NOT
-		# eat the touch — make the StarRating root, every child, and the glow all
-		# pass taps through to the invisible orb buttons beneath.
+		# The widget now lives off-screen in the SubViewport — it can never eat a
+		# tap meant for the invisible orb buttons. (Belt-and-braces: still ignore.)
 		_ignore_mouse_recursive(sr)
 		_ignore_mouse_recursive(glow)
+		# The 3D plane that shows the rendered stars, a Ground child so it
+		# depth-sorts with the orb/sign/props. Billboard-faces the map camera.
+		var plane := MeshInstance3D.new()
+		var pm := PlaneMesh.new()
+		pm.size = Vector2(STAR_PLANE_W, STAR_PLANE_W)
+		pm.orientation = 2  # FACE_Z, to match the props
+		plane.mesh = pm
+		var mat := StandardMaterial3D.new()
+		mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+		mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+		mat.cull_mode = BaseMaterial3D.CULL_DISABLED
+		mat.billboard_mode = BaseMaterial3D.BILLBOARD_ENABLED
+		mat.albedo_texture = vp.get_texture()
+		plane.material_override = mat
+		gnd.add_child(plane)
 		_orb_stars.append(sr)
+		_orb_star_planes.append(plane)
 
 # A soft, warm-gold radial bloom that sits behind the on-orb stars. Built from a
 # radial GradientTexture2D (gold core fading to transparent) on a TextureRect set
@@ -662,13 +702,13 @@ func _place_orbs_on_terrain() -> void:
 		var star: StarRating = null
 		if i < _orb_stars.size():
 			star = _orb_stars[i] as StarRating
+		var plane: MeshInstance3D = null
+		if i < _orb_star_planes.size():
+			plane = _orb_star_planes[i] as MeshInstance3D
 		if cam.is_position_behind(world):
 			btn.visible = false
-			if star != null:
-				star.visible = false
-				var gl = star.get_meta("glow", null)
-				if gl != null and is_instance_valid(gl):
-					(gl as Control).visible = false
+			if plane != null and is_instance_valid(plane):
+				plane.visible = false
 			continue
 		btn.visible = true
 		var center: Vector2 = cam.unproject_position(world)
@@ -679,31 +719,23 @@ func _place_orbs_on_terrain() -> void:
 		btn.custom_minimum_size = Vector2.ZERO
 		btn.size = Vector2(d, d)
 		btn.position = center - Vector2(d, d) * 0.5
-		if star != null:
-			# Sit the stars ON the orb, centred over its screen centre. The pulse
-			# is taken straight from the orb mesh's CURRENT breathe scale (the
-			# focus orb's _add_orb_breathe tween drives orb.scale; other orbs sit
-			# at 1.0), so the stars breathe in exact lockstep with the orb rather
-			# than on their own competing tween.
-			star.visible = true
+		if plane != null and is_instance_valid(plane):
+			# Seat the star billboard ON the orb's 3D centre (Ground-local), nudged
+			# toward the camera + up so it sits IN FRONT of the orb billboard but
+			# still depth-sorts behind the 3D sign when the orb is behind it.
+			plane.visible = true
+			var lc: Vector3 = _orb_local_centers[i]
+			plane.position = lc + Vector3(0.0, 0.0, STAR_PLANE_LIFT)
+			# Breathe in exact lockstep with the orb mesh (its _add_orb_breathe
+			# tween drives orb.scale on the focus orb; the rest sit at 1.0).
 			var breathe: float = 1.0
 			if i < _orb_nodes.size() and is_instance_valid(_orb_nodes[i]):
 				breathe = (_orb_nodes[i] as Node3D).scale.x
-			var ssc: float = sc * STAR_SCALE_MULT * breathe
-			# A celebration pop multiplies the orb-synced scale by a 0->1.2->1 curve
-			# so the stars "land" while staying seated on the orb (position below
-			# still tracks every frame).
-			if star.get_meta("popping", false):
+			var ssc: float = breathe
+			# Celebration pop: 0->1.2->1 multiplier, folded into the orb-synced scale.
+			if star != null and star.get_meta("popping", false):
 				ssc *= float(star.get_meta("pop_mult", 1.0))
-			star.scale = Vector2(ssc, ssc)
-			# Centre the (pivot-centred) dish on the orb's screen centre.
-			star.position = center - STAR_BASE_SIZE * 0.5
-			var glow = star.get_meta("glow", null)
-			if glow != null and is_instance_valid(glow):
-				glow.visible = true
-				var gsz: float = STAR_BASE_SIZE.x * STAR_GLOW_MULT * ssc
-				(glow as Control).size = Vector2(gsz, gsz)
-				(glow as Control).position = center - Vector2(gsz, gsz) * 0.5
+			plane.scale = Vector3(ssc, ssc, ssc)
 	_place_cowboy_marker(cam, terrain, gnd)
 	_place_humbug_marker(cam, terrain, gnd)
 
@@ -780,57 +812,60 @@ func _place_cowboy() -> void:
 	var clip := load("res://assets/videos/cowboy/cowboy_idle.ogv")
 	if clip != null:
 		_cowboy_sprite.stream = clip
-	add_child(_cowboy_sprite)
+	# 3D-billboard conversion: render the keyed video into a transparent
+	# SubViewport and texture a 3D plane (a Ground child) so the cowboy
+	# depth-sorts with the props/sign instead of drawing over the whole viewport.
+	var vp := SubViewport.new()
+	vp.transparent_bg = true
+	vp.disable_3d = true
+	vp.render_target_update_mode = SubViewport.UPDATE_ALWAYS
+	vp.size = COWBOY_PLANE_VP
+	add_child(vp)
+	_cowboy_sprite.set_anchors_preset(Control.PRESET_FULL_RECT)  # fill the viewport
+	_cowboy_sprite.size = Vector2(COWBOY_PLANE_VP)
+	_cowboy_sprite.pivot_offset = Vector2(COWBOY_PLANE_VP) * 0.5  # tap-pops scale/rotate around his middle
+	vp.add_child(_cowboy_sprite)
 	_cowboy_sprite.play()
+	var gnd: Node3D = get_node_or_null("Terrain3D/SubViewport/Ground")
+	if gnd != null:
+		var plane := MeshInstance3D.new()
+		plane.name = "CowboyMarker3D"
+		var pm := PlaneMesh.new()
+		# Clip is 720×1280 (9:16) — match that aspect at COWBOY_PLANE_H tall.
+		pm.size = Vector2(COWBOY_PLANE_H * (720.0 / 1280.0), COWBOY_PLANE_H)
+		pm.orientation = 2  # FACE_Z, to match the props
+		plane.mesh = pm
+		var mat := StandardMaterial3D.new()
+		mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+		mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+		mat.cull_mode = BaseMaterial3D.CULL_DISABLED
+		mat.billboard_mode = BaseMaterial3D.BILLBOARD_ENABLED
+		mat.albedo_texture = vp.get_texture()
+		plane.material_override = mat
+		gnd.add_child(plane)
+		_cowboy_plane = plane
 
 func _place_cowboy_marker(cam: Camera3D, terrain, gnd: Node3D) -> void:
-	if _cowboy_sprite == null:
+	if _cowboy_plane == null or not is_instance_valid(_cowboy_plane):
 		return
 	var a: Vector2 = _prop_local(_cowboy_s, COWBOY_SIDE)  # beside the path/orb, not on it
-	var world: Vector3 = gnd.global_transform * Vector3(a.x, float(terrain.call("height_at", a.x, a.y)), a.y)
-	if cam.is_position_behind(world):
-		_cowboy_sprite.visible = false
-		return
-	_cowboy_sprite.visible = true
-	var c: Vector2 = cam.unproject_position(world)
-	# Fix 4 (shrink): the raw perspective factor (ORB_NEAR_DIST/dist) drops as the
-	# focus orb recedes up the path, halving his size L2->L3. The view always pans
-	# the focus point to the same screen depth, so his on-screen size SHOULD be
-	# near-constant — clamp the perspective factor to a tight band so he stays a
-	# consistent, readable size across orbs instead of shrinking with depth.
-	var persp: float = ORB_NEAR_DIST / cam.global_position.distance_to(world)
-	var sc: float = clampf(persp, COWBOY_SC_MIN, COWBOY_SC_MAX) * ORB_SIZE_MULT * 0.62 * _fov_mag()
-	# The clip is 720×1280 with the cowboy's feet at ~0.953 down the frame.
-	# Size to match the old sprite's on-screen height (~559·sc), feet at c.
-	var dh: float = 559.0 * sc
-	var dw: float = dh * (720.0 / 1280.0)
-	# Fix 2 (walk bob): while striding, lift his feet in a periodic step + add a
-	# slight side waddle so he reads as walking rather than gliding. Scaled by sc
-	# so the bob stays proportional. Zero while idle so resting is rock-steady.
+	var gy: float = float(terrain.call("height_at", a.x, a.y))
+	# Feet on the ground: the clip frames his feet at ~0.953 down, so the plane
+	# centre sits a touch below mid-height. Lift by ~half his world height.
+	var foot_lift: float = COWBOY_PLANE_H * 0.453
+	# Walk bob: while striding, lift him in a periodic step so he reads as walking.
 	var bob_y: float = 0.0
-	var waddle_x: float = 0.0
 	if _walking:
 		var ph: float = float(Time.get_ticks_msec()) * 0.001 * COWBOY_BOB_HZ * TAU
-		bob_y = -absf(sin(ph)) * COWBOY_BOB_PX * sc   # feet lift (up) on each step
-		waddle_x = sin(ph * 0.5) * COWBOY_WADDLE_PX * sc
-	# R4b (pan-drift fix): the cowboy is anchored to his arc-length _cowboy_s and must
-	# project EXACTLY with the path every frame — identical to the level orbs, which use
-	# the raw unproject_position with NO on-screen clamp (so they scroll off naturally as
-	# you pan away). The earlier per-frame feet-x clamp pinned him inside the viewport, so
-	# during a free pan his true projection slid off-screen while the clamp dragged him
-	# back to the edge => the "drift". Use the raw projected x. The reduced COWBOY_SIDE
-	# (-0.9) keeps his rest position at the focus orb on-screen WITHOUT any clamp, so a
-	# switchback orb can no longer fling him off either edge.
-	var vw: float = get_viewport_rect().size.x
-	var foot_x: float = c.x + waddle_x  # raw path projection — no per-frame on-screen clamp
-	_cowboy_sprite.size = Vector2(dw, dh)
-	_cowboy_sprite.pivot_offset = Vector2(dw, dh) * 0.5  # tap-pops scale around his middle
-	_cowboy_sprite.position = Vector2(foot_x - dw * 0.5, c.y - 0.953 * dh + bob_y)  # feet on the ground
-	# DebugLog projected vs final feet-x so the device test can confirm no clamp engages
-	# during a pan (projected == final means he tracks the path exactly).
-	if not _walking and absf(_cowboy_s - _path_s) < 0.01 and Engine.get_process_frames() % 120 == 0:
-		DebugLog.add("cowboy@focus L%d proj_x=%.0f foot_x=%.0f y=%.0f sc=%.2f persp=%.2f vw=%.0f" % [
-			_focus_level + 1, c.x + waddle_x, foot_x, c.y - 0.953 * dh, sc, persp, vw])
+		bob_y = absf(sin(ph)) * COWBOY_BOB_PX * 0.004   # small world-space lift on each step
+	var world_local: Vector3 = Vector3(a.x, gy + foot_lift + bob_y, a.y)
+	# Hide him when behind the camera (project his world point to test).
+	var world: Vector3 = gnd.global_transform * world_local
+	if cam.is_position_behind(world):
+		_cowboy_plane.visible = false
+		return
+	_cowboy_plane.visible = true
+	_cowboy_plane.position = world_local
 
 # Iter 339: rendered orbs as 3D breathing billboards on the terrain (depth-sort
 # with the sign/props — fixes the old 2D-orb-over-3D-sign layering), each with a
@@ -1028,11 +1063,19 @@ func _set_bonk(v: float, mat: ShaderMaterial) -> void:
 # Tap the cowboy → a reaction. Returns true if the tap hit him (so the caller
 # doesn't also fall through to a prop tap).
 func _try_tap_cowboy(pos: Vector2) -> bool:
-	if _cowboy_sprite == null or not _cowboy_sprite.visible or _walking:
+	if _cowboy_plane == null or not is_instance_valid(_cowboy_plane) or not _cowboy_plane.visible or _walking:
 		return false
-	# VideoStreamPlayer is a Control: position is top-left, size is its rect.
-	var rect := Rect2(_cowboy_sprite.position, _cowboy_sprite.size * _cowboy_sprite.scale)
-	if not rect.has_point(pos):
+	# He's a 3D billboard now: project his world position to screen and treat a tap
+	# within COWBOY_TAP_PX as a hit (mirrors the orb tap radius).
+	var cam: Camera3D = get_node_or_null("Terrain3D/SubViewport/Camera3D")
+	var gnd: Node3D = get_node_or_null("Terrain3D/SubViewport/Ground")
+	if cam == null or gnd == null:
+		return false
+	var world: Vector3 = gnd.global_transform * _cowboy_plane.position
+	if cam.is_position_behind(world):
+		return false
+	var c: Vector2 = cam.unproject_position(world)
+	if pos.distance_to(c) > COWBOY_TAP_PX:
 		return false
 	_react_cowboy()
 	return true
@@ -1845,8 +1888,10 @@ func _orb_screen_center(idx: int) -> Vector2:
 		var world: Vector3 = gnd.global_transform * _orb_local_centers[idx]
 		if not cam.is_position_behind(world):
 			return cam.unproject_position(world)
-	if _cowboy_sprite != null:
-		return _cowboy_sprite.position + _cowboy_sprite.size * 0.5
+	if cam != null and gnd != null and _cowboy_plane != null and is_instance_valid(_cowboy_plane):
+		var cw: Vector3 = gnd.global_transform * _cowboy_plane.position
+		if not cam.is_position_behind(cw):
+			return cam.unproject_position(cw)
 	return get_viewport_rect().size * 0.5
 
 func _to_main_menu() -> void:
