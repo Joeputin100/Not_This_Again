@@ -1,0 +1,659 @@
+#!/usr/bin/env python3
+"""Generate the FIFTH interactive HTML gallery of candidate WEAPON-FX for Not_This_Again.
+
+Companion to tools/gen_weapon_fx_gallery.py … gen_weapon_fx_gallery4.py.
+
+THE BRIEF — GOOEY STRETCHY-STRAND REROLL (ultrathink):
+  The owner REJECTED the prior "Gooey Snare" as "too basic" — it was just plain
+  quadratic-curve strands. This gallery is 5 distinct takes that ALL sell the same
+  core feel: strands that look STRETCHY and gluten-elastic, not static curved lines.
+
+  The core technique, baked into a shared `strand()` helper so every tile gets it:
+    * VOLUME-PRESERVING STRETCH — a strand goes THINNER in the middle as it
+      elongates. Drawn as a tapered ribbon (a filled polygon whose half-width
+      varies along the parameter: thick at the anchors, pinched thin where it is
+      stretched farthest) — NOT a constant-width stroke.
+    * SAG / CATENARY — strands droop under gravity between anchors (a downward
+      control point) and the sag deepens as they relax.
+    * ELASTIC JIGGLE — low-frequency summed-sine wobble along the strand so it
+      quivers / twangs.
+    * STICKY DRIP BEADS — little goo globules bulge along the strand and slide /
+      drip down, occasionally stretching into a teardrop and falling.
+    * MULTI-FILAMENT — each "strand" is 2-4 fine fibers that twist / separate
+      slightly (the gluten / cheese-pull look) with faint translucent webbing.
+    * STRETCH→SNAP — several variations stretch to a limit then SNAP with a
+      recoil / retract and a couple of flung goo droplets.
+
+  The five (distinct silhouettes + behaviours, none recolouring galleries 1-4):
+    1. Mozzarella Pull (BIND) — two anchors pull apart; a few thick strands stretch
+       and TAPER-THIN, sag, then SNAP with bead recoil. The pizza-cheese-pull.
+    2. Taffy Web Snap (WHIP) — a 4-5 point web of tapered strands that twang /
+       wobble elastically and gum the cluster; beads slide along.
+    3. Gluten Lattice (BIND) — a denser interconnected MESH of fine multi-filament
+       strands spanning a zone and slowly contracting; faint translucent webbing.
+    4. Molten Drip-Snare (HEAVY) — gravity-heavy deep-sagging strands with BIG drip
+       globs that elongate into teardrops, drop, and string fresh thin threads.
+    5. Elastic Lash-Tether (WHIP) — one thick strand whips out, OVERSHOOTS and
+       stretches elastically (recoil bounce), then snaps taut linking two points.
+
+MOBILE-SAFE (build note on every tile): in-engine these ship as additive 2D-canvas
+overlays (a la godot/scripts/frost_bolts.gd), CPUParticles3D (which MUST carry a
+mesh) for the drip globs, or additive sprites — NEVER custom spatial (3D) shaders,
+which white-rect on our Android renderer. The canvas mockup is just the look target.
+
+Emits a self-contained HTML file (inline <style>+<script>) with one live additive
+<canvas> animation per tile, a name, a weapon-TYPE tag, a one-line mechanic
+description, and the mobile-safe build note. Reuses the exact shared helpers
+(glow / bolt / mulberry) plus a new shared `strand()` tapered-ribbon helper so the
+volume-preserving-stretch technique is available to every tile.
+
+Usage:
+    python3 tools/gen_weapon_fx_gallery5.py <out_dir> <out_filename>
+e.g. python3 tools/gen_weapon_fx_gallery5.py \
+        docs/superpowers/assets/weapon_fx_2026-06-06 weapon-fx-gallery-5.html
+"""
+import pathlib
+import sys
+
+# Each FX: (key, NAME, weapon-tag, mechanic, build-note, JS-step-body).
+# Step-body conventions (galleries 1-4, plus the new `strand`):
+#   ctx   -> CanvasRenderingContext2D (composite already set to 'lighter')
+#   W, H  -> canvas size in CSS px
+#   t     -> seconds since load (float, monotonic)
+#   rnd(seed)                              -> deterministic pseudo-random [0,1)
+#   glow(x,y,r,col,a)                      -> soft radial additive blob
+#   bolt(ax,ay,bx,by,col,seed,life,power)  -> fractal 3-pass additive lightning
+#   strand(ax,ay,bx,by,opts)               -> tapered gluten-elastic multi-filament
+#                                             ribbon w/ sag + jiggle + drip beads
+#   The page low-alpha dark-fills each tile BEFORE step (trails smear), then sets
+#   composite to 'lighter'.
+
+FX = [
+    # ---- 1. Mozzarella Pull ---------------------------------------------
+    ("mozzarella_pull", "Mozzarella Pull", "BIND",
+     "Two anchors pull apart; a few thick strands stretch and TAPER-THIN, sag, then SNAP with a bead recoil — the pizza-cheese-pull.",
+     "GOOEY-STRAND: a handful of additive tapered-ribbon strands (filled polys, half-width pinched in the middle as they stretch) between two anchor sprites; SNAP retracts them with CPUParticles3D goo droplets (mesh-carrying). 2D-canvas overlay a la frost_bolts.gd; no spatial shader.",
+     r"""
+        // Two anchors pull APART; thick strands stretch + taper-thin, sag, then SNAP and recoil.
+        var period=3.0, ph=(t % period)/period;
+        var ay=H*0.5, lx=W*0.30, rx0=W*0.42;
+        // pull phase: right anchor travels out to a stretch limit, then SNAP, then reset.
+        var pull=0.62, snapDur=0.10;
+        var ax2, ay2, stretch, snapping=false, snapE=0;
+        if(ph<pull){
+          var f=ph/pull;
+          var e=f<0.5? 2*f*f : 1-Math.pow(-2*f+2,2)/2;   // ease-in-out
+          ax2 = rx0 + e*(W*0.60-rx0);
+          stretch=e;
+        } else if(ph<pull+snapDur){
+          snapping=true; snapE=(ph-pull)/snapDur;
+          ax2 = (rx0 + (W*0.60-rx0))*(1-snapE) + (rx0+8)*snapE;  // recoil back fast
+          stretch=1-snapE*0.9;
+        } else {
+          var rf=(ph-pull-snapDur)/(1-pull-snapDur);
+          ax2 = rx0+8 + (rx0-rx0)*0;                      // settled near start, relaxing
+          ax2 = (rx0+8)*(1-rf*0.0)+rx0*0; ax2=rx0; stretch=0.06;
+        }
+        var anchorL=[lx,ay], anchorR=[ax2,ay];
+        // 3 thick strands, each with its own sag + jiggle phase; THIN in the middle when stretched.
+        var nS=3;
+        for(var i=0;i<nS;i++){
+          var off=(i-(nS-1)/2)*9;
+          var sagBase=14 + 26*(1-stretch);               // sags deeper as it relaxes
+          strand(anchorL[0],anchorL[1]+off, anchorR[0],anchorR[1]+off, {
+            seed:i*97+11, t:t, base:9-stretch*4.5, pinch:0.30+stretch*0.55,
+            sag:sagBase, jig:2.4+stretch*2.2, jigFreq:1.6+i*0.2,
+            cols:['255,210,150','255,236,200','255,250,242'],
+            beads:2, beadPhase:i*0.4, fil:2
+          });
+        }
+        // anchor sticky knots
+        glow(anchorL[0],anchorL[1], 10, '255,238,205', 0.6);
+        glow(anchorL[0],anchorL[1], 4, '255,255,250', 0.95);
+        glow(anchorR[0],anchorR[1], 9-stretch*2, '255,238,205', 0.55);
+        glow(anchorR[0],anchorR[1], 4, '255,255,250', 0.9);
+        // SNAP flash + flung droplets
+        if(snapping){
+          var fl=1-snapE;
+          glow((lx+ax2)*0.5, ay, 30*fl+6, '255,245,220', fl*0.8);
+          for(var k=0;k<7;k++){
+            var ka=rnd(k*5)*6.283;
+            var d=snapE*W*0.22*(0.5+rnd(k*3)*0.6);
+            var px=(lx+ax2)*0.5+Math.cos(ka)*d, py=ay+Math.sin(ka)*d*0.7 + snapE*snapE*30;
+            glow(px,py, 3*(1-snapE)+1.2, k%2?'255,250,235':'255,225,160', (1-snapE)*0.9);
+          }
+        }
+     """),
+
+    # ---- 2. Taffy Web Snap ----------------------------------------------
+    ("taffy_web_snap", "Taffy Web Snap", "WHIP",
+     "A 4-5 point web of tapered strands twangs and wobbles elastically, gumming a whole cluster while beads slide along the fibers.",
+     "GOOEY-STRAND: per-link additive tapered-ribbon strands (multi-filament, summed-sine twang) spanning 5 anchor sprites; sliding bead globs are additive blobs / CPUParticles3D (mesh). Multi-target gum, 2D-canvas overlay; no spatial shader.",
+     r"""
+        // A multi-anchor WEB of tapered strands twangs elastically + gums a cluster; beads slide.
+        var period=2.9, ph=(t % period)/period;
+        var ox=14, oy=H*0.5;
+        // 5 anchors (the snared cluster)
+        var A=[ [W*0.56,H*0.26],[W*0.84,H*0.42],[W*0.70,H*0.74],[W*0.40,H*0.66],[W*0.60,H*0.50] ];
+        var shoot=0.20;
+        if(ph<shoot){
+          var f=ph/shoot;
+          var tx=ox+(A[0][0]-ox)*f, ty=oy+(A[0][1]-oy)*f;
+          ctx.lineCap='round';
+          ctx.strokeStyle='rgba(255,232,200,0.5)'; ctx.lineWidth=6*(1-f)+2;
+          ctx.beginPath(); ctx.moveTo(ox,oy); ctx.lineTo(tx,ty); ctx.stroke();
+          glow(tx,ty, 9, '255,250,240', 0.95);
+          glow(ox,oy, 12, '255,225,190', 0.6);
+        } else {
+          var e=(ph-shoot)/(1-shoot);
+          var snap=Math.min(1, e/0.16);                  // strands twang taut
+          var twang=Math.exp(-e*3)*Math.sin(e*34);       // initial elastic ring-down
+          // web links: muzzle->A0, then a fan of cluster links through the hub A[4]
+          var links=[ [ox,oy,A[0][0],A[0][1]],
+                      [A[0][0],A[0][1],A[4][0],A[4][1]],
+                      [A[1][0],A[1][1],A[4][0],A[4][1]],
+                      [A[2][0],A[2][1],A[4][0],A[4][1]],
+                      [A[3][0],A[3][1],A[4][0],A[4][1]],
+                      [A[0][0],A[0][1],A[1][0],A[1][1]],
+                      [A[2][0],A[2][1],A[3][0],A[3][1]] ];
+          var pulse=0.5+0.5*Math.sin(t*4.5);
+          for(var li=0;li<links.length;li++){
+            var L=links[li];
+            strand(L[0],L[1],L[2],L[3], {
+              seed:li*53+7, t:t, base:6.5, pinch:0.42,
+              sag:(10+5*Math.sin(t*1.3+li))*snap, jig:3.0+2.5*Math.abs(twang),
+              jigFreq:2.0+li*0.15,
+              cols:['255,206,158','255,234,198','255,252,245'],
+              beads: li<2?2:1, beadPhase:li*0.3, fil:2, glowMul:0.6+pulse*0.4
+            });
+          }
+          // anchors gummed: pulsing sticky knots + flecks
+          for(var ai=0;ai<A.length;ai++){
+            glow(A[ai][0],A[ai][1], 8+pulse*5, '255,243,220', 0.4+pulse*0.35);
+            glow(A[ai][0],A[ai][1], 4, '255,255,255', 0.8);
+            for(var k=0;k<3;k++){ var ka=rnd(ai*7+k)*6.283; var d=6+rnd(ai*3+k)*7; glow(A[ai][0]+Math.cos(ka)*d, A[ai][1]+Math.sin(ka)*d, 2.1, '255,233,200', 0.5+pulse*0.3); }
+          }
+          glow(ox,oy, 10, '255,225,190', 0.5);
+        }
+     """),
+
+    # ---- 3. Gluten Lattice ----------------------------------------------
+    ("gluten_lattice", "Gluten Lattice", "BIND",
+     "A dense interconnected MESH of fine multi-filament strands spans a zone and slowly contracts, gumming everything inside with faint translucent webbing.",
+     "GOOEY-STRAND: a grid of additive multi-filament tapered ribbons (fine, low-alpha translucent webbing fill between nodes) contracting toward a centroid; node knots are additive blobs. Zone-bind 2D-canvas overlay; no spatial shader.",
+     r"""
+        // A dense MESH of fine multi-filament strands spans a zone + slowly CONTRACTS (gums it).
+        var period=3.4, ph=(t % period)/period;
+        var cx=W*0.52, cy=H*0.52;
+        // contraction: lattice cast out (0), holds, then pulls inward toward centroid.
+        var cast=0.22;
+        var contract;
+        if(ph<cast){ contract=0; }
+        else { var e=(ph-cast)/(1-cast); contract=0.18*(e<0.7? e/0.7 : 1) ; }
+        // 3x3 lattice nodes, each drawn toward the centroid by `contract`, with a jiggle.
+        var cols=3, rows=3, nodes=[];
+        var spanX=W*0.40, spanY=H*0.38;
+        for(var r=0;r<rows;r++) for(var c=0;c<cols;c++){
+          var bx=cx + (c-(cols-1)/2)*(spanX/(cols-1));
+          var by=cy + (r-(rows-1)/2)*(spanY/(rows-1));
+          var jx=Math.sin(t*1.5 + r*1.3 + c*0.7)*3.2;
+          var jy=Math.cos(t*1.7 + r*0.9 + c*1.1)*3.2;
+          var nx=bx + (cx-bx)*contract + jx;
+          var ny=by + (cy-by)*contract + jy;
+          nodes.push([nx,ny]);
+        }
+        function nat(c,r){ return nodes[r*cols+c]; }
+        // faint translucent webbing fill across each cell quad (the gluten skin)
+        ctx.globalCompositeOperation='lighter';
+        for(var r=0;r<rows-1;r++) for(var c=0;c<cols-1;c++){
+          var p0=nat(c,r),p1=nat(c+1,r),p2=nat(c+1,r+1),p3=nat(c,r+1);
+          var web=0.05+0.04*Math.sin(t*2+r+c);
+          ctx.fillStyle='rgba(255,228,190,'+web+')';
+          ctx.beginPath(); ctx.moveTo(p0[0],p0[1]); ctx.lineTo(p1[0],p1[1]); ctx.lineTo(p2[0],p2[1]); ctx.lineTo(p3[0],p3[1]); ctx.closePath(); ctx.fill();
+        }
+        // horizontal + vertical fine multi-filament strands
+        var si=0;
+        for(var r=0;r<rows;r++) for(var c=0;c<cols-1;c++){
+          var a=nat(c,r), b=nat(c+1,r);
+          strand(a[0],a[1],b[0],b[1], { seed:si++*31+3, t:t, base:3.4, pinch:0.36,
+            sag:6, jig:1.6, jigFreq:2.2, cols:['255,212,160','255,236,200','255,252,245'],
+            beads:0, fil:3, glowMul:0.55 });
+        }
+        for(var c=0;c<cols;c++) for(var r=0;r<rows-1;r++){
+          var a=nat(c,r), b=nat(c,r+1);
+          strand(a[0],a[1],b[0],b[1], { seed:si++*31+3, t:t, base:3.4, pinch:0.36,
+            sag:6, jig:1.6, jigFreq:2.0, cols:['255,212,160','255,236,200','255,252,245'],
+            beads:0, fil:3, glowMul:0.55 });
+        }
+        // a couple of slow drip beads on interior strands for life
+        for(var d=0;d<3;d++){
+          var na=nat(d%cols, (d%2)), nb=nat((d%cols), (d%2)+1);
+          var dp=((t*0.4 + d*0.33)%1);
+          var bx2=na[0]+(nb[0]-na[0])*dp, by2=na[1]+(nb[1]-na[1])*dp + Math.sin(dp*3.14159)*5;
+          glow(bx2,by2, 3*(1-dp)+1.4, '255,240,212', (1-dp)*0.7);
+        }
+        // node knots, brighter as it contracts (gumming tighter)
+        for(var n=0;n<nodes.length;n++){
+          var pulse=0.4+0.4*Math.sin(t*3 + n);
+          glow(nodes[n][0],nodes[n][1], 6+contract*22+pulse*3, '255,240,212', 0.4+contract*1.5);
+          glow(nodes[n][0],nodes[n][1], 3, '255,255,250', 0.85);
+        }
+     """),
+
+    # ---- 4. Molten Drip-Snare -------------------------------------------
+    ("molten_drip_snare", "Molten Drip-Snare", "HEAVY",
+     "Gravity-heavy deep-sagging strands sling BIG drip globs that elongate into teardrops, drop, and string fresh thin threads behind them.",
+     "GOOEY-STRAND: a few deep-catenary additive tapered ribbons; the drip globs are CPUParticles3D (mesh-carrying) teardrop sprites that fall + trail an additive thin thread. Heavy zone-gum 2D-canvas overlay; no spatial shader.",
+     r"""
+        // Gravity-HEAVY: deep-sagging strands; BIG globs elongate to teardrops, DROP, trailing threads.
+        var period=3.6, ph=(t % period)/period;
+        var ax=W*0.20, bx=W*0.80, ay=H*0.30, by=H*0.34;
+        var cast=0.18;
+        var settle = ph<cast ? (ph/cast) : 1;             // strands sling in then hang
+        // 2 heavy strands, very deep sag, slow heavy jiggle.
+        for(var i=0;i<2;i++){
+          var off=i*16-8;
+          strand(ax, ay+off, bx, by+off, {
+            seed:i*71+5, t:t, base:11, pinch:0.34,
+            sag:(54+10*Math.sin(t*0.8+i))*settle, jig:2.0, jigFreq:1.0+i*0.2,
+            cols:['216,146,60','240,196,120','255,244,224'],
+            beads:0, fil:2, glowMul:0.7
+          });
+        }
+        // anchors
+        glow(ax,ay, 11, '236,170,90', 0.6); glow(ax,ay,4,'255,250,240',0.9);
+        glow(bx,by, 11, '236,170,90', 0.6); glow(bx,by,4,'255,250,240',0.9);
+        // travelling sag-belly position (parametric on the lower strand)
+        function belly(u){
+          var x=ax+(bx-ax)*u;
+          var sg=(54+10*Math.sin(t*0.8))*settle;
+          var y=ay+8 + (by-(ay+8))*u + Math.sin(u*3.14159)*sg;
+          return [x,y];
+        }
+        // 3 BIG drip globs on their own drip cycle: bulge -> stretch teardrop -> fall + trail.
+        for(var g=0;g<3;g++){
+          var u=0.28 + g*0.22;
+          var dc=((t*0.42 + g*0.37)%1);                   // drip cycle 0..1
+          var anchor=belly(u);
+          if(dc<0.55){
+            // BULGING on the strand belly, swelling
+            var sw=dc/0.55;
+            var rr=3 + sw*7 + 2*Math.sin(t*3+g);
+            glow(anchor[0],anchor[1], rr*1.7, '255,232,190', 0.5);
+            ctx.fillStyle='rgba(255,244,220,0.85)';
+            ctx.beginPath(); ctx.ellipse(anchor[0],anchor[1], rr*0.8, rr*(0.9+sw*0.5), 0,0,6.283); ctx.fill();
+            glow(anchor[0],anchor[1]-rr*0.3, rr*0.5, '255,255,255', 0.5);
+          } else {
+            // FALL: teardrop drops, stringing a thin tapering thread back up to the belly.
+            var fe=(dc-0.55)/0.45;
+            var fy=anchor[1] + fe*fe*(H-anchor[1]-10);
+            var fx=anchor[0] + Math.sin(t*2+g)*2;
+            // thin trailing thread (tapered ribbon, very pinched)
+            strand(anchor[0],anchor[1], fx, fy, {
+              seed:g*131+9, t:t, base:4*(1-fe)+1.2, pinch:0.7,
+              sag:0, jig:1.0*(1-fe), jigFreq:3.0,
+              cols:['230,170,96','248,210,150','255,248,230'],
+              beads:0, fil:1, glowMul:0.5
+            });
+            // the teardrop glob itself (rounded bottom, pointed top)
+            var tr=6*(1-fe*0.4);
+            glow(fx,fy, tr*1.8, '255,228,184', (1-fe*0.5)*0.7);
+            ctx.fillStyle='rgba(255,244,222,'+((1-fe*0.3))+')';
+            ctx.beginPath();
+            ctx.moveTo(fx, fy-tr*1.6);
+            ctx.quadraticCurveTo(fx+tr, fy-tr*0.2, fx, fy+tr);
+            ctx.quadraticCurveTo(fx-tr, fy-tr*0.2, fx, fy-tr*1.6);
+            ctx.fill();
+            glow(fx,fy+tr*0.2, tr*0.5,'255,255,255',0.5);
+            // splat puff when it nears the floor
+            if(fe>0.86){ var sp=(fe-0.86)/0.14; glow(fx, H-8, 16*sp+3, '255,236,200', (1-sp)*0.6); }
+          }
+        }
+     """),
+
+    # ---- 5. Elastic Lash-Tether -----------------------------------------
+    ("elastic_lash_tether", "Elastic Lash-Tether", "WHIP",
+     "One thick strand whips out, OVERSHOOTS and stretches elastically (recoil bounce), then snaps taut linking two points — the strongest stretch→snap read.",
+     "GOOEY-STRAND: a single thick additive tapered ribbon with a spring/overshoot launch + ring-down recoil; SNAP flings CPUParticles3D goo droplets (mesh). Single-strand whip-tether 2D-canvas overlay; no spatial shader.",
+     r"""
+        // ONE thick strand WHIPS out, OVERSHOOTS + stretches elastically, then SNAPS taut.
+        var period=2.6, ph=(t % period)/period;
+        var ox=W*0.14, oy=H*0.62, tx=W*0.82, ty=H*0.40;
+        var launch=0.30, ring=0.50;                       // whip-out, then elastic ring-down
+        if(ph<launch){
+          // whip-out: tip races past the target then springs back (overshoot)
+          var f=ph/launch;
+          var os=1 - Math.exp(-f*5)*Math.cos(f*16);       // damped overshoot 0..~1.3..1
+          os = f<0.62 ? os*1.18 : 1 + (os-1)*0.5;
+          var hx=ox+(tx-ox)*Math.min(os,1.28);
+          var hy=oy+(ty-oy)*Math.min(os,1.28);
+          // the stretching strand — pinches THIN as the tip overshoots far.
+          var stretch=Math.min(1, f/0.62);
+          strand(ox,oy, hx,hy, {
+            seed:21, t:t, base:12-stretch*5, pinch:0.30+stretch*0.5,
+            sag:6, jig:5*stretch, jigFreq:1.8,
+            cols:['255,208,150','255,234,198','255,252,245'],
+            beads:1, beadPhase:0, fil:2, glowMul:0.8
+          });
+          glow(hx,hy, 11, '255,250,240', 0.95);
+          glow(hx,hy, 5, '255,255,255', 1.0);
+          glow(ox,oy, 12, '255,225,190', 0.6);
+        } else {
+          // SNAP taut + elastic ring-down between the two anchored points.
+          var e=(ph-launch)/(1-launch);
+          var twang=Math.exp(-e*4)*Math.sin(e*40);        // ring-down
+          var mx=(ox+tx)*0.5, my=(oy+ty)*0.5;
+          // perpendicular wobble amplitude decays
+          strand(ox,oy, tx,ty, {
+            seed:21, t:t, base:9, pinch:0.40,
+            sag:8 + 14*Math.abs(twang), jig:2.5+10*Math.abs(twang), jigFreq:2.2,
+            cols:['255,210,154','255,236,200','255,252,245'],
+            beads:2, beadPhase:0.2, fil:3, glowMul:0.8
+          });
+          // SNAP flash at the moment of taut + flung droplets early on
+          if(e<0.22){
+            var fl=1-e/0.22;
+            glow(tx,ty, 26*fl+5, '255,246,222', fl*0.85);
+            for(var k=0;k<6;k++){
+              var ka=rnd(k*9)*6.283, d=(e/0.22)*W*0.18*(0.5+rnd(k*4)*0.6);
+              var px=tx+Math.cos(ka)*d, py=ty+Math.sin(ka)*d*0.7 + (e/0.22)*(e/0.22)*26;
+              glow(px,py, 3*fl+1.2, k%2?'255,250,235':'255,224,158', fl*0.9);
+            }
+          }
+          glow(ox,oy, 9, '255,238,205', 0.55); glow(ox,oy,4,'255,255,250',0.9);
+          glow(tx,ty, 9, '255,238,205', 0.55); glow(tx,ty,4,'255,255,250',0.9);
+        }
+     """),
+]
+
+TAG_COLORS = {
+    "BIND": "#f0c878", "WHIP": "#ff9f5a", "HEAVY": "#d8923c",
+}
+
+TAG_LABELS = {
+    "BIND": "BIND (mozzarella / gluten lattice)",
+    "WHIP": "WHIP (taffy web / elastic lash)",
+    "HEAVY": "HEAVY (molten drip-snare)",
+}
+
+
+def build_tiles_js() -> str:
+    entries = []
+    for fx in FX:
+        key, body = fx[0], fx[-1]
+        entries.append(
+            "{key:%r, draw:function(ctx,W,H,t,rnd,glow,bolt,strand){%s}}" % (key, body)
+        )
+    return "[\n" + ",\n".join(entries) + "\n]"
+
+
+def build_cards_html() -> str:
+    cards = []
+    for key, name, tag, mech, note, _ in FX:
+        col = TAG_COLORS.get(tag, "#f0c878")
+        cards.append(f"""    <div class="card" style="border-color:{col}">
+      <div class="tag" style="background:{col}">{tag}</div>
+      <canvas id="fx_{key}" width="240" height="240"></canvas>
+      <div class="cn">{name}</div>
+      <div class="cm">{mech}</div>
+      <div class="cd">{note}</div>
+    </div>""")
+    return "\n".join(cards)
+
+
+def build_legend_html() -> str:
+    spans = []
+    for tag in ["BIND", "WHIP", "HEAVY"]:
+        col = TAG_COLORS[tag]
+        spans.append(f'    <span style="background:{col}">{TAG_LABELS[tag]}</span>')
+    return "\n".join(spans)
+
+
+def build_html() -> str:
+    return f"""<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Not_This_Again — Weapon-FX Gallery 5 (gooey stretchy strands)</title>
+<style>
+  *{{box-sizing:border-box}}
+  body{{margin:0;background:#0b0805;color:#f3e7d6;font-family:system-ui,-apple-system,sans-serif}}
+  .wrap{{max-width:1180px;margin:0 auto;padding:26px 18px 60px}}
+  h1{{font-size:24px;margin:0 0 6px;color:#f0c878;letter-spacing:.3px}}
+  .sub{{font-size:14px;line-height:1.6;color:#d8c4a8;max-width:920px;margin:0 0 16px}}
+  .sub b{{color:#ffe0a8}}
+  .reframe{{font-size:13px;line-height:1.65;color:#ffe7d6;max-width:920px;margin:0 0 18px;
+        border-left:3px solid #d8923c;padding:8px 0 8px 13px;background:#1a1109;border-radius:0 8px 8px 0}}
+  .reframe b{{color:#ffd0a8}}
+  .note{{font-size:12.5px;line-height:1.6;color:#cdb38e;max-width:920px;margin:0 0 22px;
+        border-left:3px solid #8a6028;padding:6px 0 6px 12px;background:#150f08}}
+  .note b{{color:#ffd98a}}
+  .legend{{display:flex;gap:10px;flex-wrap:wrap;margin:0 0 22px;font-size:11px;font-weight:700}}
+  .legend span{{padding:3px 10px;border-radius:7px;color:#1a1008}}
+  .grid{{display:grid;grid-template-columns:repeat(auto-fill,minmax(240px,1fr));gap:18px}}
+  .card{{position:relative;background:#160f08;border:2px solid #4a3520;border-radius:14px;padding:10px;text-align:center;overflow:hidden}}
+  .card canvas{{width:100%;height:auto;aspect-ratio:1/1;border-radius:9px;display:block;background:#070402}}
+  .tag{{position:absolute;top:8px;left:8px;color:#1a1008;font-size:10px;font-weight:800;padding:2px 9px;border-radius:7px;z-index:2}}
+  .cn{{font-size:15px;color:#ffe1a0;margin-top:9px;font-weight:600}}
+  .cm{{font-size:11.5px;color:#f3dcc0;margin-top:5px;line-height:1.45;font-style:italic}}
+  .cd{{font-size:11px;color:#c4aa86;margin-top:5px;line-height:1.45;border-top:1px solid #33240f;padding-top:5px}}
+  .foot{{margin-top:30px;font-size:12px;color:#b09872;line-height:1.6;max-width:920px}}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>Weapon-FX Gallery 5 — Gooey stretchy strands (ultrathink)</h1>
+  <p class="sub">Gooey stretchy-strand variations — <b>pick the strand feel that
+  lands</b>. The prior "Gooey Snare" was rejected as too basic (plain quadratic
+  curves). These five rebuild the strand from the ground up.</p>
+  <p class="reframe"><b>The key:</b> <b>tapered volume-preserving stretch</b> (a
+  strand goes THINNER in the middle as it elongates) + <b>sag</b> (catenary droop) +
+  <b>jiggle</b> (summed-sine twang) + <b>drip beads</b> (goo globs that slide /
+  fall) + <b>multi-filament</b> (2-4 fibers that split, the cheese / gluten pull) —
+  <b>not plain curves</b>. Several add a <b>stretch &rarr; SNAP</b> recoil.</p>
+  <p class="note"><b>Mobile-safe (every tile):</b> in-engine these ship as additive
+  <b>2D-canvas overlays</b> (&agrave; la <code>frost_bolts.gd</code>),
+  <b>CPUParticles3D (which must carry a mesh)</b> for the drip globs, or additive
+  sprites — <b>never custom spatial / 3D shaders</b>, which white-rect on our
+  Android renderer. The canvas mockups below are only the look target.</p>
+  <div class="legend">
+{build_legend_html()}
+  </div>
+  <div class="grid">
+{build_cards_html()}
+  </div>
+  <p class="foot">Pure HTML5 &lt;canvas&gt; + JS with <code>globalCompositeOperation='lighter'</code>,
+  a shared tapered-ribbon <code>strand()</code> helper (variable half-width + sag +
+  summed-sine jiggle + sliding drip beads + multi-filament fibers), soft radial-gradient
+  glow, and motion trails — a direct preview of the additive in-engine look. Tell me
+  which strand feel to build.</p>
+</div>
+<script>
+"use strict";
+// ---- shared additive helpers (same as galleries 1-4) ---------------------
+function mulberry(seed){{ // tiny deterministic PRNG
+  return function(){{ seed|=0; seed=seed+0x6D2B79F5|0; var t=Math.imul(seed^seed>>>15,1|seed);
+    t=t+Math.imul(t^t>>>7,61|t)^t; return ((t^t>>>14)>>>0)/4294967296; }};
+}}
+function makeRnd(){{ // rnd(intSeed) -> [0,1)
+  return function(s){{ var f=mulberry(s|0); return f(); }};
+}}
+// soft additive radial blob
+function makeGlow(ctx){{
+  return function(x,y,r,col,a){{
+    if(r<=0)return;
+    var g=ctx.createRadialGradient(x,y,0,x,y,r);
+    g.addColorStop(0,'rgba('+col+','+a+')');
+    g.addColorStop(0.45,'rgba('+col+','+(a*0.35)+')');
+    g.addColorStop(1,'rgba('+col+',0)');
+    ctx.fillStyle=g; ctx.beginPath(); ctx.arc(x,y,r,0,7); ctx.fill();
+  }};
+}}
+// fractal midpoint-displacement bolt, 3 additive passes (a la frost_bolts.gd)
+function makeBolt(ctx){{
+  function subdiv(ax,ay,bx,by,depth,w,out,r){{
+    if(depth===0){{ out.push([ax,ay,bx,by,w]); return; }}
+    var mx=(ax+bx)*0.5+(r()-0.5)*depth*7;
+    var my=(ay+by)*0.5+(r()-0.5)*depth*7;
+    subdiv(ax,ay,mx,my,depth-1,w,out,r);
+    subdiv(mx,my,bx,by,depth-1,w,out,r);
+    if(depth>=2 && r()<0.35){{
+      var brx=mx+(r()-0.5)*16, bry=my+(r()-0.5)*16;
+      subdiv(mx,my,brx,bry,depth-2,w*0.5,out,r);
+    }}
+  }}
+  return function(ax,ay,bx,by,col,seed,life,power){{
+    var r=mulberry(seed|0); var segs=[]; subdiv(ax,ay,bx,by,4,1.0,segs,r);
+    ctx.lineCap='round';
+    for(var i=0;i<segs.length;i++){{var s=segs[i];
+      ctx.strokeStyle='rgba('+col+','+(0.16*life*s[4])+')'; ctx.lineWidth=9*s[4]*(1+power*0.3);
+      ctx.beginPath(); ctx.moveTo(s[0],s[1]); ctx.lineTo(s[2],s[3]); ctx.stroke();}}
+    for(var i=0;i<segs.length;i++){{var s=segs[i];
+      ctx.strokeStyle='rgba('+col+','+(0.4*life*s[4])+')'; ctx.lineWidth=4*s[4]*(1+power*0.2);
+      ctx.beginPath(); ctx.moveTo(s[0],s[1]); ctx.lineTo(s[2],s[3]); ctx.stroke();}}
+    for(var i=0;i<segs.length;i++){{var s=segs[i]; if(s[4]<0.6)continue;
+      ctx.strokeStyle='rgba(255,255,255,'+(0.95*life*s[4])+')'; ctx.lineWidth=1.6*s[4];
+      ctx.beginPath(); ctx.moveTo(s[0],s[1]); ctx.lineTo(s[2],s[3]); ctx.stroke();}}
+  }};
+}}
+// ---- the gooey-strand helper (NEW for gallery 5) -------------------------
+// A tapered, gluten-elastic, multi-filament ribbon between two anchors.
+//   strand(ax,ay,bx,by, opts) where opts:
+//     seed   int       deterministic per-strand seed
+//     t      sec       time (for jiggle/bead animation)
+//     base   px        anchor half-width (thick ends)
+//     pinch  0..1      how much the middle thins out (volume-preserving stretch)
+//     sag    px        downward catenary droop at the belly
+//     jig    px        summed-sine elastic wobble amplitude (perpendicular)
+//     jigFreq          base wobble frequency along the span
+//     cols   [w,m,c]   wide-glow / mid / core colours 'r,g,b'
+//     fil    1..4      number of fine filaments (the cheese-pull split)
+//     beads  int       sliding drip beads on the belly
+//     beadPhase        phase offset for the bead slide
+//     glowMul          overall alpha multiplier (default 1)
+function makeStrand(ctx, glow){{
+  return function(ax,ay,bx,by,o){{
+    var seed=o.seed|0, t=o.t||0;
+    var base=o.base!=null?o.base:8, pinch=o.pinch!=null?o.pinch:0.5;
+    var sag=o.sag||0, jig=o.jig||0, jf=o.jigFreq||2;
+    var cols=o.cols||['255,210,150','255,236,200','255,250,242'];
+    var fil=o.fil||2, beads=o.beads||0, bphase=o.beadPhase||0;
+    var gm=o.glowMul!=null?o.glowMul:1;
+    var dx=bx-ax, dy=by-ay, len=Math.hypot(dx,dy)||1;
+    var nx=-dy/len, ny=dx/len;                 // unit normal (for width + wobble)
+    var SEG=20;
+    // centreline point at parameter u (0..1): lerp + catenary sag + summed-sine jiggle
+    function center(u){{
+      var x=ax+dx*u, y=ay+dy*u;
+      var s=Math.sin(u*Math.PI)*sag;           // catenary belly (down on screen = +y)
+      // summed-sine elastic wobble, anchored to 0 at both ends, time-varying (twang)
+      var env=Math.sin(u*Math.PI);
+      var w=(Math.sin(u*jf*6.283 + t*5 + seed) + 0.5*Math.sin(u*jf*12.566 + t*7.3 + seed*1.7))*jig*env;
+      return [x + nx*w, y + s + ny*w];
+    }}
+    // half-width at u: VOLUME-PRESERVING — thick at ends, pinched thin in the middle.
+    function hw(u){{
+      var taper=1 - pinch*Math.sin(u*Math.PI);  // 1 at ends, (1-pinch) at belly
+      return base*Math.max(0.06, taper);
+    }}
+    // build top + bottom edges of the tapered ribbon
+    var top=[], bot=[];
+    for(var i=0;i<=SEG;i++){{
+      var u=i/SEG, c=center(u), w=hw(u);
+      // local tangent for a correct normal at this sample
+      var c2=center(Math.min(1,u+0.02)), c0=center(Math.max(0,u-0.02));
+      var tx=c2[0]-c0[0], ty=c2[1]-c0[1], tl=Math.hypot(tx,ty)||1;
+      var lnx=-ty/tl, lny=tx/tl;
+      top.push([c[0]+lnx*w, c[1]+lny*w]);
+      bot.push([c[0]-lnx*w, c[1]-lny*w]);
+    }}
+    // PASS 1: wide soft outer glow (fill the ribbon, low alpha)
+    function fillRibbon(col,a){{
+      ctx.fillStyle='rgba('+col+','+a+')';
+      ctx.beginPath(); ctx.moveTo(top[0][0],top[0][1]);
+      for(var i=1;i<top.length;i++) ctx.lineTo(top[i][0],top[i][1]);
+      for(var i=bot.length-1;i>=0;i--) ctx.lineTo(bot[i][0],bot[i][1]);
+      ctx.closePath(); ctx.fill();
+    }}
+    fillRibbon(cols[0], 0.16*gm);
+    fillRibbon(cols[1], 0.22*gm);
+    // PASS 2: fine multi-filament cores that split/twist along the span (cheese-pull)
+    ctx.lineCap='round';
+    for(var f=0;f<fil;f++){{
+      var spread=(f-(fil-1)/2)/Math.max(1,(fil-1));  // -0.5..0.5
+      ctx.strokeStyle='rgba('+cols[2]+','+(0.85*gm)+')';
+      ctx.lineWidth=Math.max(0.8, base*0.18);
+      ctx.beginPath();
+      for(var i=0;i<=SEG;i++){{
+        var u=i/SEG, c=center(u), w=hw(u);
+        // filaments fan apart toward the belly, converge at the anchors
+        var twist=Math.sin(u*Math.PI)* (0.55) * Math.sin(u*4 + t*2 + f*2.1);
+        var ox=spread*w*1.3 + twist*w*0.6;
+        // perpendicular offset using the strand's gross normal
+        var px=c[0]+nx*ox, py=c[1]+ny*ox;
+        if(i===0) ctx.moveTo(px,py); else ctx.lineTo(px,py);
+      }}
+      ctx.stroke();
+    }}
+    // sliding drip BEADS along the belly (slide down + occasionally fall)
+    for(var bd=0;bd<beads;bd++){{
+      var bp=((t*0.45 + bphase + bd*0.5) % 1);
+      var u=0.2 + 0.6*bp;
+      var c=center(u);
+      // bead bulges, biased downward by gravity (sits on the underside)
+      var rr=2.2 + 1.8*Math.sin(t*3 + bd + seed);
+      glow(c[0], c[1]+rr*0.4, rr*1.8, cols[1], 0.5*gm);
+      ctx.fillStyle='rgba('+cols[2]+','+(0.85*gm)+')';
+      ctx.beginPath(); ctx.ellipse(c[0], c[1]+rr*0.4, rr*0.85, rr*1.05, 0,0,6.283); ctx.fill();
+    }}
+  }};
+}}
+// ---- tiles ---------------------------------------------------------------
+var TILES = {build_tiles_js()};
+var T0 = performance.now();
+var insts = [];
+for (var i=0;i<TILES.length;i++){{
+  var cv = document.getElementById('fx_'+TILES[i].key);
+  if(!cv) continue;
+  var ctx = cv.getContext('2d');
+  var glow = makeGlow(ctx);
+  insts.push({{
+    cv:cv, ctx:ctx, draw:TILES[i].draw,
+    rnd:makeRnd(), glow:glow, bolt:makeBolt(ctx), strand:makeStrand(ctx, glow),
+    W:cv.width, H:cv.height
+  }});
+}}
+function frame(now){{
+  var t = (now - T0)/1000;
+  for (var i=0;i<insts.length;i++){{
+    var o=insts[i], ctx=o.ctx;
+    ctx.globalCompositeOperation='source-over';
+    ctx.fillStyle='rgba(7,4,2,0.30)';
+    ctx.fillRect(0,0,o.W,o.H);
+    ctx.globalCompositeOperation='lighter';
+    try {{ o.draw(ctx,o.W,o.H,t,o.rnd,o.glow,o.bolt,o.strand); }} catch(e){{ /* keep loop alive */ }}
+  }}
+  requestAnimationFrame(frame);
+}}
+requestAnimationFrame(frame);
+</script>
+</body>
+</html>
+"""
+
+
+def main() -> int:
+    if len(sys.argv) != 3:
+        print(__doc__)
+        return 2
+    out_dir = pathlib.Path(sys.argv[1])
+    out_dir.mkdir(parents=True, exist_ok=True)
+    out = out_dir / sys.argv[2]
+    out.write_text(build_html(), encoding="utf-8")
+    print(f"wrote {out} ({out.stat().st_size} bytes, {len(FX)} tiles)")
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
