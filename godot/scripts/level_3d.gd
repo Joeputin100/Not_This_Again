@@ -4529,12 +4529,85 @@ func _kimmy_haul_away(captive: Node3D) -> void:
 func _kimmy_resume_scroll() -> void:
 	_set_cart_encounter(false)
 
-# kimmy: cage cracked — full sugar-rush flourish. STUB — the next task replaces
-# this with the real Rainbow Kimmy rush. Keep exactly one def of this name.
 func _rush_kimmy(freed_captive: Node3D) -> void:
+	# Transform: swap the caged stallion's hero sprite to Rainbow Kimmy + pop.
+	if is_instance_valid(freed_captive):
+		var hs = freed_captive.get_meta("hero_sprite", null)
+		if hs is Sprite3D:
+			(hs as Sprite3D).texture = load("res://assets/sprites/props/kimmy_rainbow.png")
+			var pop := (hs as Sprite3D).create_tween()
+			pop.tween_property(hs, "scale", (hs as Sprite3D).scale * 1.4, 0.25) \
+				.set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
+		# Also hide the front cage bars so she reads as freed (front_bars meta set in _spawn_kimmy_cage).
+		var fb = freed_captive.get_meta("front_bars", null)
+		if fb is Node3D and is_instance_valid(fb):
+			var ft := (fb as Node3D).create_tween().set_parallel(true)
+			ft.tween_property(fb, "scale", (fb as Node3D).scale * 0.01, 0.3).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_IN)
+			ft.tween_property(fb, "modulate:a", 0.0, 0.3)
+	# Audio + banner.
+	if get_node_or_null("/root/AudioBus") and AudioBus.has_method("play_sfx"):
+		AudioBus.play_sfx("kimmy_riff")
+	var ui: Node = get_node_or_null("UI")
+	if ui != null:
+		FlourishBanner.spawn(ui, "RAINBOW KIMMY")
+	# Skittles screen-clear: outlaws + destructible obstacles (incl bulls), never the cage/posse.
+	_kimmy_skittles_burst()
+	for o in outlaws_root.get_children():
+		if o is Node3D and kimmy_clears_node(_node_meta_flags(o)):
+			_kimmy_zap(o)
+	for ob in obstacles_root.get_children():
+		if ob is Node3D and kimmy_clears_node(_node_meta_flags(ob)):
+			_kimmy_zap(ob)
+	# Resolve: free the cage + resume after the riff.
+	await get_tree().create_timer(3.0).timeout
 	if is_instance_valid(freed_captive):
 		freed_captive.queue_free()
 	_kimmy_resume_scroll()
+
+# Collect the flags kimmy_clears_node() checks from a live node's meta.
+func _node_meta_flags(n: Node) -> Dictionary:
+	return {
+		"is_outlaw": n.get_meta("is_outlaw", false),
+		"is_bull": n.get_meta("is_bull", false),
+		"is_captive": n.get_meta("is_captive", false),
+		"is_kimmy": n.get_meta("is_kimmy", false),
+		"dying": n.get_meta("dying", false),
+	}
+
+# Destroy one target with a rainbow burst + bounty, routing outlaws through the
+# existing quota chokepoint so the count stays correct.
+func _kimmy_zap(n: Node3D) -> void:
+	_kimmy_skittles_burst_at(n.position)
+	_add_bounty(50)
+	if n.get_meta("is_outlaw", false):
+		_outlaw_left_field(n)   # decrements _outlaws_remaining via the existing path
+	n.queue_free()
+
+func _kimmy_skittles_burst() -> void:
+	_kimmy_skittles_burst_at(Vector3(0.0, 1.0, COWBOY_Z - 4.0))
+
+func _kimmy_skittles_burst_at(pos: Vector3) -> void:
+	var p := CPUParticles3D.new()
+	p.position = pos
+	p.amount = 24
+	p.lifetime = 0.8
+	p.one_shot = true
+	p.explosiveness = 0.9
+	p.emitting = true
+	p.direction = Vector3(0, 1, 0)
+	p.spread = 80.0
+	p.initial_velocity_min = 3.0
+	p.initial_velocity_max = 8.0
+	p.gravity = Vector3(0, -6, 0)
+	p.scale_amount_min = 0.2
+	p.scale_amount_max = 0.5
+	# rainbow color ramp
+	var ramp := Gradient.new()
+	ramp.colors = PackedColorArray([Color(1,0.2,0.2), Color(1,0.8,0.2), Color(0.3,1,0.3), Color(0.3,0.6,1), Color(0.7,0.3,1)])
+	# CPUParticles3D.color_ramp is typed Gradient (not a GradientTexture, unlike GPUParticles3D).
+	p.color_ramp = ramp
+	popups_root.add_child(p)
+	get_tree().create_timer(1.2).timeout.connect(p.queue_free)
 
 # Iter 133: container shatters → hero pops out → flips to face forward
 # → joins posse formation.
