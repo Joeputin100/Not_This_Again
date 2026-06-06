@@ -57,6 +57,8 @@ scatter: [ { slug, density, side: "shoulder"|"both", scale_range, y_align } ]  #
 | 3 FARM ROAD FRACAS | farm | living soil: grass-fleck dirt, greener | packed-dirt farm road | none | grass tufts (dense), weeds/crops, fence posts, hay/rocks |
 | 4 MOUNTAIN PASS PERIL | mountain | snow-over-rock: white drifts on grey stone, icy patches | snow-packed path (faint) | none | snow drifts, pine trees, boulders, frosted rocks |
 
+**Mountain has a cliff edge on the LEFT of the trail.** Instead of a normal left shoulder, the ground ends in a precipice that drops away to a snowy gorge / cloud haze — the pass runs along a ledge. Right shoulder stays normal (snowy ground + scatter). Implemented as a `cliff: { side: "left", drop_face, void_fill }` theme key: the terrain mesh's left half drops to a cliff face below trail level (extend `_terr_vertex`/the surface build to lower the left-of-trail vertices into a steep face), with a haze/void fill beyond. No left-shoulder scatter on mountain. (The Jawbreaker boss — slow-advancing — duels at the end of this ledge.)
+
 Frontier is authored to the owner's detailed brief; the other three are authored to the table above (owner refines during spec review). Each falls back to frontier gracefully if a key is missing.
 
 ## Data flow
