@@ -584,6 +584,14 @@ func _ready() -> void:
 	# overloading mobile scene-load — script-side spawn defers texture
 	# upload / shader compile / node tree allocation to post-_ready frames.
 	_build_3d_content()
+	# Load the level def BEFORE the terrain build so PER-TERRAIN theming actually
+	# applies. (It used to load further down, so every level built with _level_def
+	# null → the default "frontier" terrain — all 4 levels looked identical.)
+	var _lvl: int = GameState.current_level if get_node_or_null("/root/GameState") else 1
+	_level_num = _lvl   # winflow R3: remember the level for bull-grace timing
+	var _def_path := "res://resources/levels/level_%d.tres" % _lvl
+	if ResourceLoader.exists(_def_path):
+		_level_def = load(_def_path)
 	_build_world_terrain()   # iter400: static curved+hilly terrain the posse advances through
 	_apply_terrain_theme()   # iter415: per-terrain fog
 	_build_frost_bolts()     # iter404: FROSTBITE chain-lightning overlay
@@ -607,13 +615,8 @@ func _ready() -> void:
 	_build_top_debug()
 	_build_weapon_indicator()
 	_build_quake_bar()
-	# SP2: load the data-driven level definition for the current level + play
-	# its timeline. The .tres exist at res://resources/levels/level_N.tres.
-	var _lvl: int = GameState.current_level if get_node_or_null("/root/GameState") else 1
-	_level_num = _lvl   # winflow R3: remember the level for bull-grace timing
-	var _def_path := "res://resources/levels/level_%d.tres" % _lvl
-	if ResourceLoader.exists(_def_path):
-		_level_def = load(_def_path)
+	# SP2: the level def + its event timeline. (_level_def is now loaded earlier,
+	# above the terrain build, so per-terrain theming applies — see that block.)
 	if get_node_or_null("/root/GameState"):
 		_bounty_at_start = GameState.bounty
 	if _level_def != null and _level_def.outlaw_quota > 0:
@@ -6406,7 +6409,9 @@ func _apply_path_curve() -> void:
 			var d_at: float = _level_distance + (cowboy_3d.position.z - c.position.z)
 			c.position.x = c.get_meta("lane_x") + _path_lateral(d_at) - base_lat
 			if ground_follow:
-				c.position.y = c.get_meta("lane_y") + _hill_y(d_at)
+				# Subtract the hole drop so a prop over a ditch sinks into it rather than
+				# floating in midair above the dropped ground (iter431 cactus-over-ditch fix).
+				c.position.y = c.get_meta("lane_y") + _hill_y(d_at) - _hole_drop(d_at, c.get_meta("lane_x"))
 	_update_world_root()
 
 func _check_puddle_splash() -> void:
@@ -7275,17 +7280,29 @@ func _frost_chain_targets(from: Vector3, n: int) -> Array:
 	return cand.slice(0, n)
 
 # Emit one frost chain from the leader's muzzle through the nearest enemies.
+# iter431: every posse member is firing FROSTBITE, so the chain emits from the leader
+# AND a bounded sample of crowd members (mirrors _emit_rainbow_chain), not just the leader.
 func _emit_frost_chain() -> void:
 	if _frost_bolts == null or camera == null or cowboy_3d == null:
 		return
-	var muzzle: Vector3 = cowboy_3d.position + Vector3(0, 0.95, 0)
+	_emit_frost_chain_from(cowboy_3d.position)
+	if _posse_crowd != null:
+		var origins: PackedVector3Array = _posse_crowd.call("member_origins")
+		var n: int = mini(origins.size(), KIMMY_CHAIN_MEMBERS)
+		for i in range(n):
+			var o: Vector3 = origins[i]
+			_emit_frost_chain_from(
+				Vector3(_posse_crowd.position.x + o.x, 0.0, _posse_crowd.position.z + o.z))
+
+func _emit_frost_chain_from(origin: Vector3) -> void:
+	var muzzle: Vector3 = origin + Vector3(0, 0.95, 0)
 	if camera.is_position_behind(muzzle):
 		return
 	var pts := PackedVector2Array()
 	pts.append(camera.unproject_position(muzzle))
 	var targets: Array = _frost_chain_targets(muzzle, 3)
 	if targets.is_empty():
-		var fwd := Vector3(cowboy_3d.position.x, 0.95, _bullet_despawn_z)
+		var fwd := Vector3(origin.x, 0.95, _bullet_despawn_z)
 		if not camera.is_position_behind(fwd):
 			pts.append(camera.unproject_position(fwd))
 	else:
