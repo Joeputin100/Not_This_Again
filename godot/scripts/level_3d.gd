@@ -4511,7 +4511,10 @@ func _spawn_kimmy_cage() -> void:
 	fbars.texture = ftex
 	fbars.billboard = 1
 	fbars.shaded = false
-	fbars.alpha_cut = 1
+	# 80% opacity so the caged stallion reads clearly THROUGH the bars. alpha_cut=0
+	# (DISABLED) lets the modulate alpha actually blend (scissor would be binary).
+	fbars.alpha_cut = 0
+	fbars.modulate.a = 0.80
 	fbars.render_priority = 5     # draw over the stallion + back container
 	# Back container rendered width ≈ back_tex_w * (back_h / back_tex_h). Front
 	# bars target ≈ 0.71× that. Size the front sprite to hit that world width.
@@ -4524,6 +4527,20 @@ func _spawn_kimmy_cage() -> void:
 	fbars.position = Vector3(0.0, back_h * 0.64, 0.30)
 	_kimmy_captive.add_child(fbars)
 	_kimmy_captive.set_meta("front_bars", fbars)
+	# kimmy: the caged stallion paces/rocks in her cell so she reads as alive and
+	# agitated, not a static prop. Gentle looping local sway + a slight tilt.
+	var caged_hs: Sprite3D = _kimmy_captive.get_meta("hero_sprite", null)
+	if caged_hs is Sprite3D:
+		var bx: float = caged_hs.position.x
+		var sway := caged_hs.create_tween().set_loops()
+		sway.tween_property(caged_hs, "position:x", bx + 0.14, 0.7) \
+			.set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN_OUT)
+		sway.parallel().tween_property(caged_hs, "rotation:z", deg_to_rad(-5.0), 0.7) \
+			.set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN_OUT)
+		sway.tween_property(caged_hs, "position:x", bx - 0.14, 0.7) \
+			.set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN_OUT)
+		sway.parallel().tween_property(caged_hs, "rotation:z", deg_to_rad(5.0), 0.7) \
+			.set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN_OUT)
 	_kimmy_window_left = KIMMY_RESCUE_WINDOW
 	_kimmy_spawn_countdown()
 	# Halt the world scroll while she blocks the path. _update_pushed_wagons also
@@ -6901,19 +6918,34 @@ func _build_rainbow_bolts() -> void:
 
 const VFX_RAINBOW_SHOCK := preload("res://assets/sprites/props/vfx_rainbow_shock.png")
 
-# kimmy: emit one rainbow prism chain from the leader's muzzle through nearby
-# enemies (reuses _frost_chain_targets), plus an additive shock pop on each target.
+# kimmy: every posse member is equipped with the Rainbow weapon, so the prism
+# chain fires from the leader AND a bounded sample of crowd members — rainbow
+# bolts crackle across the whole posse front, not just the leader.
+const KIMMY_CHAIN_MEMBERS: int = 4   # extra crowd origins that emit a chain per shot
 func _emit_rainbow_chain() -> void:
 	if _rainbow_bolts == null or camera == null or cowboy_3d == null:
 		return
-	var muzzle: Vector3 = cowboy_3d.position + Vector3(0, 0.95, 0)
+	# Leader chain (carries the shock pops so they don't stack per member).
+	_emit_rainbow_chain_from(cowboy_3d.position, true)
+	if _posse_crowd != null:
+		var origins: PackedVector3Array = _posse_crowd.call("member_origins")
+		var n: int = mini(origins.size(), KIMMY_CHAIN_MEMBERS)
+		for i in range(n):
+			var o: Vector3 = origins[i]
+			_emit_rainbow_chain_from(
+				Vector3(_posse_crowd.position.x + o.x, 0.0, _posse_crowd.position.z + o.z), false)
+
+# Emit one prism chain from `origin`'s muzzle through nearby enemies (reuses
+# _frost_chain_targets). `with_shock` adds an additive Skittles shock pop per link.
+func _emit_rainbow_chain_from(origin: Vector3, with_shock: bool) -> void:
+	var muzzle: Vector3 = origin + Vector3(0, 0.95, 0)
 	if camera.is_position_behind(muzzle):
 		return
 	var pts := PackedVector2Array()
 	pts.append(camera.unproject_position(muzzle))
 	var targets: Array = _frost_chain_targets(muzzle, 3)
 	if targets.is_empty():
-		var fwd := Vector3(cowboy_3d.position.x, 0.95, _bullet_despawn_z)
+		var fwd := Vector3(origin.x, 0.95, _bullet_despawn_z)
 		if not camera.is_position_behind(fwd):
 			pts.append(camera.unproject_position(fwd))
 	else:
@@ -6921,7 +6953,8 @@ func _emit_rainbow_chain() -> void:
 			var tp: Vector3 = t + Vector3(0, 0.9, 0)
 			if not camera.is_position_behind(tp):
 				pts.append(camera.unproject_position(tp))
-			_spawn_rainbow_shock(t + Vector3(0, 0.9, 0))
+			if with_shock:
+				_spawn_rainbow_shock(t + Vector3(0, 0.9, 0))
 	if pts.size() >= 2:
 		_rainbow_bolts.call("add_chain", pts, 1.0)
 
