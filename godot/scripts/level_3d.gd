@@ -269,6 +269,10 @@ var scenery_root: Node3D
 var _spawn_timer: float = 0.0
 var _volley_dmg: int = 1   # iter406: per-bullet damage = the posse's per-member firepower
 var _kimmy_cue_shown: bool = false   # kimmy: "RAINBOW ONLY" cue shown once per cage
+const KIMMY_CAGE_HP: int = 240          # high; tuned on device (cracks under sustained rainbow fire)
+const KIMMY_RESCUE_WINDOW: float = 16.0 # seconds before the pushers haul her off
+var _kimmy_captive: Node3D = null
+var _kimmy_window_left: float = 0.0
 var _was_reloading: bool = false   # iter413: edge-detect reload start for the click SFX
 var _last_lap: float = 0.0   # iter414: puddle-cross splash detector
 var _fire_timer: float = 0.0
@@ -4283,6 +4287,9 @@ const CONTAINER_TEX: Dictionary = {
 	"wagon_covered": {"path": "res://assets/sprites/props/wagon_covered.png", "w": 3.3, "h": 2.2, "body_half_w": 1.16},
 	"mining_cart":   {"path": "res://assets/sprites/props/mining_cart.png",   "w": 2.0, "h": 1.4, "body_half_w": 0.69},
 	"barrel":        {"path": "res://assets/sprites/props/barrel.png",        "w": 1.2, "h": 1.6, "body_half_w": 0.53},
+	# kimmy: the rock-candy cage wagon (back layer — wagon + rear crystal bars).
+	# Frame is 320x380; back container drawn 280w @ y113. Tall, narrow body.
+	"kimmy_cage_back": {"path": "res://assets/sprites/props/kimmy_cage_back.png", "w": 3.5, "h": 4.2, "body_half_w": 1.25},
 }
 const HERO_TEX: Dictionary = {
 	"marshmallow_sheriff": "res://assets/sprites/props/hero_marshmallow_sheriff.png",
@@ -4291,6 +4298,7 @@ const HERO_TEX: Dictionary = {
 	"chocolate_outlaw":    "res://assets/sprites/props/hero_chocolate_outlaw.png",
 	"sugar_doc":           "res://assets/sprites/props/hero_sugar_doc.png",
 	"taffy_kid":           "res://assets/sprites/props/hero_taffy_kid.png",
+	"kimmy_caged":         "res://assets/sprites/props/kimmy_caged.png",
 }
 
 # Captive root structure (added to outlaws_root for bullet-collision reuse):
@@ -4450,6 +4458,80 @@ func _kimmy_rainbow_only_cue(pos: Vector3) -> void:
 		return
 	_kimmy_cue_shown = true
 	_spawn_popup_3d(pos + Vector3(0, 1.5, 0), "RAINBOW ONLY!", Color(0.7, 0.5, 1.0, 1), 56)
+
+# kimmy: spawn the 3-layer rock-candy cage at the locked centre-lane placement.
+# Layers (z back→front): kimmy_cage_back (wagon + rear crystals) → kimmy_caged
+# (the plain caged stallion, the captive "hero") → kimmy_cage_front (front bars).
+# _spawn_captive_hero builds the back container + the stallion + hp/labels; we
+# bolt the FRONT bars on as an extra child rendered over everything.
+func _spawn_kimmy_cage() -> void:
+	_kimmy_cue_shown = false
+	# Centre lane, a touch ahead of the posse (matches the pushed-wagon lane_z).
+	_kimmy_captive = _spawn_captive_hero("kimmy_cage_back", "kimmy_caged", 0.0, -5.0, 2)
+	if _kimmy_captive == null:
+		return
+	_kimmy_captive.set_meta("is_kimmy", true)
+	# Override HP to the high cage value (the tier system only gives 60).
+	_kimmy_captive.set_meta("hp", KIMMY_CAGE_HP)
+	_kimmy_captive.set_meta("max_hp", KIMMY_CAGE_HP)
+	var hp_label: Label3D = _kimmy_captive.get_meta("hp_label", null)
+	if hp_label != null and is_instance_valid(hp_label):
+		hp_label.text = str(KIMMY_CAGE_HP)
+	var trapped: Label3D = _kimmy_captive.get_meta("trapped_label", null)
+	if trapped != null and is_instance_valid(trapped):
+		trapped.text = "CAGED!"
+		trapped.modulate = Color(0.80, 0.55, 1.0, 1.0)
+	# Derive the back container's rendered geometry so the front bars line up
+	# proportionally (locked tuner layout: back 280w@y113, stallion 183w@y119,
+	# front 200w@y119 in a 320x380 frame → front ≈ 0.71× back width).
+	var c_data: Dictionary = CONTAINER_TEX["kimmy_cage_back"]
+	var back_h: float = float(c_data.h)              # back container world height
+	var fbars := Sprite3D.new()
+	var ftex: Texture2D = load("res://assets/sprites/props/kimmy_cage_front.png")
+	fbars.texture = ftex
+	fbars.billboard = 1
+	fbars.shaded = false
+	fbars.alpha_cut = 1
+	fbars.render_priority = 5     # draw over the stallion + back container
+	# Back container rendered width ≈ back_tex_w * (back_h / back_tex_h). Front
+	# bars target ≈ 0.71× that. Size the front sprite to hit that world width.
+	var back_tex: Texture2D = load(c_data.path)
+	var back_render_w: float = float(back_tex.get_width()) * (back_h / float(back_tex.get_height()))
+	var front_target_w: float = back_render_w * 0.66
+	fbars.pixel_size = front_target_w / float(ftex.get_width())
+	# Vertical: bars sit over the stallion (hero centre ≈ back_h*0.65), centred,
+	# pushed forward in z so they read as "in front of" the caged stallion.
+	fbars.position = Vector3(0.0, back_h * 0.64, 0.30)
+	_kimmy_captive.add_child(fbars)
+	_kimmy_captive.set_meta("front_bars", fbars)
+	_kimmy_window_left = KIMMY_RESCUE_WINDOW
+	# Halt the world scroll while she blocks the path. _update_pushed_wagons also
+	# auto-sets this each frame (the cage is an is_captive node), but set it now
+	# so the very first frame is already frozen.
+	_set_cart_encounter(true)
+
+# kimmy: rescue window expired — the pushers haul her off. Miss, but NO soft-lock:
+# the cage slides off-left, frees, and the world scroll resumes.
+func _kimmy_haul_away(captive: Node3D) -> void:
+	var ui: Node = get_node_or_null("UI")
+	if ui != null:
+		FlourishBanner.spawn(ui, "SHE GOT AWAY")
+	if is_instance_valid(captive):
+		var t := captive.create_tween()
+		t.tween_property(captive, "position:x", captive.position.x - 14.0, 1.0)
+		t.tween_callback(captive.queue_free)
+	_kimmy_resume_scroll()
+
+# kimmy: drop the scroll-halt and let the world advance again.
+func _kimmy_resume_scroll() -> void:
+	_set_cart_encounter(false)
+
+# kimmy: cage cracked — full sugar-rush flourish. STUB — the next task replaces
+# this with the real Rainbow Kimmy rush. Keep exactly one def of this name.
+func _rush_kimmy(freed_captive: Node3D) -> void:
+	if is_instance_valid(freed_captive):
+		freed_captive.queue_free()
+	_kimmy_resume_scroll()
 
 # Iter 133: container shatters → hero pops out → flips to face forward
 # → joins posse formation.
@@ -5458,6 +5540,22 @@ func _process(delta: float) -> void:
 	# pusher mechanic never ran — fixes carts not stopping the scroll.
 	if _level_state == LevelState.PLAYING or _level_state == LevelState.BOSS:
 		_update_pushed_wagons(delta)
+	# kimmy: resolve the cage rescue each frame -- crack (rainbow fire broke the
+	# cage) -> rush; time out (pushers haul her off) -> miss + resume scroll.
+	if is_instance_valid(_kimmy_captive):
+		_kimmy_window_left -= delta
+		var k_hp: int = int(_kimmy_captive.get_meta("hp", 0))
+		match kimmy_rescue_outcome(k_hp, _kimmy_window_left):
+			"cracked":
+				var freed := _kimmy_captive
+				_kimmy_captive = null
+				_rush_kimmy(freed)
+			"timed_out":
+				var lost := _kimmy_captive
+				_kimmy_captive = null
+				_kimmy_haul_away(lost)
+			_:
+				pass
 	# Iter 118: world motion delta — 0 during BOSS so obstacles/gates/
 	# outlaws/scenery freeze in place during the duel. Cowboy steering +
 	# bullets + Pete continue to update on the real delta.
