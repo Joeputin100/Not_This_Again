@@ -1,0 +1,515 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Not_This_Again — Weapon-FX Gallery</title>
+<style>
+  *{box-sizing:border-box}
+  body{margin:0;background:#070510;color:#e8def7;font-family:system-ui,-apple-system,sans-serif}
+  .wrap{max-width:1180px;margin:0 auto;padding:26px 18px 60px}
+  h1{font-size:24px;margin:0 0 6px;color:#ffd23f;letter-spacing:.3px}
+  .sub{font-size:14px;line-height:1.6;color:#bda9e0;max-width:880px;margin:0 0 22px}
+  .sub b{color:#ffd98a}
+  .legend{display:flex;gap:10px;flex-wrap:wrap;margin:0 0 22px;font-size:11px;font-weight:700}
+  .legend span{padding:3px 10px;border-radius:7px;color:#0c0814}
+  .grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(240px,1fr));gap:18px}
+  .card{position:relative;background:#100a1e;border:2px solid #3a2a4f;border-radius:14px;padding:10px;text-align:center;overflow:hidden}
+  .card.ref{background:#0c1322}
+  .card canvas{width:100%;height:auto;aspect-ratio:1/1;border-radius:9px;display:block;background:#040208}
+  .tag{position:absolute;top:8px;left:8px;color:#0c0814;font-size:10px;font-weight:800;padding:2px 9px;border-radius:7px;z-index:2}
+  .cn{font-size:15px;color:#ffe1a0;margin-top:9px;font-weight:600}
+  .cd{font-size:11.5px;color:#b9a6dc;margin-top:4px;line-height:1.45}
+  .foot{margin-top:30px;font-size:12px;color:#8d7bb0;line-height:1.6;max-width:880px}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>Weapon-FX Gallery — candy-Western gunfire options</h1>
+  <p class="sub">Candidate fire visuals to bring the <b>other weapons</b> up to (or past) the polish of
+  <b>FROSTBITE</b> and the <b>Rainbow Prism Chain</b> — the two shipped flagship effects (bottom row, for
+  comparison). Every tile here is animated live with <b>additive compositing</b> (the same trick that makes
+  FROSTBITE read as premium) and is designed to be shippable on Android with only
+  <b>additive 2D-canvas overlays, CPUParticles3D, and additive sprites</b> — no custom spatial shaders
+  (those white-rect on our mobile renderer). Each tile's small note says how it maps to an in-engine build,
+  and the corner tag shows which weapon it suits.</p>
+  <div class="legend">
+    <span style="background:#7ed957">CANDY (six-shooter)</span>
+    <span style="background:#5ac8ff">RIFLE</span>
+    <span style="background:#ff7eb6">FRENZY</span>
+    <span style="background:#9fd8ff">FROSTBITE (shipped)</span>
+    <span style="background:#ffd23f">RAINBOW (shipped)</span>
+  </div>
+  <div class="grid">
+    <div class="card" style="border-color:#5ac8ff">
+      <div class="tag" style="background:#5ac8ff">RIFLE</div>
+      <canvas id="fx_plasma_beam" width="240" height="240"></canvas>
+      <div class="cn">Candy Plasma Beam</div>
+      <div class="cd">Additive beam sprite (stretched radial-gradient quad) + CPUParticles3D spark spray at the impact; core+halo = 2 additive sprites.</div>
+    </div>
+    <div class="card" style="border-color:#7ed957">
+      <div class="tag" style="background:#7ed957">CANDY</div>
+      <canvas id="fx_buckshot" width="240" height="240"></canvas>
+      <div class="cn">Gumdrop Buckshot Scatter</div>
+      <div class="cd">CPUParticles3D one-shot sphere-burst (explosiveness=1) of gumdrop billboards + a single additive muzzle-bloom sprite.</div>
+    </div>
+    <div class="card" style="border-color:#ff7eb6">
+      <div class="tag" style="background:#ff7eb6">FRENZY</div>
+      <canvas id="fx_licorice_arc" width="240" height="240"></canvas>
+      <div class="cn">Licorice Arc Chain</div>
+      <div class="cd">Additive 2D-canvas chain identical to frost_bolts.gd, recoloured electric-violet (the cheapest premium win — copy frost, swap palette).</div>
+    </div>
+    <div class="card" style="border-color:#ff7eb6">
+      <div class="tag" style="background:#ff7eb6">FRENZY</div>
+      <canvas id="fx_nova" width="240" height="240"></canvas>
+      <div class="cn">Peppermint Nova Shock</div>
+      <div class="cd">Additive expanding-ring sprite (scaled radial gradient) + CPUParticles3D ring-emit of mint shards; 2-3 stacked rings for thickness.</div>
+    </div>
+    <div class="card" style="border-color:#7ed957">
+      <div class="tag" style="background:#7ed957">CANDY</div>
+      <canvas id="fx_homing_swarm" width="240" height="240"></canvas>
+      <div class="cn">Homing Sparkle Swarm</div>
+      <div class="cd">CPUParticles3D with orbit velocity + per-particle additive trail sprites; targets fed as attractor points by gameplay.</div>
+    </div>
+    <div class="card" style="border-color:#5ac8ff">
+      <div class="tag" style="background:#5ac8ff">RIFLE</div>
+      <canvas id="fx_comet" width="240" height="240"></canvas>
+      <div class="cn">Rainbow Comet Trail</div>
+      <div class="cd">Additive sprite head + a ribbon of fading additive sprites (or a Trail node); hue scrolls like rainbow_bolts.gd.</div>
+    </div>
+    <div class="card" style="border-color:#ff7eb6">
+      <div class="tag" style="background:#ff7eb6">FRENZY</div>
+      <canvas id="fx_gatling" width="240" height="240"></canvas>
+      <div class="cn">Gumball Gatling Bloom</div>
+      <div class="cd">Additive muzzle-flash sprite pulsed per shot + CPUParticles3D forward jet of gumball tracers; flash scale jitters per round.</div>
+    </div>
+    <div class="card" style="border-color:#5ac8ff">
+      <div class="tag" style="background:#5ac8ff">RIFLE</div>
+      <canvas id="fx_vortex" width="240" height="240"></canvas>
+      <div class="cn">Peppermint Vortex</div>
+      <div class="cd">Additive 2D-canvas spiral (procedural arms) + CPUParticles3D ring-orbit; arms re-seeded each frame for shimmer like frost.</div>
+    </div>
+    <div class="card" style="border-color:#ff7eb6">
+      <div class="tag" style="background:#ff7eb6">FRENZY</div>
+      <canvas id="fx_napalm" width="240" height="240"></canvas>
+      <div class="cn">Caramel Napalm Splatter</div>
+      <div class="cd">CPUParticles3D arc-launched caramel blobs that pool as additive ground-decal sprites with flicker; heat-shimmer via low-alpha rings.</div>
+    </div>
+    <div class="card" style="border-color:#5ac8ff">
+      <div class="tag" style="background:#5ac8ff">RIFLE</div>
+      <canvas id="fx_crystal_beam" width="240" height="240"></canvas>
+      <div class="cn">Sugar-Crystal Shatter Beam</div>
+      <div class="cd">Additive beam sprite + CPUParticles3D shard burst at impact; faceted look = a few additive triangle sprites that spin.</div>
+    </div>
+    <div class="card" style="border-color:#ff7eb6">
+      <div class="tag" style="background:#ff7eb6">FRENZY</div>
+      <canvas id="fx_mortar" width="240" height="240"></canvas>
+      <div class="cn">Jawbreaker Mortar Arc</div>
+      <div class="cd">CPUParticles3D shell with a trail emitter on an arc + an additive explosion sprite (expanding ring + flash) on landing.</div>
+    </div>
+    <div class="card" style="border-color:#7ed957">
+      <div class="tag" style="background:#7ed957">CANDY</div>
+      <canvas id="fx_confetti" width="240" height="240"></canvas>
+      <div class="cn">Confetti Cannon</div>
+      <div class="cd">CPUParticles3D one-shot wide-cone of flat additive quad billboards with high angular spin; gravity on for cascade.</div>
+    </div>
+    <div class="card" style="border-color:#5ac8ff">
+      <div class="tag" style="background:#5ac8ff">RIFLE</div>
+      <canvas id="fx_prism_fan" width="240" height="240"></canvas>
+      <div class="cn">Prism Refraction Fan</div>
+      <div class="cd">Several additive beam sprites fanned from one muzzle, each a different hue; reuses the beam sprite from the plasma option.</div>
+    </div>
+    <div class="card ref" style="border-color:#9fd8ff">
+      <div class="tag" style="background:#9fd8ff">FROSTBITE</div>
+      <canvas id="fx_frost_ref" width="240" height="240"></canvas>
+      <div class="cn">FROSTBITE (reference)</div>
+      <div class="cd">SHIPPED — godot/scripts/frost_bolts.gd. Shown as the quality bar every option above must match.</div>
+    </div>
+    <div class="card ref" style="border-color:#ffd23f">
+      <div class="tag" style="background:#ffd23f">RAINBOW</div>
+      <canvas id="fx_rainbow_ref" width="240" height="240"></canvas>
+      <div class="cn">Rainbow Prism Chain (reference)</div>
+      <div class="cd">SHIPPED — godot/scripts/rainbow_bolts.gd. The second flagship; new options should feel as premium as this.</div>
+    </div>
+  </div>
+  <p class="foot">All animations are pure HTML5 &lt;canvas&gt; + JS with <code>globalCompositeOperation='lighter'</code>,
+  soft radial-gradient glow sprites, multi-pass bloom, motion trails, and fractal/midpoint-displacement bolts —
+  a direct preview of the additive look we get in-engine. Tell me which to build (and which weapon to bind each to);
+  the chain-style ones (Licorice Arc) are the cheapest to ship since they reuse frost_bolts.gd almost verbatim.</p>
+</div>
+<script>
+"use strict";
+// ---- shared additive helpers ---------------------------------------------
+function mulberry(seed){ // tiny deterministic PRNG
+  return function(){ seed|=0; seed=seed+0x6D2B79F5|0; var t=Math.imul(seed^seed>>>15,1|seed);
+    t=t+Math.imul(t^t>>>7,61|t)^t; return ((t^t>>>14)>>>0)/4294967296; };
+}
+function makeRnd(){ // rnd(intSeed) -> [0,1)
+  return function(s){ var f=mulberry(s|0); return f(); };
+}
+// soft additive radial blob
+function makeGlow(ctx){
+  return function(x,y,r,col,a){
+    if(r<=0)return;
+    var g=ctx.createRadialGradient(x,y,0,x,y,r);
+    g.addColorStop(0,'rgba('+col+','+a+')');
+    g.addColorStop(0.45,'rgba('+col+','+(a*0.35)+')');
+    g.addColorStop(1,'rgba('+col+',0)');
+    ctx.fillStyle=g; ctx.beginPath(); ctx.arc(x,y,r,0,7); ctx.fill();
+  };
+}
+// fractal midpoint-displacement bolt, 3 additive passes (a la frost_bolts.gd)
+function makeBolt(ctx){
+  var rng;
+  function subdiv(ax,ay,bx,by,depth,w,out,r){
+    if(depth===0){ out.push([ax,ay,bx,by,w]); return; }
+    var mx=(ax+bx)*0.5+(r()-0.5)*depth*7;
+    var my=(ay+by)*0.5+(r()-0.5)*depth*7;
+    subdiv(ax,ay,mx,my,depth-1,w,out,r);
+    subdiv(mx,my,bx,by,depth-1,w,out,r);
+    if(depth>=2 && r()<0.35){
+      var brx=mx+(r()-0.5)*16, bry=my+(r()-0.5)*16;
+      subdiv(mx,my,brx,bry,depth-2,w*0.5,out,r);
+    }
+  }
+  return function(ax,ay,bx,by,col,seed,life,power){
+    var r=mulberry(seed|0); var segs=[]; subdiv(ax,ay,bx,by,4,1.0,segs,r);
+    // pass 1 wide low-alpha glow
+    ctx.lineCap='round';
+    for(var i=0;i<segs.length;i++){var s=segs[i];
+      ctx.strokeStyle='rgba('+col+','+(0.16*life*s[4])+')'; ctx.lineWidth=9*s[4]*(1+power*0.3);
+      ctx.beginPath(); ctx.moveTo(s[0],s[1]); ctx.lineTo(s[2],s[3]); ctx.stroke();}
+    // pass 2 mid glow
+    for(var i=0;i<segs.length;i++){var s=segs[i];
+      ctx.strokeStyle='rgba('+col+','+(0.4*life*s[4])+')'; ctx.lineWidth=4*s[4]*(1+power*0.2);
+      ctx.beginPath(); ctx.moveTo(s[0],s[1]); ctx.lineTo(s[2],s[3]); ctx.stroke();}
+    // pass 3 bright white core (trunk only)
+    for(var i=0;i<segs.length;i++){var s=segs[i]; if(s[4]<0.6)continue;
+      ctx.strokeStyle='rgba(255,255,255,'+(0.95*life*s[4])+')'; ctx.lineWidth=1.6*s[4];
+      ctx.beginPath(); ctx.moveTo(s[0],s[1]); ctx.lineTo(s[2],s[3]); ctx.stroke();}
+  };
+}
+// ---- tiles ---------------------------------------------------------------
+var TILES = [
+{key:'plasma_beam', draw:function(ctx,W,H,t,rnd,glow,bolt){
+        // Continuous bloom stream: a thick wobbling core with a wide halo + travelling pulses.
+        var cy = H*0.5, wob = Math.sin(t*7)*6 + Math.sin(t*13)*3;
+        // wide halo
+        for (var p=0;p<3;p++){
+          var a = [0.10,0.20,0.55][p], wd=[34,18,7][p];
+          ctx.strokeStyle = ['rgba(255,90,200,'+a+')','rgba(255,150,230,'+a+')','rgba(255,235,255,'+a+')'][p];
+          ctx.lineWidth = wd; ctx.beginPath();
+          for (var x=10;x<=W-10;x+=6){
+            var yy = cy + Math.sin(x*0.06 + t*9)*6 + wob*(x/W);
+            if(x===10)ctx.moveTo(x,yy); else ctx.lineTo(x,yy);
+          }
+          ctx.stroke();
+        }
+        // muzzle bloom + impact bloom
+        glow(14, cy+wob*0.0, 30, '255,120,220', 0.5);
+        glow(W-14, cy+wob, 26+Math.sin(t*20)*6, '255,200,255', 0.6);
+        // travelling energy pulses
+        for (var k=0;k<5;k++){
+          var px = ((t*260 + k*70) % (W-20))+10;
+          var py = cy + Math.sin(px*0.06 + t*9)*6 + wob*(px/W);
+          glow(px, py, 9, '255,255,255', 0.7);
+        }
+     }},
+{key:'buckshot', draw:function(ctx,W,H,t,rnd,glow,bolt){
+        // Scatter-burst: pellets fly out from muzzle, fading, re-fired on a loop.
+        var period=0.9, ph=(t % period)/period;
+        var ox=18, oy=H*0.5;
+        glow(ox, oy, 22*(1-ph)+6, '255,210,120', 0.6*(1-ph));
+        for (var k=0;k<26;k++){
+          var ang = rnd(k*7+1)*0.9 - 0.0 + (rnd(k*3+2)-0.5)*0.25;
+          var spd = 120 + rnd(k*5+9)*220;
+          var d = spd*ph;
+          var x = ox + Math.cos(ang)*d;
+          var y = oy + Math.sin((rnd(k)-0.5)*1.4)*d*0.7 + 80*ph*ph;
+          var col = ['255,90,90','120,220,255','255,230,120','190,120,255'][k%4];
+          var a = (1-ph)*0.9;
+          glow(x,y, 7, col, a);
+          glow(x,y, 3, '255,255,255', a*0.8);
+        }
+     }},
+{key:'licorice_arc', draw:function(ctx,W,H,t,rnd,glow,bolt){
+        // Electric-violet recolour of the FROSTBITE/Prism chain technique.
+        var ox=16, oy=H*0.5;
+        var nodes=[[ox,oy]];
+        var n=4;
+        for (var i=1;i<=n;i++){
+          nodes.push([ox + (W-32)*(i/n), oy + Math.sin(t*5 + i*1.7)*40*(i/n)]);
+        }
+        var seed=Math.floor(t*18);
+        for (var i=0;i<nodes.length-1;i++){
+          bolt(nodes[i][0],nodes[i][1],nodes[i+1][0],nodes[i+1][1],'180,90,255',seed+i*911,1,1.1);
+        }
+        for (var i=0;i<nodes.length;i++){ glow(nodes[i][0],nodes[i][1],16,'210,140,255',0.4); }
+     }},
+{key:'nova', draw:function(ctx,W,H,t,rnd,glow,bolt){
+        // Expanding shockwave rings re-fired on a loop.
+        var cx=W*0.5, cy=H*0.5;
+        for (var w=0; w<3; w++){
+          var period=1.1, ph=((t + w*0.18) % period)/period;
+          var R = ph*W*0.62;
+          var a = (1-ph)*0.8;
+          ctx.lineWidth = 14*(1-ph)+2;
+          ctx.strokeStyle='rgba(255,255,255,'+(a*0.5)+')';
+          ctx.beginPath(); ctx.arc(cx,cy,R,0,7); ctx.stroke();
+          ctx.lineWidth = 26*(1-ph)+4;
+          ctx.strokeStyle='rgba(255,80,120,'+(a*0.4)+')';
+          ctx.beginPath(); ctx.arc(cx,cy,R,0,7); ctx.stroke();
+          // candy-stripe ticks on the ring
+          for(var s=0;s<16;s++){
+            var ang=s/16*6.283 + t*0.6;
+            glow(cx+Math.cos(ang)*R, cy+Math.sin(ang)*R, 5, s%2?'255,255,255':'255,80,120', a);
+          }
+        }
+        glow(cx,cy, 30+Math.sin(t*30)*8, '255,200,230', 0.5);
+     }},
+{key:'homing_swarm', draw:function(ctx,W,H,t,rnd,glow,bolt){
+        // Swarm of sparkles that spiral toward a moving target.
+        var tx = W*0.5 + Math.cos(t*1.3)*W*0.28;
+        var ty = H*0.5 + Math.sin(t*1.9)*H*0.28;
+        glow(tx,ty, 14, '255,120,120', 0.5);
+        for (var k=0;k<22;k++){
+          var ph = (t*0.6 + rnd(k)) % 1;
+          var sx = 16 + rnd(k*3)*8, sy = H*0.5 + (rnd(k*5)-0.5)*H*0.6;
+          // ease toward target with a swirl
+          var e = ph*ph*(3-2*ph);
+          var sw = Math.sin(ph*9 + k)*30*(1-ph);
+          var x = sx + (tx-sx)*e - Math.sin(ph*6)*sw;
+          var y = sy + (ty-sy)*e + Math.cos(ph*6)*sw;
+          var col=['255,180,80','120,255,180','180,180,255','255,120,220'][k%4];
+          glow(x,y, 5, col, (1-ph)*0.9);
+          glow(x,y, 2, '255,255,255', (1-ph));
+        }
+     }},
+{key:'comet', draw:function(ctx,W,H,t,rnd,glow,bolt){
+        // A bright comet looping across, leaving a hue-shifting additive tail.
+        function hue(h){ h=((h%1)+1)%1; var i=Math.floor(h*6),f=h*6-i,q=1-f;
+          var r,g,b; switch(i%6){case 0:r=1;g=f;b=0;break;case 1:r=q;g=1;b=0;break;
+          case 2:r=0;g=1;b=f;break;case 3:r=0;g=q;b=1;break;case 4:r=f;g=0;b=1;break;
+          default:r=1;g=0;b=q;} return Math.round(r*255)+','+Math.round(g*255)+','+Math.round(b*255); }
+        var hx = (t*0.4)%1, ang = t*1.6;
+        var cx = W*0.5 + Math.cos(ang)*W*0.3, cy = H*0.5 + Math.sin(ang*1.3)*H*0.3;
+        for (var i=0;i<26;i++){
+          var bt = ang - i*0.06;
+          var x = W*0.5 + Math.cos(bt)*W*0.3, y = H*0.5 + Math.sin(bt*1.3)*H*0.3;
+          var a = (1 - i/26)*0.85;
+          glow(x,y, 8*(1-i/30)+2, hue(hx - i*0.02), a);
+        }
+        glow(cx,cy, 11, '255,255,255', 0.95);
+        glow(cx,cy, 22, hue(hx), 0.6);
+     }},
+{key:'gatling', draw:function(ctx,W,H,t,rnd,glow,bolt){
+        // Rapid-fire muzzle bloom with stuttering flashes + forward tracers.
+        var ox=20, oy=H*0.5;
+        var shot = Math.floor(t*24);
+        var fj = 0.6 + rnd(shot)*0.6;
+        // layered muzzle flash
+        glow(ox,oy, 34*fj, '255,160,40', 0.5);
+        glow(ox,oy, 18*fj, '255,220,120', 0.7);
+        glow(ox,oy, 8*fj, '255,255,240', 0.95);
+        // star spikes
+        for(var s=0;s<6;s++){
+          var ang=s/6*6.283 + shot;
+          var L=40*fj;
+          ctx.strokeStyle='rgba(255,210,120,0.5)'; ctx.lineWidth=3;
+          ctx.beginPath(); ctx.moveTo(ox,oy); ctx.lineTo(ox+Math.cos(ang)*L,oy+Math.sin(ang)*L); ctx.stroke();
+        }
+        // tracers
+        for(var k=0;k<14;k++){
+          var ph=(t*2.2 + rnd(k))%1;
+          var x=ox + ph*(W-30);
+          var y=oy + (rnd(k*3)-0.5)*60*ph;
+          var col=['255,90,90','255,210,80','120,220,255','190,255,120'][k%4];
+          glow(x,y,5,col,(1-ph)*0.9); glow(x,y,2,'255,255,255',(1-ph));
+        }
+     }},
+{key:'vortex', draw:function(ctx,W,H,t,rnd,glow,bolt){
+        // Twin candy-stripe spiral arms drawing inward to a hot core.
+        var cx=W*0.5, cy=H*0.5;
+        for (var arm=0; arm<2; arm++){
+          var base = arm*Math.PI + t*2.5;
+          ctx.lineWidth=6;
+          ctx.strokeStyle = arm? 'rgba(255,60,90,0.5)':'rgba(255,255,255,0.5)';
+          ctx.beginPath();
+          for (var s=0;s<60;s++){
+            var f=s/60; var r=f*W*0.46; var ang=base + f*9;
+            var x=cx+Math.cos(ang)*r, y=cy+Math.sin(ang)*r*0.9;
+            if(s===0)ctx.moveTo(x,y); else ctx.lineTo(x,y);
+          }
+          ctx.stroke();
+        }
+        // sparkles riding the spiral
+        for(var k=0;k<24;k++){
+          var f=((t*0.5 + rnd(k))%1); var r=(1-f)*W*0.46; var ang=t*2.5 + f*9 + (k%2)*Math.PI;
+          glow(cx+Math.cos(ang)*r, cy+Math.sin(ang)*r*0.9, 4, k%2?'255,120,160':'255,255,255', f*0.9);
+        }
+        glow(cx,cy, 18+Math.sin(t*16)*6, '255,180,200', 0.8);
+        glow(cx,cy, 8, '255,255,255', 1);
+     }},
+{key:'napalm', draw:function(ctx,W,H,t,rnd,glow,bolt){
+        // Arc-thrown blobs that splat into glowing caramel pools.
+        var ox=16, oy=H*0.75;
+        for(var k=0;k<10;k++){
+          var period=1.4, ph=((t + rnd(k)*1.4) % period)/period;
+          var spd=200+rnd(k*3)*120;
+          var x=ox + spd*ph*0.9;
+          var y=oy - (spd*0.9*ph) + (760*ph*ph);
+          if(y<oy){
+            glow(x,y, 7, '255,150,40', 0.8); glow(x,y,3,'255,230,150',0.9);
+          } else {
+            // pool on ground, flickering
+            var fl=0.5+0.5*Math.sin(t*20+k);
+            glow(x, oy+6, 16, '255,110,30', 0.45*fl);
+            glow(x, oy+6, 8, '255,200,90', 0.6*fl);
+          }
+        }
+        // ambient ground heat glow
+        for(var g=0; g<6; g++){
+          var gx=30+g*(W-60)/5; var fl=0.4+0.6*Math.sin(t*8+g*1.7);
+          glow(gx, oy+8, 22, '255,90,20', 0.18*fl);
+        }
+     }},
+{key:'crystal_beam', draw:function(ctx,W,H,t,rnd,glow,bolt){
+        // Beam that terminates in a spray of spinning crystal shards.
+        var oy=H*0.5, ox=14;
+        var ix = W-30 + Math.sin(t*9)*4;
+        // crystalline beam (segmented, sharp)
+        ctx.lineWidth=10; ctx.strokeStyle='rgba(150,230,255,0.18)';
+        ctx.beginPath(); ctx.moveTo(ox,oy); ctx.lineTo(ix,oy); ctx.stroke();
+        ctx.lineWidth=4; ctx.strokeStyle='rgba(220,250,255,0.6)';
+        ctx.beginPath();
+        for(var x=ox;x<=ix;x+=10){ var y=oy + ((Math.floor(x/10)+Math.floor(t*30))%2?2.5:-2.5); ctx.lineTo(x,y); }
+        ctx.stroke();
+        ctx.lineWidth=1.6; ctx.strokeStyle='rgba(255,255,255,0.9)';
+        ctx.beginPath(); ctx.moveTo(ox,oy); ctx.lineTo(ix,oy); ctx.stroke();
+        // impact shards
+        glow(ix,oy, 16, '180,240,255', 0.6);
+        for(var k=0;k<12;k++){
+          var ang=rnd(k)*6.283, ph=(t*1.5 + rnd(k*3))%1;
+          var d=ph*60; var x=ix+Math.cos(ang)*d, y=oy+Math.sin(ang)*d;
+          var sz=5*(1-ph)+2;
+          ctx.save(); ctx.translate(x,y); ctx.rotate(t*6+k);
+          ctx.fillStyle='rgba(230,250,255,'+(1-ph)*0.9+')';
+          ctx.beginPath(); ctx.moveTo(0,-sz); ctx.lineTo(sz,sz); ctx.lineTo(-sz,sz); ctx.closePath(); ctx.fill();
+          ctx.restore();
+        }
+     }},
+{key:'mortar', draw:function(ctx,W,H,t,rnd,glow,bolt){
+        // A jawbreaker lobs on an arc, then detonates in a bloom + ring.
+        var period=1.8, ph=(t % period)/period;
+        var ox=16, oy=H-14, lx=W-30, ly=H-14;
+        var flight=0.62;
+        if (ph < flight){
+          var f=ph/flight;
+          var x=ox+(lx-ox)*f;
+          var y=oy - Math.sin(f*Math.PI)*H*0.8;
+          // trail
+          for(var i=0;i<8;i++){
+            var ff=f-i*0.03; if(ff<0)break;
+            var tx=ox+(lx-ox)*ff, ty=oy-Math.sin(ff*Math.PI)*H*0.8;
+            glow(tx,ty, 6*(1-i/8)+2, '255,120,40', (1-i/8)*0.7);
+          }
+          glow(x,y, 9, '255,255,200', 0.9);
+        } else {
+          var e=(ph-flight)/(1-flight);
+          // flash + expanding ring + debris
+          glow(lx,ly, 40*(1-e)+10, '255,180,60', (1-e)*0.8);
+          glow(lx,ly, 18*(1-e)+6, '255,255,220', (1-e));
+          var R=e*W*0.5;
+          ctx.lineWidth=10*(1-e)+2; ctx.strokeStyle='rgba(255,150,60,'+(1-e)*0.6+')';
+          ctx.beginPath(); ctx.arc(lx,ly,R,Math.PI,2*Math.PI); ctx.stroke();
+          for(var k=0;k<14;k++){
+            var ang=Math.PI + rnd(k)*Math.PI; var d=e*90*rnd(k*3);
+            glow(lx+Math.cos(ang)*d, ly+Math.sin(ang)*d, 4, '255,200,120',(1-e)*0.8);
+          }
+        }
+     }},
+{key:'confetti', draw:function(ctx,W,H,t,rnd,glow,bolt){
+        // Wide cone burst of spinning confetti flakes that flutter down.
+        var ox=18, oy=H*0.5;
+        glow(ox,oy, 16, '255,255,200', 0.4);
+        for(var k=0;k<40;k++){
+          var ph=((t*0.7 + rnd(k))%1);
+          var ang=-0.6 + rnd(k*3)*1.2;
+          var spd=120+rnd(k*7)*200;
+          var x=ox + Math.cos(ang)*spd*ph;
+          var y=oy + Math.sin(ang)*spd*ph + 220*ph*ph + Math.sin(t*6+k)*8;
+          var col=['255,80,120','120,200,255','255,220,80','150,255,150','220,120,255'][k%5];
+          ctx.save(); ctx.translate(x,y); ctx.rotate(t*8+k);
+          var sz=3+rnd(k*2)*3;
+          ctx.fillStyle='rgba('+col+','+(1-ph)*0.95+')';
+          ctx.fillRect(-sz,-sz*0.5,sz*2,sz);
+          ctx.restore();
+        }
+     }},
+{key:'prism_fan', draw:function(ctx,W,H,t,rnd,glow,bolt){
+        // A muzzle that splits white light into a fanned rainbow of beams.
+        function hue6(i){ return ['255,60,60','255,160,40','255,230,60','80,230,120','80,170,255','170,90,255'][i]; }
+        var ox=16, oy=H*0.5;
+        var spread=Math.sin(t*1.5)*0.5;
+        for(var i=0;i<6;i++){
+          var ang=(i-2.5)*0.14 + spread*0.3 + Math.sin(t*3+i)*0.02;
+          var ex=ox+Math.cos(ang)*(W-30), ey=oy+Math.sin(ang)*(W-30);
+          ctx.strokeStyle='rgba('+hue6(i)+',0.16)'; ctx.lineWidth=12;
+          ctx.beginPath(); ctx.moveTo(ox,oy); ctx.lineTo(ex,ey); ctx.stroke();
+          ctx.strokeStyle='rgba('+hue6(i)+',0.55)'; ctx.lineWidth=3.5;
+          ctx.beginPath(); ctx.moveTo(ox,oy); ctx.lineTo(ex,ey); ctx.stroke();
+        }
+        glow(ox,oy, 22, '255,255,255', 0.8);
+        glow(ox,oy, 9, '255,255,255', 1);
+     }},
+{key:'frost_ref', draw:function(ctx,W,H,t,rnd,glow,bolt){
+        // Faithful recreation of the shipped FROSTBITE chain for comparison.
+        var ox=16, oy=H*0.5;
+        var nodes=[[ox,oy]]; var n=4;
+        for(var i=1;i<=n;i++) nodes.push([ox+(W-32)*(i/n), oy + Math.sin(t*4 + i*1.3)*38*(i/n)]);
+        var seed=Math.floor(t*18);
+        for(var i=0;i<nodes.length-1;i++) bolt(nodes[i][0],nodes[i][1],nodes[i+1][0],nodes[i+1][1],'80,180,255',seed+i*911,1,1.0);
+        for(var i=0;i<nodes.length;i++){ glow(nodes[i][0],nodes[i][1],18,'140,220,255',0.35); glow(nodes[i][0],nodes[i][1],8,'235,250,255',0.6); }
+     }},
+{key:'rainbow_ref', draw:function(ctx,W,H,t,rnd,glow,bolt){
+        function hue(h){ h=((h%1)+1)%1; var i=Math.floor(h*6),f=h*6-i,q=1-f;
+          var r,g,b; switch(i%6){case 0:r=1;g=f;b=0;break;case 1:r=q;g=1;b=0;break;
+          case 2:r=0;g=1;b=f;break;case 3:r=0;g=q;b=1;break;case 4:r=f;g=0;b=1;break;
+          default:r=1;g=0;b=q;} return Math.round(r*255)+','+Math.round(g*255)+','+Math.round(b*255); }
+        var ox=16, oy=H*0.5;
+        var nodes=[[ox,oy]]; var n=4;
+        for(var i=1;i<=n;i++) nodes.push([ox+(W-32)*(i/n), oy + Math.sin(t*4 + i*1.3)*38*(i/n)]);
+        var seed=Math.floor(t*18), scroll=t*0.3;
+        for(var i=0;i<nodes.length-1;i++) bolt(nodes[i][0],nodes[i][1],nodes[i+1][0],nodes[i+1][1],hue(i/n+scroll),seed+i*911,1,1.0);
+        for(var i=0;i<nodes.length;i++) glow(nodes[i][0],nodes[i][1],16,hue(i/n+scroll),0.4);
+     }}
+];
+var T0 = performance.now();
+var insts = [];
+for (var i=0;i<TILES.length;i++){
+  var cv = document.getElementById('fx_'+TILES[i].key);
+  if(!cv) continue;
+  var ctx = cv.getContext('2d');
+  insts.push({
+    cv:cv, ctx:ctx, draw:TILES[i].draw,
+    rnd:makeRnd(), glow:makeGlow(ctx), bolt:makeBolt(ctx),
+    W:cv.width, H:cv.height
+  });
+}
+function frame(now){
+  var t = (now - T0)/1000;
+  for (var i=0;i<insts.length;i++){
+    var o=insts[i], ctx=o.ctx;
+    // fade-to-dark trail clear (not full clear -> motion smears like real bloom)
+    ctx.globalCompositeOperation='source-over';
+    ctx.fillStyle='rgba(4,2,8,0.30)';
+    ctx.fillRect(0,0,o.W,o.H);
+    ctx.globalCompositeOperation='lighter';
+    try { o.draw(ctx,o.W,o.H,t,o.rnd,o.glow,o.bolt); } catch(e){ /* keep loop alive */ }
+  }
+  requestAnimationFrame(frame);
+}
+requestAnimationFrame(frame);
+</script>
+</body>
+</html>
