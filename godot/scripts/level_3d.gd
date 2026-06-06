@@ -4415,7 +4415,8 @@ func _captive_take_damage(captive: Node3D, bullet_pos: Vector3, bullet_rainbow: 
 		return  # iter 164: already freed — ignore trailing bullets
 	# kimmy: cage takes damage ONLY from rainbow-mode bullets.
 	var is_kimmy: bool = captive.get_meta("is_kimmy", false)
-	var dmg: int = kimmy_cage_damage(is_kimmy, bullet_rainbow, _volley_dmg)
+	var base_dmg: int = _volley_dmg if is_kimmy else 1
+	var dmg: int = kimmy_cage_damage(is_kimmy, bullet_rainbow, base_dmg)
 	if dmg <= 0:
 		if is_kimmy:
 			_kimmy_rainbow_only_cue(bullet_pos)
