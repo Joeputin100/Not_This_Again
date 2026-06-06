@@ -1475,7 +1475,9 @@ func _check_bullet_gate_collision(bullet: Node3D, prev_z: float = INF) -> bool:
 				value = 1
 		# iter337: once positive, carry the "+" op so the label reads "+N" and
 		# _gate_color_for paints it blue (it keys on value sign, not op).
-		if value > 0:
+		# iter432: but NEVER rewrite a ×/÷ multiplier gate to "+" — that was turning
+		# multiply gates into addition gates on the first hit.
+		if value > 0 and op != "×" and op != "÷":
 			op = "+"
 		# iter410: a red (shrinking) gate just flipped to blue (growing) — confuse
 		# every bull on screen so they veer off and flee. The gate-flip reward beat.
@@ -6689,6 +6691,12 @@ func _spawn_boardwalk_segment(z: float) -> void:
 	mi.rotation.y = deg_to_rad(_rng.randf_range(-4.0, 4.0))
 	scenery_root.add_child(mi)
 
+# iter432: per-cell scatter clumping factor (0..~1.8), varied per slug phase, so
+# different stretches of the level read denser/sparser — intra-level variety.
+func _scatter_clump(cell: int, slug: String) -> float:
+	var w: float = float(cell) * 0.6 + float(hash(slug) % 97) * 0.13
+	return clampf(0.5 + 0.9 * sin(w) + 0.4 * sin(w * 0.37 + 1.3), 0.0, 1.8)
+
 # terrain: MultiMesh scatter (grass/scrub/rocks/cactus/etc) on the shoulders, placed
 # deterministically per z-cell so the wrapping world is stable; fog hides far ones, so
 # no per-frame cull is needed. Reads the theme's scatter list. Non-colliding decor.
@@ -6716,7 +6724,10 @@ func _build_scatter() -> void:
 		for c in range(cells):
 			var z0: float = z_lo + float(c) * cell_dz
 			var z1: float = z0 + cell_dz
-			var n: int = int(round(dens * 2.0))
+			# iter432: vary density per cell so the level CLUMPS into lush patches and
+			# bare stretches (different phase per slug) instead of a uniform carpet —
+			# adds variety as you progress through the level.
+			var n: int = int(round(dens * 2.0 * _scatter_clump(c, slug)))
 			for p in TerrainThemes.scatter_positions(hash(slug), c, n, -z1, -z0, x_lo, x_hi):
 				var px: float = p.x
 				if side == "right" and px < 0.0: px = -px
