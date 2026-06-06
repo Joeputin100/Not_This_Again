@@ -246,6 +246,12 @@ var _terr_cliff_side: String = ""   # terrain: "left"/"right" cliff edge (mounta
 var _terr_cliff_depth: float = 0.0
 var _hill_scale: float = 1.0   # terrain: per-theme hill amplitude (mountain = steeper)
 var _cliff_fall_accum: float = 0.0   # terrain: fractional posse lost over the cliff edge
+# iter434: ice-slip — frozen puddles make the cowboy/posse keep momentum with no steering.
+var _cowboy_on_ice: bool = false
+var _ice_slip_vx: float = 0.0
+var _prev_cowboy_x: float = 0.0
+var _cowboy_ice_cube: Node3D = null
+var _ice_puddles: Array = []   # iter434: cached frozen puddles (slip triggers)
 const FrostBoltsScript = preload("res://scripts/frost_bolts.gd")
 var _frost_bolts: Node2D = null   # iter404: FROSTBITE chain-lightning overlay
 const RainbowBoltsScript = preload("res://scripts/rainbow_bolts.gd")
@@ -5823,13 +5829,28 @@ func _process(delta: float) -> void:
 	_level_elapsed += delta
 	# iter417: wind weather nudges the cowboy's target sideways (player can fight
 	# it by dragging, which resets _target_x to the finger position).
-	if _weather_cowboy_drift != 0.0:
+	# iter434: ice-slip — on a frozen puddle the cowboy keeps his entry momentum
+	# with NO steering until he slides off the ice.
+	var _on_ice: bool = _over_ice(cowboy_3d.position.x, cowboy_3d.position.z)
+	if _on_ice and not _cowboy_on_ice:
+		_cowboy_on_ice = true
+		_ice_slip_vx = cowboy_3d.position.x - _prev_cowboy_x
+		_cowboy_ice_cube = _spawn_ice_cube(cowboy_3d)
+	elif not _on_ice and _cowboy_on_ice:
+		_cowboy_on_ice = false
+		_target_x = cowboy_3d.position.x
+		if _cowboy_ice_cube != null and is_instance_valid(_cowboy_ice_cube):
+			_cowboy_ice_cube.queue_free()
+		_cowboy_ice_cube = null
+	_prev_cowboy_x = cowboy_3d.position.x
+	if _weather_cowboy_drift != 0.0 and not _cowboy_on_ice:
 		_target_x = clampf(_target_x + _weather_cowboy_drift * delta,
 			-COWBOY_X_BOUND, COWBOY_X_BOUND)
-	# Lerp cowboy x toward target (drag input target). Weather steering_mult
-	# (dust/snow) slows the follow so the cowboy feels sluggish to steer.
-	cowboy_3d.position.x = lerpf(cowboy_3d.position.x, _target_x,
-		clampf(COWBOY_LERP_SPEED * _weather_steering_mult * delta, 0.0, 1.0))
+	if _cowboy_on_ice:
+		cowboy_3d.position.x = clampf(cowboy_3d.position.x + _ice_slip_vx, -COWBOY_X_BOUND, COWBOY_X_BOUND)
+	else:
+		cowboy_3d.position.x = lerpf(cowboy_3d.position.x, _target_x,
+			clampf(COWBOY_LERP_SPEED * _weather_steering_mult * delta, 0.0, 1.0))
 	# Iter 72: followers track the leader's x with formation-offset lag.
 	# Iter 85: y-bob animation overlays on top of the base 0.45 anchor.
 	_bob_time += delta
@@ -5949,6 +5970,32 @@ func _process(delta: float) -> void:
 				_outlaw_left_field(o)
 				_fall_entity(o)
 				_spawn_pit_splash(o.position, hfill)
+			# iter434: the posse is a MultiMesh CROWD now (_followers is empty), so the loop
+			# above never dropped posse members into these event-spawned ditches (only the
+			# const _HOLES dropped the crowd) — why strafing into some ditches dropped no one.
+			if _level_state == LevelState.PLAYING and _posse_count_3d > 1 and cowboy_3d != null \
+			and absf(hole.position.z - cowboy_3d.position.z) < hz + 0.5:
+				var cl: float = cowboy_3d.position.x - COWBOY_X_BOUND
+				var cr: float = cowboy_3d.position.x + COWBOY_X_BOUND
+				var ov: float = minf(cr, hole.position.x + hx) - maxf(cl, hole.position.x - hx)
+				if ov > 0.0:
+					var fr: float = clampf(ov / (2.0 * COWBOY_X_BOUND), 0.0, 1.0)
+					var already: int = int(hole.get_meta("crowd_dropped", 0))
+					var present: int = _posse_count_3d + already
+					var target: int = mini(present - 1, int(floor(fr * float(present))))
+					var dn: int = clampi(target - already, 0, _posse_count_3d - 1)
+					if dn > 0:
+						hole.set_meta("crowd_dropped", already + dn)
+						_posse_count_3d = maxi(0, _posse_count_3d - dn)
+						_sync_followers_to_count(_posse_count_3d)
+						_spawn_pit_splash(Vector3(cowboy_3d.position.x, 0.0, hole.position.z), hfill)
+						_refresh_hud()
+						if get_node_or_null("/root/AudioBus") and AudioBus.has_method("play_sfx"):
+							AudioBus.play_sfx("hole_fall")
+						if _posse_count_3d <= 0:
+							_show_fail()
+				else:
+					hole.set_meta("crowd_dropped", 0)
 	# Iter 75: gates scroll like obstacles + check trigger when crossing z plane
 	_gate_spawn_timer -= delta
 	if _gate_spawn_timer <= 0.0 and _level_state == LevelState.PLAYING:
@@ -6022,6 +6069,17 @@ func _process(delta: float) -> void:
 			-COWBOY_X_BOUND - PATH_AMP, COWBOY_X_BOUND + PATH_AMP)
 		# Iter 164: the set-piece doesn't x-track the posse — the wagon
 		# "tracking the posse" was this lerp. Pushers move it instead.
+		# iter434: ice-slip — an outlaw on a frozen puddle locks its x-tracking
+		# (slides straight) + gets a floating ice cube until it clears the ice.
+		if _over_ice(outlaw.position.x, outlaw.position.z):
+			target_x = outlaw.position.x
+			if not outlaw.has_meta("ice_cube"):
+				outlaw.set_meta("ice_cube", _spawn_ice_cube(outlaw))
+		elif outlaw.has_meta("ice_cube"):
+			var _ic = outlaw.get_meta("ice_cube")
+			if is_instance_valid(_ic):
+				_ic.queue_free()
+			outlaw.remove_meta("ice_cube")
 		if outlaw.get_meta("is_pushed", false) or outlaw.get_meta("is_pusher", false) \
 				or outlaw.get_meta("is_kimmy", false):
 			target_x = outlaw.position.x
@@ -6553,8 +6611,12 @@ func _build_world_terrain() -> void:
 	mi.material_override = sm
 	_world_root.add_child(mi)
 	# Puddles: flat translucent blue discs on the terrain at authored spots.
+	_ice_puddles.clear()
 	for p in _PUDDLES:
-		_world_root.add_child(_make_puddle(p.x, p.y, p.z))
+		var _pud := _make_puddle(p.x, p.y, p.z)
+		_world_root.add_child(_pud)
+		if _pud.get_meta("is_ice", false):
+			_ice_puddles.append(_pud)
 	# iter418: pits were invisible (only a distance+x kill-zone) so the posse
 	# seemed to float over nothing. Render each authored hole as a world-anchored
 	# dark decal that scrolls + rides the hills exactly like the puddles, so it
@@ -6852,6 +6914,38 @@ func _make_pit(d: float, gx: float, x_half: float, z_half: float, fill: String =
 	mi.material_override = mat
 	return mi
 
+# iter434: true if (wx,wz) world-pos is over any cached frozen puddle (slip zone).
+func _over_ice(wx: float, wz: float) -> bool:
+	if _world_root == null or _ice_puddles.is_empty():
+		return false
+	var ox: float = _world_root.position.x
+	var oz: float = _world_root.position.z
+	for c in _ice_puddles:
+		if not is_instance_valid(c):
+			continue
+		var r: float = float((c as Node3D).get_meta("ice_radius", 1.0))
+		if absf(wx - ((c as Node3D).position.x + ox)) < r and absf(wz - ((c as Node3D).position.z + oz)) < r:
+			return true
+	return false
+
+# iter434: a small translucent spinning ice cube floating over a slipping entity.
+func _spawn_ice_cube(parent: Node3D) -> Node3D:
+	var box := MeshInstance3D.new()
+	var bm := BoxMesh.new()
+	bm.size = Vector3(0.5, 0.5, 0.5)
+	box.mesh = bm
+	var mt := StandardMaterial3D.new()
+	mt.albedo_color = Color(0.62, 0.86, 1.0, 0.55)
+	mt.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	mt.metallic = 0.3
+	mt.roughness = 0.08
+	box.material_override = mt
+	box.position = Vector3(0, 1.5, 0)
+	box.rotation = Vector3(0.4, 0.4, 0.0)
+	parent.add_child(box)
+	box.create_tween().set_loops().tween_property(box, "rotation:y", box.rotation.y + TAU, 2.0)
+	return box
+
 func _make_puddle(d: float, gx: float, radius: float) -> MeshInstance3D:
 	var mi := MeshInstance3D.new()
 	var qm := QuadMesh.new()
@@ -6876,6 +6970,8 @@ func _make_puddle(d: float, gx: float, radius: float) -> MeshInstance3D:
 		mat.albedo_color = Color(0.82, 0.92, 0.98, 0.95)
 		mat.metallic = 0.15
 		mat.roughness = 0.55
+		mi.set_meta("is_ice", true)            # iter434: slip trigger
+		mi.set_meta("ice_radius", radius)
 	mi.material_override = mat
 	return mi
 
