@@ -271,10 +271,16 @@ var scenery_root: Node3D
 var _spawn_timer: float = 0.0
 var _volley_dmg: int = 1   # iter406: per-bullet damage = the posse's per-member firepower
 var _kimmy_cue_shown: bool = false   # kimmy: "RAINBOW ONLY" cue shown once per cage
-const KIMMY_CAGE_HP: int = 240          # high; tuned on device (cracks under sustained rainbow fire)
-const KIMMY_RESCUE_WINDOW: float = 16.0 # seconds before the pushers haul her off
+# iter426: rebalanced for winnability — at a small posse (demo POSSE 20) _volley_dmg
+# is 1, the cage-hit loop breaks after one bullet/frame (~10 hits/s), so 240 HP / 16 s
+# was unwinnable. Per-Kimmy-hit damage now floors at KIMMY_CAGE_HIT_FLOOR, HP is lower,
+# and the window is longer — a focused rainbow burst cracks it in ~7s with margin.
+const KIMMY_CAGE_HP: int = 150          # cracks under sustained rainbow fire within the window
+const KIMMY_CAGE_HIT_FLOOR: int = 2     # min cage damage per rainbow hit (bigger posse > this)
+const KIMMY_RESCUE_WINDOW: float = 20.0 # seconds before the pushers haul her off
 var _kimmy_captive: Node3D = null
 var _kimmy_window_left: float = 0.0
+var _kimmy_countdown: Label = null   # kimmy: rainbow strobing rescue-timer HUD readout
 var _was_reloading: bool = false   # iter413: edge-detect reload start for the click SFX
 var _last_lap: float = 0.0   # iter414: puddle-cross splash detector
 var _fire_timer: float = 0.0
@@ -4436,7 +4442,7 @@ func _captive_take_damage(captive: Node3D, bullet_pos: Vector3, bullet_rainbow: 
 		return  # iter 164: already freed — ignore trailing bullets
 	# kimmy: cage takes damage ONLY from rainbow-mode bullets.
 	var is_kimmy: bool = captive.get_meta("is_kimmy", false)
-	var base_dmg: int = _volley_dmg if is_kimmy else 1
+	var base_dmg: int = maxi(_volley_dmg, KIMMY_CAGE_HIT_FLOOR) if is_kimmy else 1
 	var dmg: int = kimmy_cage_damage(is_kimmy, bullet_rainbow, base_dmg)
 	if dmg <= 0:
 		if is_kimmy:
@@ -4490,6 +4496,7 @@ func _spawn_kimmy_cage() -> void:
 	var hp_label: Label3D = _kimmy_captive.get_meta("hp_label", null)
 	if hp_label != null and is_instance_valid(hp_label):
 		hp_label.text = str(KIMMY_CAGE_HP)
+		hp_label.position.y += 0.4   # kimmy: raise the cage HP number up very slightly
 	var trapped: Label3D = _kimmy_captive.get_meta("trapped_label", null)
 	if trapped != null and is_instance_valid(trapped):
 		trapped.text = "CAGED!"
@@ -4518,10 +4525,56 @@ func _spawn_kimmy_cage() -> void:
 	_kimmy_captive.add_child(fbars)
 	_kimmy_captive.set_meta("front_bars", fbars)
 	_kimmy_window_left = KIMMY_RESCUE_WINDOW
+	_kimmy_spawn_countdown()
 	# Halt the world scroll while she blocks the path. _update_pushed_wagons also
 	# auto-sets this each frame (the cage is an is_captive node), but set it now
 	# so the very first frame is already frozen.
 	_set_cart_encounter(true)
+
+# kimmy: the rescue-timer HUD readout — a big Rye-font countdown just BELOW the
+# top-left taffy cutout ($UI/HeartsCutout, which ends at y≈571). Rainbow-strobed
+# + pulsed each frame in _process while the cage is up; freed on resolve.
+func _kimmy_spawn_countdown() -> void:
+	var ui: Node = get_node_or_null("UI")
+	if ui == null:
+		return
+	_kimmy_clear_countdown()
+	var lbl := Label.new()
+	lbl.name = "KimmyCountdown"
+	lbl.add_theme_font_override("font", _RYE3D)
+	lbl.add_theme_font_size_override("font_size", 96)
+	lbl.add_theme_color_override("font_outline_color", Color(0.16, 0.05, 0.04, 1))
+	lbl.add_theme_constant_override("outline_size", 12)
+	lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	lbl.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	lbl.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	# Align under the taffy cutout (offset_left 12 → right 588, bottom 571).
+	lbl.offset_left = 12.0
+	lbl.offset_top = 560.0
+	lbl.offset_right = 588.0
+	lbl.offset_bottom = 700.0
+	lbl.pivot_offset = Vector2(288.0, 70.0)
+	lbl.text = str(int(ceil(KIMMY_RESCUE_WINDOW)))
+	ui.add_child(lbl)
+	_kimmy_countdown = lbl
+
+# kimmy: per-frame countdown tick — rainbow-cycle the colour + pulse the scale so
+# it strobes urgently. Called from _process while _kimmy_captive is alive.
+func _kimmy_update_countdown() -> void:
+	if _kimmy_countdown == null or not is_instance_valid(_kimmy_countdown):
+		return
+	_kimmy_countdown.text = str(maxi(0, int(ceil(_kimmy_window_left))))
+	var t: float = float(Time.get_ticks_msec()) * 0.001
+	# Rainbow strobe: cycle hue fast; pulse brightness + scale on a faster beat.
+	_kimmy_countdown.modulate = Color.from_hsv(fmod(t * 1.6, 1.0), 0.85, 1.0)
+	var pulse: float = 1.0 + 0.12 * sin(t * 12.0)
+	_kimmy_countdown.scale = Vector2(pulse, pulse)
+
+# kimmy: remove the countdown HUD (on rescue, haul-away, or respawn).
+func _kimmy_clear_countdown() -> void:
+	if _kimmy_countdown != null and is_instance_valid(_kimmy_countdown):
+		_kimmy_countdown.queue_free()
+	_kimmy_countdown = null
 
 # kimmy: rescue window expired — the pushers haul her off. Miss, but NO soft-lock:
 # the cage slides off-left, frees, and the world scroll resumes.
@@ -5630,15 +5683,18 @@ func _process(delta: float) -> void:
 	# cage) -> rush; time out (pushers haul her off) -> miss + resume scroll.
 	if is_instance_valid(_kimmy_captive):
 		_kimmy_window_left -= delta
+		_kimmy_update_countdown()
 		var k_hp: int = int(_kimmy_captive.get_meta("hp", 0))
 		match kimmy_rescue_outcome(k_hp, _kimmy_window_left):
 			"cracked":
 				var freed := _kimmy_captive
 				_kimmy_captive = null
+				_kimmy_clear_countdown()
 				_rush_kimmy(freed)
 			"timed_out":
 				var lost := _kimmy_captive
 				_kimmy_captive = null
+				_kimmy_clear_countdown()
 				_kimmy_haul_away(lost)
 			_:
 				pass
@@ -5770,7 +5826,10 @@ func _process(delta: float) -> void:
 		# Iter 173: the pushed cart + its pushers freeze in z — during a
 		# cart encounter the whole world's forward scroll is paused anyway
 		# (terrain + props), so the cart stays in lockstep with the ground.
-		if outlaw.get_meta("is_pushed", false) or outlaw.get_meta("is_pusher", false):
+		# kimmy: her cage is a STATIC blocker (not pushed) — freeze it in z too,
+		# so it sits still in the halted world instead of creeping like an outlaw.
+		if outlaw.get_meta("is_pushed", false) or outlaw.get_meta("is_pusher", false) \
+				or outlaw.get_meta("is_kimmy", false):
 			z_speed = 0.0
 		# Iter 136: real delta (not motion_delta) so outlaws keep advancing
 		# on the posse even while the world scroll is paused / during BOSS.
@@ -5786,7 +5845,8 @@ func _process(delta: float) -> void:
 			-COWBOY_X_BOUND - PATH_AMP, COWBOY_X_BOUND + PATH_AMP)
 		# Iter 164: the set-piece doesn't x-track the posse — the wagon
 		# "tracking the posse" was this lerp. Pushers move it instead.
-		if outlaw.get_meta("is_pushed", false) or outlaw.get_meta("is_pusher", false):
+		if outlaw.get_meta("is_pushed", false) or outlaw.get_meta("is_pusher", false) \
+				or outlaw.get_meta("is_kimmy", false):
 			target_x = outlaw.position.x
 		# Iter 136: real delta so x-tracking continues during BOSS state too
 		outlaw.position.x = lerpf(outlaw.position.x, target_x,
@@ -5794,7 +5854,8 @@ func _process(delta: float) -> void:
 		# iter400: ride the hilly terrain (sit on the ground, not float over it).
 		# Skip the pushed-wagon set-piece (it owns its own y). iter401: outlaws spawn
 		# at y=1.0 (their foot offset) — use that, not POSSE_BASE_Y, or their feet clip.
-		if not outlaw.get_meta("is_pushed", false) and not outlaw.get_meta("is_pusher", false):
+		if not outlaw.get_meta("is_pushed", false) and not outlaw.get_meta("is_pusher", false) \
+				and not outlaw.get_meta("is_kimmy", false):
 			outlaw.position.y = OUTLAW_BASE_Y + _hill_y(_level_distance + (cowboy_3d.position.z - outlaw.position.z))
 		var ft: float = outlaw.get_meta("fire_timer", 0.0)
 		ft -= delta
