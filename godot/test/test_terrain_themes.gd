@@ -38,4 +38,33 @@ func test_mottle_periodic_in_lz_and_bounded():
 				TerrainThemes.mottle(gx, lz - TerrainThemes.HILL_PERIOD), 0.0001)
 	for i in range(200):
 		var m: float = TerrainThemes.mottle(float(i) * 0.3, float(-i) * 0.7)
-		assert_between(m, 0.78, 1.16)
+		assert_between(m, 0.78, 1.22)
+
+
+func test_mottle_strength_scales_and_clamps():
+	var a := TerrainThemes.mottle(3.0, 10.0, 1.0)
+	var b := TerrainThemes.mottle(3.0, 10.0, 3.0)
+	assert_true(a >= 0.78 and a <= 1.16, "legacy clamp holds")
+	assert_true(b >= 0.55 and b <= 1.45, "strong clamp holds")
+	assert_ne(a, b, "strength changes the value")
+
+func test_mottle_periodic_in_z_over_140():
+	assert_almost_eq(TerrainThemes.mottle(2.0, 5.0, 2.0), TerrainThemes.mottle(2.0, 5.0 + 140.0, 2.0), 0.0001)
+
+func test_cliff_drop_left_only_beyond_trail():
+	assert_eq(TerrainThemes.cliff_drop(0.0, 2.5, "left", 30.0), 0.0)
+	assert_eq(TerrainThemes.cliff_drop(5.0, 2.5, "left", 30.0), 0.0)
+	var near := TerrainThemes.cliff_drop(-3.0, 2.5, "left", 30.0)
+	var far := TerrainThemes.cliff_drop(-10.0, 2.5, "left", 30.0)
+	assert_true(near > 0.0 and far > near, "drops and deepens leftward")
+	assert_true(far <= 30.0, "capped at depth")
+	assert_eq(TerrainThemes.cliff_drop(-10.0, 2.5, "", 30.0), 0.0, "no side = no cliff")
+
+func test_scatter_positions_deterministic_and_in_bounds():
+	var a := TerrainThemes.scatter_positions(7, 3, 5, -10.0, -4.0, 1.5, 6.0)
+	var b := TerrainThemes.scatter_positions(7, 3, 5, -10.0, -4.0, 1.5, 6.0)
+	assert_eq(a, b, "same seed/cell -> identical placement")
+	assert_eq(a.size(), 5)
+	for p in a:
+		assert_true(p.y >= -10.0 and p.y <= -4.0, "z in band")
+		assert_true(abs(p.x) >= 1.5 and abs(p.x) <= 6.0, "x in shoulder band")
