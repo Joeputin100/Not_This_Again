@@ -87,8 +87,18 @@ var moon_disc: Node3D = null
 
 var _camera: Camera3D = null
 
+# Per-terrain distant-mountain backdrop. Defaults to the original candy
+# mountains; level_3d swaps in the theme's backdrop via set_backdrop_texture()
+# so each terrain (frontier/mine/farm/mountain) gets its own horizon range.
+var _backdrop_tex: Texture2D = MOUNTAINS_TEX
+
 func bind_camera(camera: Camera3D) -> void:
 	_camera = camera
+
+# Set the distant-mountain backdrop texture (per-terrain). Pass null to fall
+# back to the default candy mountains. Takes effect on the next apply_preset.
+func set_backdrop_texture(tex: Texture2D) -> void:
+	_backdrop_tex = tex if tex != null else MOUNTAINS_TEX
 
 func apply_preset(preset: Dictionary, shadow_offset: Vector3) -> void:
 	var raw_angle: float = 0.0
@@ -162,7 +172,7 @@ func _push_cloud_uniforms(preset: Dictionary) -> void:
 	# Candy mountains baked into the horizon (iter 335). Opt-in per preset so a
 	# scene can leave them off; on by default for gameplay/level-select.
 	if preset.get("mountains", true):
-		cm.set_shader_parameter("mountains_tex", MOUNTAINS_TEX)
+		cm.set_shader_parameter("mountains_tex", _backdrop_tex)
 		cm.set_shader_parameter("mountains_on", true)
 	else:
 		cm.set_shader_parameter("mountains_on", false)

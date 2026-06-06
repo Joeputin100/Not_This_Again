@@ -812,6 +812,11 @@ func _apply_level_sky() -> void:
 		return
 	var preset: Dictionary = SkyBodies.make_sky_preset(
 		SkyBodies.tod_from_clock(), _level_weather())
+	# Per-terrain distant-mountain backdrop (frontier/mine/farm/mountain).
+	var _terrain: String = _level_def.terrain if _level_def != null else "frontier"
+	var _backdrop_path: String = TerrainThemes.get_theme(_terrain).get("backdrop", "")
+	if _backdrop_path != "":
+		_sky.set_backdrop_texture(load(_backdrop_path) as Texture2D)
 	_sky.apply_preset(preset, Vector3(-0.5, 0.0, 1.0))
 
 # Per-level signature weather → sky slug, derived from LevelDef.weather_type
