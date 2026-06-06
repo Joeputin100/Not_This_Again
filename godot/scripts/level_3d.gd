@@ -244,6 +244,8 @@ var holes_root: Node3D   # SP2 slice3: pits/cliffs that posse + outlaws fall int
 var _world_root: Node3D = null   # SP2 slice3/iter400: static curved+hilly terrain the posse advances through
 const FrostBoltsScript = preload("res://scripts/frost_bolts.gd")
 var _frost_bolts: Node2D = null   # iter404: FROSTBITE chain-lightning overlay
+const RainbowBoltsScript = preload("res://scripts/rainbow_bolts.gd")
+var _rainbow_bolts: Node2D = null   # kimmy: RAINBOW prism-chain overlay
 var outlaw_bullets_root: Node3D
 var boss_root: Node3D
 # Iter 69: terrain_3d.gd script wasn't attached to the inline Terrain3D
@@ -575,6 +577,7 @@ func _ready() -> void:
 	_build_world_terrain()   # iter400: static curved+hilly terrain the posse advances through
 	_apply_terrain_theme()   # iter415: per-terrain fog
 	_build_frost_bolts()     # iter404: FROSTBITE chain-lightning overlay
+	_build_rainbow_bolts()   # kimmy: RAINBOW prism-chain overlay
 	if info_label != null:
 		info_label.text = "iter97 RDY-4 3D built"
 	# Iter 72: spawn posse followers at trapezoid offsets behind leader.
@@ -6742,6 +6745,66 @@ func _emit_frost_chain() -> void:
 	if pts.size() >= 2:
 		_frost_bolts.call("add_chain", pts, 1.0)
 
+# kimmy: rainbow prism-chain overlay, mirrors _build_frost_bolts.
+func _build_rainbow_bolts() -> void:
+	var ui: Node = get_node_or_null("UI")
+	if ui == null:
+		return
+	_rainbow_bolts = RainbowBoltsScript.new()
+	_rainbow_bolts.name = "RainbowBolts"
+	ui.add_child(_rainbow_bolts)
+	ui.move_child(_rainbow_bolts, 0)
+
+const VFX_RAINBOW_SHOCK := preload("res://assets/sprites/props/vfx_rainbow_shock.png")
+
+# kimmy: emit one rainbow prism chain from the leader's muzzle through nearby
+# enemies (reuses _frost_chain_targets), plus an additive shock pop on each target.
+func _emit_rainbow_chain() -> void:
+	if _rainbow_bolts == null or camera == null or cowboy_3d == null:
+		return
+	var muzzle: Vector3 = cowboy_3d.position + Vector3(0, 0.95, 0)
+	if camera.is_position_behind(muzzle):
+		return
+	var pts := PackedVector2Array()
+	pts.append(camera.unproject_position(muzzle))
+	var targets: Array = _frost_chain_targets(muzzle, 3)
+	if targets.is_empty():
+		var fwd := Vector3(cowboy_3d.position.x, 0.95, _bullet_despawn_z)
+		if not camera.is_position_behind(fwd):
+			pts.append(camera.unproject_position(fwd))
+	else:
+		for t in targets:
+			var tp: Vector3 = t + Vector3(0, 0.9, 0)
+			if not camera.is_position_behind(tp):
+				pts.append(camera.unproject_position(tp))
+			_spawn_rainbow_shock(t + Vector3(0, 0.9, 0))
+	if pts.size() >= 2:
+		_rainbow_bolts.call("add_chain", pts, 1.0)
+
+# kimmy: premium additive rainbow shockwave ring at an enemy hit (Skittles ring).
+func _spawn_rainbow_shock(pos: Vector3) -> void:
+	var s := Sprite3D.new()
+	s.billboard = BaseMaterial3D.BILLBOARD_ENABLED
+	s.shaded = false
+	s.no_depth_test = true
+	s.render_priority = 7
+	s.pixel_size = 0.0020
+	s.position = pos
+	var mat := StandardMaterial3D.new()
+	mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	mat.blend_mode = BaseMaterial3D.BLEND_MODE_ADD
+	mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	mat.albedo_texture = VFX_RAINBOW_SHOCK
+	mat.texture_filter = BaseMaterial3D.TEXTURE_FILTER_LINEAR
+	mat.billboard_mode = BaseMaterial3D.BILLBOARD_ENABLED
+	s.material_override = mat
+	popups_root.add_child(s)
+	var t := create_tween().set_parallel(true)
+	t.tween_property(s, "pixel_size", 0.0060, 0.28) \
+		.set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
+	t.tween_property(s, "modulate:a", 0.0, 0.28)
+	t.chain().tween_callback(s.queue_free)
+
 # iter409: impact blast on bullet -> gate/prop collision (was missing in gameplay;
 # ported from the SP1 testbed). Billboard, draws on top, pops via pixel_size + fades.
 const IMPACT_BLAST_TEX := preload("res://assets/sprites/ui/blast.png")
@@ -6769,6 +6832,9 @@ func _spawn_bullet() -> void:
 	# iter404: FROSTBITE fires chain lightning through nearby enemies.
 	if _fire_mode == FireMode.FROSTBITE:
 		_emit_frost_chain()
+	# kimmy: RAINBOW fires a rainbow prism chain + additive shock pops.
+	if _fire_mode == FireMode.RAINBOW:
+		_emit_rainbow_chain()
 	# iter406: firepower SCALES with the posse. We can't spawn 1000 bullet nodes per
 	# shot, so a bounded sample of bullets fires and EACH carries the damage of the
 	# members it represents (volley damage ≈ the whole posse's per-member fire). A
