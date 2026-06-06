@@ -110,23 +110,23 @@ SFX: dict[str, tuple[str, float]] = {
     ),
     # --- Level-3 farm cast (terrain branch) ---
     "sfx_candy_corn": (
-        "a quick candy pew laser pop, a bright snappy candy gunshot, short, "
-        "arcade, cartoon western",
+        "a punchy explosive candy laser blast, deep bass thump with a bright zap "
+        "crack, powerful sci-fi candy cannon shot",
         0.7,
     ),
     "sfx_gummi_bear": (
-        "a bouncy rubbery boing with a wet gummy jiggle, a hopping gummy bear "
-        "springing, short, cartoon, playful",
+        "a huge dramatic cartoon BOING followed by a heavy wet rubbery "
+        "splat-bounce, exaggerated and impactful",
         0.9,
     ),
     "sfx_fried_dough": (
-        "a sizzling deep-fry crackle then a heavy doughy flump thud, a waddling "
-        "fried-dough brute landing, short, cartoon",
+        "a roaring deep-fryer whoosh building to a massive heavy doughy SLAM thud, "
+        "beefy and powerful",
         1.2,
     ),
     "sfx_triffid": (
-        "a wet plant snap and leafy hiss ending in a quick chomp, a snapping "
-        "candy flytrap biting, short, cartoon",
+        "a monstrous wet plant SNAP and venomous hiss-screech, a giant carnivorous "
+        "flytrap lunging, scary and dramatic",
         1.0,
     ),
     "sfx_hot_fudge": (
@@ -135,14 +135,15 @@ SFX: dict[str, tuple[str, float]] = {
         1.1,
     ),
     "sfx_pie_splat": (
-        "a wet cream and fruit pie splat impact, a thrown cherry pie hitting hard, "
-        "short, comedic, cartoon",
+        "a huge dramatic wet pie SPLAT impact, exaggerated comedic splatter with a "
+        "deep thwack, cinematic",
         0.8,
     ),
     "sfx_boss_stooges": (
-        "a cartoon Three-Stooges slapstick taunt, woob woob woob and nyuk nyuk "
-        "nyuk vocals ending in a comedic metal bonk, a goofy cotton-candy trio boss",
-        2.6,
+        "a big bombastic cartoon Three-Stooges boss taunt: loud 'WOOB WOOB WOOB' "
+        "nyuk-nyuk laughs, exaggerated slapstick bonks and clangs, with a menacing "
+        "low rumble underneath, dramatic and larger-than-life, ~3 seconds",
+        3.0,
     ),
 }
 
