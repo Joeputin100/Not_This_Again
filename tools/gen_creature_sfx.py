@@ -108,6 +108,42 @@ SFX: dict[str, tuple[str, float]] = {
         "big rockstar power-chord finish, celebratory, energetic",
         3.0,
     ),
+    # --- Level-3 farm cast (terrain branch) ---
+    "sfx_candy_corn": (
+        "a quick candy pew laser pop, a bright snappy candy gunshot, short, "
+        "arcade, cartoon western",
+        0.7,
+    ),
+    "sfx_gummi_bear": (
+        "a bouncy rubbery boing with a wet gummy jiggle, a hopping gummy bear "
+        "springing, short, cartoon, playful",
+        0.9,
+    ),
+    "sfx_fried_dough": (
+        "a sizzling deep-fry crackle then a heavy doughy flump thud, a waddling "
+        "fried-dough brute landing, short, cartoon",
+        1.2,
+    ),
+    "sfx_triffid": (
+        "a wet plant snap and leafy hiss ending in a quick chomp, a snapping "
+        "candy flytrap biting, short, cartoon",
+        1.0,
+    ),
+    "sfx_hot_fudge": (
+        "a thick gloopy squelch and gurgling glorp ooze, a squelching fudge blob "
+        "moving, short, cartoon",
+        1.1,
+    ),
+    "sfx_pie_splat": (
+        "a wet cream and fruit pie splat impact, a thrown cherry pie hitting hard, "
+        "short, comedic, cartoon",
+        0.8,
+    ),
+    "sfx_boss_stooges": (
+        "a cartoon Three-Stooges slapstick taunt, woob woob woob and nyuk nyuk "
+        "nyuk vocals ending in a comedic metal bonk, a goofy cotton-candy trio boss",
+        2.6,
+    ),
 }
 
 
