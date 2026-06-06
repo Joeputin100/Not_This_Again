@@ -242,6 +242,8 @@ var gates_root: Node3D
 var outlaws_root: Node3D
 var holes_root: Node3D   # SP2 slice3: pits/cliffs that posse + outlaws fall into
 var _world_root: Node3D = null   # SP2 slice3/iter400: static curved+hilly terrain the posse advances through
+var _terr_cliff_side: String = ""   # terrain: "left"/"right" cliff edge (mountain), "" = none
+var _terr_cliff_depth: float = 0.0
 const FrostBoltsScript = preload("res://scripts/frost_bolts.gd")
 var _frost_bolts: Node2D = null   # iter404: FROSTBITE chain-lightning overlay
 const RainbowBoltsScript = preload("res://scripts/rainbow_bolts.gd")
@@ -6428,7 +6430,11 @@ func _hole_drop(d: float, gx: float) -> float:
 # is translated by (-_path_lateral(dist), 0, dist).
 func _terr_vertex(gx: float, lz: float) -> Vector3:
 	var d: float = -lz
-	return Vector3(gx + _path_lateral(d), _hill_y(d) - _hole_drop(d, gx), lz)
+	var y: float = _hill_y(d) - _hole_drop(d, gx)
+	if _terr_cliff_side != "":
+		# gx is lane-relative x; the cliff lip sits at the trail half-width (2.6).
+		y -= TerrainThemes.cliff_drop(gx, 2.6, _terr_cliff_side, _terr_cliff_depth)
+	return Vector3(gx + _path_lateral(d), y, lz)
 
 # iter400: build the static curved+hilly terrain (+ puddles) ONCE under WorldRoot,
 # replacing the UV-scroll flat plane. The posse advances by translating WorldRoot.
@@ -6458,15 +6464,21 @@ func _build_world_terrain() -> void:
 	st.begin(Mesh.PRIMITIVE_TRIANGLES)
 	var cols: int = int(TERR_HALF_W * 2.0 / TERR_DX)
 	var rows: int = int((TERR_Z_BEHIND - TERR_Z_AHEAD) / TERR_DZ)
-	var tile: float = 13.0
-	# iter415: bake per-vertex valley/ridge tint from the level's terrain theme.
+	# terrain: per-theme ground surface — albedo+normal+detail, larger UV tiling, and a
+	# STRONG baked per-vertex macro-variation (the main "not one flat tile" win). The
+	# theme also drives the optional cliff edge (mountain), set on the _terr_* members.
 	var _theme: Dictionary = TerrainThemes.get_theme(_level_def.terrain if _level_def != null else "frontier")
+	var tile: float = float(_theme.get("ground_uv_tile", 13.0))
+	var _macro: float = float(_theme.get("macro_strength", 1.0))
+	var _cliff: Variant = _theme.get("cliff", null)
+	_terr_cliff_side = String(_cliff["side"]) if _cliff != null else ""
+	_terr_cliff_depth = float(_cliff["depth"]) if _cliff != null else 0.0
 	var _tlo: Color = _theme["tint_low"]
 	var _thi: Color = _theme["tint_high"]
 	var _tamp: float = 2.2   # ~max |hill_height|
 	var _vcol := func(py: float, gx: float, lz: float) -> Color:
 		var c: Color = TerrainThemes.tint(py, _tlo, _thi, _tamp)
-		var m: float = TerrainThemes.mottle(gx, lz)
+		var m: float = TerrainThemes.mottle(gx, lz, _macro)
 		return Color(c.r * m, c.g * m, c.b * m, 1.0)
 	for r in range(rows):
 		var lz0: float = TERR_Z_BEHIND - float(r) * TERR_DZ
@@ -6478,43 +6490,36 @@ func _build_world_terrain() -> void:
 			var p10: Vector3 = _terr_vertex(gx1, lz0)
 			var p01: Vector3 = _terr_vertex(gx0, lz1)
 			var p11: Vector3 = _terr_vertex(gx1, lz1)
-			var u0: float = (gx0 + TERR_HALF_W) / tile
-			var u1: float = (gx1 + TERR_HALF_W) / tile
+			# +0.37 U offset so the lane centre isn't on a tile boundary (kills the seam).
+			var u0: float = (gx0 + TERR_HALF_W) / tile + 0.37
+			var u1: float = (gx1 + TERR_HALF_W) / tile + 0.37
 			var v0: float = -lz0 / tile
 			var v1: float = -lz1 / tile
-			st.set_color(_vcol.call(p00.y, gx0, lz0)); st.set_uv(Vector2(u0, v0)); st.add_vertex(p00)
-			st.set_color(_vcol.call(p10.y, gx1, lz0)); st.set_uv(Vector2(u1, v0)); st.add_vertex(p10)
-			st.set_color(_vcol.call(p11.y, gx1, lz1)); st.set_uv(Vector2(u1, v1)); st.add_vertex(p11)
-			st.set_color(_vcol.call(p00.y, gx0, lz0)); st.set_uv(Vector2(u0, v0)); st.add_vertex(p00)
-			st.set_color(_vcol.call(p11.y, gx1, lz1)); st.set_uv(Vector2(u1, v1)); st.add_vertex(p11)
-			st.set_color(_vcol.call(p01.y, gx0, lz1)); st.set_uv(Vector2(u0, v1)); st.add_vertex(p01)
+			st.set_color(_vcol.call(p00.y, gx0, lz0)); st.set_uv(Vector2(u0, v0)); st.set_uv2(Vector2(u0 * 4.0, v0 * 4.0)); st.add_vertex(p00)
+			st.set_color(_vcol.call(p10.y, gx1, lz0)); st.set_uv(Vector2(u1, v0)); st.set_uv2(Vector2(u1 * 4.0, v0 * 4.0)); st.add_vertex(p10)
+			st.set_color(_vcol.call(p11.y, gx1, lz1)); st.set_uv(Vector2(u1, v1)); st.set_uv2(Vector2(u1 * 4.0, v1 * 4.0)); st.add_vertex(p11)
+			st.set_color(_vcol.call(p00.y, gx0, lz0)); st.set_uv(Vector2(u0, v0)); st.set_uv2(Vector2(u0 * 4.0, v0 * 4.0)); st.add_vertex(p00)
+			st.set_color(_vcol.call(p11.y, gx1, lz1)); st.set_uv(Vector2(u1, v1)); st.set_uv2(Vector2(u1 * 4.0, v1 * 4.0)); st.add_vertex(p11)
+			st.set_color(_vcol.call(p01.y, gx0, lz1)); st.set_uv(Vector2(u0, v1)); st.set_uv2(Vector2(u0 * 4.0, v1 * 4.0)); st.add_vertex(p01)
 	st.generate_normals()
+	st.generate_tangents()   # so the normal map lights correctly
 	var mi := MeshInstance3D.new()
 	mi.name = "Terrain"
 	mi.mesh = st.commit()
-	# iter402: reuse the flat ground's AUTHORED PBR dirt material (albedo + normal +
-	# roughness, lit) instead of a flat unshaded albedo — the unshaded version looked
-	# basic/ugly. Duplicate it, disable backface cull (our winding), and let our own
-	# UVs drive the tiling.
-	var mat: Material = null
-	var flat_mi := get_node_or_null("Terrain3D/SubViewport/Ground")
-	if flat_mi is MeshInstance3D and (flat_mi as MeshInstance3D).material_override != null:
-		mat = (flat_mi as MeshInstance3D).material_override.duplicate()
-		if mat is StandardMaterial3D:
-			(mat as StandardMaterial3D).cull_mode = BaseMaterial3D.CULL_DISABLED
-			(mat as StandardMaterial3D).uv1_scale = Vector3(1, 1, 1)
-	if mat == null:
-		var sm := StandardMaterial3D.new()
-		sm.albedo_color = Color(0.62, 0.45, 0.28)
-		if ResourceLoader.exists("res://assets/textures/dirt_2k.png"):
-			sm.albedo_texture = load("res://assets/textures/dirt_2k.png")
-		sm.cull_mode = BaseMaterial3D.CULL_DISABLED
-		mat = sm
-	# iter415: vertex-color tint + a built-in detail layer for close-up variation.
-	if mat is StandardMaterial3D:
-		var sm3 := mat as StandardMaterial3D
-		sm3.vertex_color_use_as_albedo = true
-	mi.material_override = mat
+	var sm := StandardMaterial3D.new()
+	sm.albedo_texture = load(_theme["ground_albedo"])
+	if _theme.has("ground_normal"):
+		sm.normal_enabled = true
+		sm.normal_texture = load(_theme["ground_normal"])
+	sm.roughness = 1.0
+	sm.cull_mode = BaseMaterial3D.CULL_DISABLED
+	sm.vertex_color_use_as_albedo = true
+	sm.uv1_scale = Vector3(1, 1, 1)
+	# (detail layer intentionally omitted: StandardMaterial3D detail with MIX and no
+	# detail_mask fully REPLACES the base albedo with the grey detail tile. The
+	# realistic look comes from the albedo + normal + baked macro-variation; a masked
+	# detail layer can be re-added later.)
+	mi.material_override = sm
 	_world_root.add_child(mi)
 	# Puddles: flat translucent blue discs on the terrain at authored spots.
 	for p in _PUDDLES:
