@@ -675,6 +675,14 @@ func _ready() -> void:
 			else:
 				DebugLog.add("level_3d: captive preview %s in %s" % [ch, cc])
 				call_deferred("_preview_captive_3d", ch, cc)
+		elif DebugPreview.pending_kimmy:
+			# kimmy: interactive preview — equip the RAINBOW weapon and drop her cage
+			# right away so the rescue + sugar rush can be played without reaching L3.
+			DebugPreview.pending_kimmy = false
+			_fire_mode = FireMode.RAINBOW
+			_update_weapon_label()
+			call_deferred("_spawn_kimmy_cage")
+			DebugLog.add("level_3d: kimmy preview")
 	# Iter 79: initial HUD render.
 	_refresh_hud()
 	# Iter 77: win-modal Retry button.
