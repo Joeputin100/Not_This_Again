@@ -275,7 +275,7 @@ const TERRAIN_THEMES: Dictionary = {
 		"tint_low": Color(0.62, 0.66, 0.72), "tint_high": Color(0.92, 0.95, 1.0),
 		"fog_color": Color(0.86, 0.90, 0.96), "fog_density": 0.030,
 		"trail": {"albedo": "res://assets/textures/ground_mountain.png", "half_width": 2.6},
-		"boardwalk": null,
+		"boardwalk": null, "puddle_style": "ice",
 		"cliff": {"side": "left", "depth": 30.0},
 		"scatter": [
 			{"slug": "snow_drift", "density": 0.8, "scale": [0.7, 1.4], "side": "right"},
@@ -580,6 +580,28 @@ func _build_cliff_void() -> void:
 ```bash
 git add godot/scripts/level_3d.gd
 git commit -m "terrain: mountain cliff void-fill (gorge haze below the left lip)"
+```
+
+### Task 9b: Frozen-ice puddles on the mountain
+
+**Files:** Modify `godot/scripts/level_3d.gd` `_make_puddle` (~6596).
+
+Mountain puddles must read as **frozen ice**, not reflective blue water. Make `_make_puddle` theme-aware: when the level's theme has `puddle_style == "ice"`, render a frosted pale-cyan/white, mostly-opaque, matte-frosty disc instead of the shiny blue water.
+
+- [ ] **Step 1: Implement.** After the existing `mat` setup in `_make_puddle`, before `mi.material_override = mat`, add:
+```gdscript
+	var _pt: Dictionary = TerrainThemes.get_theme(_level_def.terrain if _level_def != null else "frontier")
+	if String(_pt.get("puddle_style", "water")) == "ice":
+		# Frozen: frosty pale ice, mostly opaque, matte (not the shiny blue water look).
+		mat.albedo_color = Color(0.82, 0.92, 0.98, 0.95)
+		mat.metallic = 0.15
+		mat.roughness = 0.55
+```
+- [ ] **Step 2: Verify + screenshot.** GUT green; then confirm via the mountain screenshot in Task 10 (force terrain=mountain) that puddles read as pale frosted ice, not blue water.
+- [ ] **Step 3: Commit.**
+```bash
+git add godot/scripts/level_3d.gd
+git commit -m "terrain: frozen-ice puddles on mountain (puddle_style=ice)"
 ```
 
 ---
