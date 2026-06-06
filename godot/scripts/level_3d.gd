@@ -196,7 +196,7 @@ const _PATH_KEYS: Array = [
 # terrain + features are periodic over PATH_PATTERN_LEN so WorldRoot.z wraps
 # seamlessly → an endless static-feeling world. Features (hills/holes/puddles) are
 # authored by distance within one period — the level-designer coordinate model.
-const TERR_HALF_W: float = 16.0        # terrain half-width (covers screen + curve swing)
+const TERR_HALF_W: float = 26.0        # terrain half-width — extends well past the screen edges both sides
 const TERR_DX: float = 2.0
 const TERR_Z_BEHIND: float = 12.0      # mesh local-z behind the posse
 const TERR_Z_AHEAD: float = -200.0     # ...and far ahead (≥ window + one period, for seamless wrap)
@@ -244,6 +244,7 @@ var holes_root: Node3D   # SP2 slice3: pits/cliffs that posse + outlaws fall int
 var _world_root: Node3D = null   # SP2 slice3/iter400: static curved+hilly terrain the posse advances through
 var _terr_cliff_side: String = ""   # terrain: "left"/"right" cliff edge (mountain), "" = none
 var _terr_cliff_depth: float = 0.0
+var _hill_scale: float = 1.0   # terrain: per-theme hill amplitude (mountain = steeper)
 const FrostBoltsScript = preload("res://scripts/frost_bolts.gd")
 var _frost_bolts: Node2D = null   # iter404: FROSTBITE chain-lightning overlay
 const RainbowBoltsScript = preload("res://scripts/rainbow_bolts.gd")
@@ -6415,7 +6416,7 @@ func _check_puddle_splash() -> void:
 # Rolling hills as a function of distance — periods divide PATH_PATTERN_LEN (140)
 # so the terrain tiles seamlessly when WorldRoot.z wraps.
 func _hill_y(d: float) -> float:
-	return TerrainThemes.hill_height(d)
+	return TerrainThemes.hill_height(d) * _hill_scale
 
 # Depth a pit drops at (distance d, lateral offset gx from the path centre).
 func _hole_drop(d: float, gx: float) -> float:
@@ -6475,16 +6476,24 @@ func _build_world_terrain() -> void:
 	var _theme: Dictionary = TerrainThemes.get_theme(_level_def.terrain if _level_def != null else "frontier")
 	var tile: float = float(_theme.get("ground_uv_tile", 13.0))
 	var _macro: float = float(_theme.get("macro_strength", 1.0))
+	_hill_scale = float(_theme.get("hill_scale", 1.0))   # mountain = steeper hills
 	var _cliff: Variant = _theme.get("cliff", null)
 	_terr_cliff_side = String(_cliff["side"]) if _cliff != null else ""
 	_terr_cliff_depth = float(_cliff["depth"]) if _cliff != null else 0.0
+	var _gorge := Color(0.10, 0.12, 0.18)   # dark shadow the cliff face fades to (reads as a gorge)
 	var _tlo: Color = _theme["tint_low"]
 	var _thi: Color = _theme["tint_high"]
-	var _tamp: float = 2.2   # ~max |hill_height|
+	var _tamp: float = 2.2 * _hill_scale   # ~max |hill_height|, scaled
 	var _vcol := func(py: float, gx: float, lz: float) -> Color:
 		var c: Color = TerrainThemes.tint(py, _tlo, _thi, _tamp)
 		var m: float = TerrainThemes.mottle(gx, lz, _macro)
-		return Color(c.r * m, c.g * m, c.b * m, 1.0)
+		var col := Color(c.r * m, c.g * m, c.b * m, 1.0)
+		if _terr_cliff_side != "":
+			# Darken the dropped cliff face toward shadow so it reads as a gorge, not a white wall.
+			var drop: float = TerrainThemes.cliff_drop(gx, 2.6, _terr_cliff_side, _terr_cliff_depth)
+			if drop > 0.0:
+				col = col.lerp(_gorge, clampf(drop / 8.0, 0.0, 1.0))
+		return col
 	for r in range(rows):
 		var lz0: float = TERR_Z_BEHIND - float(r) * TERR_DZ
 		var lz1: float = TERR_Z_BEHIND - float(r + 1) * TERR_DZ
@@ -6547,6 +6556,12 @@ func _build_world_terrain() -> void:
 	if terrain_3d_node != null and "auto_scroll" in terrain_3d_node:
 		terrain_3d_node.auto_scroll = false
 
+# terrain: a small lateral wobble for a trail edge at depth lz (phase shifts the two
+# edges so the width varies irregularly). Periodic over PATH_PATTERN_LEN for a seamless wrap.
+func _trail_wob(lz: float, phase: float) -> float:
+	var w: float = (-lz + phase) * TAU / PATH_PATTERN_LEN
+	return 0.55 * sin(3.0 * w) + 0.30 * sin(7.0 * w + 1.0)
+
 # terrain: a worn central trail ribbon laid over the earth down the posse's lane,
 # riding the hills via _terr_vertex (raised a hair to avoid z-fighting). Skips themes
 # with no trail. Called from _apply_terrain_theme (world root already built).
@@ -6566,10 +6581,12 @@ func _build_trail_mesh() -> void:
 		var lz1: float = lz0 - TERR_DZ
 		var v0: float = -lz0 / 6.0
 		var v1: float = -lz1 / 6.0
-		var pL0 := _terr_vertex(-half, lz0) + Vector3(0, 0.02, 0)
-		var pR0 := _terr_vertex(half, lz0) + Vector3(0, 0.02, 0)
-		var pL1 := _terr_vertex(-half, lz1) + Vector3(0, 0.02, 0)
-		var pR1 := _terr_vertex(half, lz1) + Vector3(0, 0.02, 0)
+		# Wobble each edge independently so the trail meanders like a worn path
+		# instead of a clean straight strip (periodic over PATH_PATTERN_LEN → seamless).
+		var pL0 := _terr_vertex(-half + _trail_wob(lz0, 0.0), lz0) + Vector3(0, 0.02, 0)
+		var pR0 := _terr_vertex(half + _trail_wob(lz0, 47.0), lz0) + Vector3(0, 0.02, 0)
+		var pL1 := _terr_vertex(-half + _trail_wob(lz1, 0.0), lz1) + Vector3(0, 0.02, 0)
+		var pR1 := _terr_vertex(half + _trail_wob(lz1, 47.0), lz1) + Vector3(0, 0.02, 0)
 		st.set_uv(Vector2(0, v0)); st.add_vertex(pL0)
 		st.set_uv(Vector2(1, v0)); st.add_vertex(pR0)
 		st.set_uv(Vector2(1, v1)); st.add_vertex(pR1)
@@ -6639,7 +6656,7 @@ func _build_scatter() -> void:
 	var theme: Dictionary = TerrainThemes.get_theme(_level_def.terrain if _level_def != null else "frontier")
 	var sets: Array = theme.get("scatter", [])
 	var x_lo: float = 3.4    # just past the trail lip
-	var x_hi: float = 13.0   # out to the fog/terrain edge
+	var x_hi: float = 22.0   # out past the screen edges
 	var z_lo: float = TERR_Z_AHEAD + 2.0
 	var z_hi: float = TERR_Z_BEHIND - 2.0
 	var cell_dz: float = 6.0
@@ -6711,7 +6728,16 @@ func _build_cliff_void() -> void:
 	mi.position = Vector3(lip - (depth * 0.5) * (1.0 if is_left else -1.0),
 		-depth * 0.5, (TERR_Z_AHEAD + TERR_Z_BEHIND) * 0.5)
 	var m := StandardMaterial3D.new()
-	m.albedo_color = theme.get("fog_color", Color(0.86, 0.90, 0.96))
+	# Dark rocky gorge fading to the fog haze at the bottom (a vertical gradient), so
+	# the drop reads as a deep fall-to-death chasm, not a flat white wall.
+	var grad := Gradient.new()
+	grad.set_color(0, Color(0.12, 0.13, 0.18))                       # near the lip: dark rock
+	grad.set_color(1, theme.get("fog_color", Color(0.80, 0.84, 0.92)))  # far below: misty haze
+	var gt := GradientTexture2D.new()
+	gt.gradient = grad
+	gt.fill_from = Vector2(0.5, 0.0)
+	gt.fill_to = Vector2(0.5, 1.0)
+	m.albedo_texture = gt
 	m.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
 	m.cull_mode = BaseMaterial3D.CULL_DISABLED
 	mi.material_override = m

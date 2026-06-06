@@ -58,7 +58,7 @@ const TERRAIN_THEMES: Dictionary = {
 		"ground_albedo": "res://assets/textures/ground_mountain.png",
 		"ground_normal": "res://assets/textures/ground_mountain_n.png",
 		"ground_detail": "res://assets/textures/ground_detail.png",
-		"ground_uv_tile": 24.0, "macro_strength": 1.8,
+		"ground_uv_tile": 24.0, "macro_strength": 1.8, "hill_scale": 1.9,
 		"tint_low": Color(0.62, 0.66, 0.72), "tint_high": Color(0.92, 0.95, 1.0),
 		"fog_color": Color(0.86, 0.90, 0.96), "fog_density": 0.030,
 		"trail": {"albedo": "res://assets/textures/ground_mountain.png", "half_width": 2.6},
