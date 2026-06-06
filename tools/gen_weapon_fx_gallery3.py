@@ -1,0 +1,591 @@
+#!/usr/bin/env python3
+"""Generate the THIRD interactive HTML gallery of candidate WEAPON-FX for Not_This_Again.
+
+Companion to tools/gen_weapon_fx_gallery.py and gen_weapon_fx_gallery2.py.
+
+Owner picks so far:
+  APPROVED — gallery 1: Gumdrop Buckshot, Homing Sparkle Swarm, Rainbow Comet,
+             Gumball Gatling, Confetti Cannon.
+             gallery 2: Jawbreaker Cannonball, Peppermint Drill Lance,
+             Licorice Three-Tail Lash, Sprinkle Storm, Caramel Lasso Loop,
+             Peppermint Ricochet Round.
+  REJECTED (reroll fresh) — gallery 2: Sucker-Punch Shock-Ring (HEAVY),
+             Taffy-Stretch Tether (PRECISION), Marshmallow Flak Burst
+             (HEAVY/marshmallow), Soda-Spray Fizz Cone (SPREAD), Lollipop
+             Boomerang (PRECISION), Gummy-Grenade Cluster Pop (LOB),
+             Hard-Candy Railgun Slug (RIFLE).
+
+This batch is ENTIRELY new mechanics — none recolor the 11 approved, the 8 from
+gallery 1, or the 14 from gallery 2. It rerolls the 7 rejected slots (covering
+HEAVY, PRECISION x2, SPREAD, LOB, RIFLE), gives the marshmallow weapon THREE
+more-considered options that lean hard into marshmallow physical character
+(soft / squishy / bouncy / toasty / gooey / s'mores / sticky-springy), and
+includes one re-do of the (approved) Caramel Lasso showing the loop as an
+ORGANIC, hand-thrown, irregular breathing shape rather than a perfect oval.
+
+Every option is mobile-safe: shippable with ONLY additive 2D-canvas overlays (a
+la godot/scripts/frost_bolts.gd), CPUParticles3D, and additive sprites. NO custom
+spatial (3D) shaders — those white-rect on our Android renderer.
+
+Emits a self-contained HTML file (inline <style>+<script>) with one live additive
+<canvas> animation per tile, a name, a weapon-TYPE tag, and a one-line in-engine
+build note. Reuses the exact shared helpers (glow / bolt / mulberry) so the
+FROSTBITE technique is available to every tile.
+
+Usage:
+    python3 tools/gen_weapon_fx_gallery3.py <out_dir> <out_filename>
+e.g. python3 tools/gen_weapon_fx_gallery3.py \
+        docs/superpowers/assets/weapon_fx_2026-06-06 weapon-fx-gallery-3.html
+"""
+import pathlib
+import sys
+
+# Each FX: (key, NAME, weapon-tag, build-note, JS-step-body).
+# Step-body conventions (identical to galleries 1 & 2):
+#   ctx   -> CanvasRenderingContext2D (composite already set to 'lighter')
+#   W, H  -> canvas size in CSS px
+#   t     -> seconds since load (float, monotonic)
+#   rnd(seed)                              -> deterministic pseudo-random [0,1)
+#   glow(x,y,r,col,a)                      -> soft radial additive blob
+#   bolt(ax,ay,bx,by,col,seed,life,power)  -> fractal 3-pass additive lightning
+#   The page low-alpha dark-fills each tile BEFORE step (trails smear), then sets
+#   composite to 'lighter'.
+
+FX = [
+    # ---- HEAVY reroll (was Sucker-Punch Shock-Ring) ----------------------
+    ("gravity_well", "Gobstopper Gravity Well", "HEAVY",
+     "A heavy round lands and spins up a brief implosion: CPUParticles3D pulled INWARD on a converging path, then a single additive detonation-bloom sprite. Inverse of a normal blast.",
+     r"""
+        // A gobstopper opens a short-lived well: candy debris spirals IN, then it detonates out.
+        var period=1.6, ph=(t % period)/period;
+        var cx=W*0.5, cy=H*0.52;
+        if(ph<0.62){
+          // implosion phase — orbiting motes spiral inward
+          var imp=ph/0.62;
+          var pull=1-imp;
+          for(var k=0;k<26;k++){
+            var ang=rnd(k)*6.283 + imp*5.0*(1+rnd(k*3));   // accelerating swirl
+            var r=(0.5+rnd(k*7)*0.5)*W*0.46*pull;
+            var col=['255,120,170','120,200,255','255,225,120','190,140,255'][k%4];
+            glow(cx+Math.cos(ang)*r, cy+Math.sin(ang)*r*0.78, 3+rnd(k*5)*2, col, 0.5+imp*0.4);
+          }
+          // the dark heavy core gathering brightness as it loads
+          glow(cx,cy, 6+imp*10, '120,80,180', 0.5+imp*0.4);
+          glow(cx,cy, 3+imp*4, '230,200,255', 0.6+imp*0.4);
+        } else {
+          // detonation — single hard bloom + ejecta ring
+          var e=(ph-0.62)/0.38;
+          glow(cx,cy, 70*e+8, '255,210,120', (1-e)*0.85);
+          glow(cx,cy, 34*Math.min(1,e*2)*(1-e)+5, '255,255,235', (1-e));
+          for(var k=0;k<20;k++){ var ka=rnd(k)*6.283; var d=e*W*0.5; glow(cx+Math.cos(ka)*d, cy+Math.sin(ka)*d*0.78, 4*(1-e)+1, k%2?'255,180,120':'255,255,220', (1-e)*0.85); }
+        }
+     """),
+
+    # ---- PRECISION reroll #1 (was Taffy-Stretch Tether) ------------------
+    ("phase_dart", "Candy-Cane Phase Dart", "PRECISION",
+     "A dart that BLINKS forward in discrete teleport jumps: an additive dart sprite re-spawned at each step with fading afterimage sprites + a tiny phase-flash at each blink. No interpolated travel.",
+     r"""
+        // A precision dart teleports forward in clean stuttering jumps, leaving ghosts.
+        var ox=16, oy=H*0.5;
+        var period=1.2, ph=(t % period)/period;
+        var steps=6;
+        var cur=Math.min(steps, Math.floor(ph*steps*1.05));
+        var stepx=function(i){ return ox + (i/steps)*(W-32); };
+        // fading afterimages at every prior blink position
+        for(var i=0;i<=cur;i++){
+          var age=cur-i;
+          var x=stepx(i);
+          var a=Math.max(0,1-age*0.28);
+          glow(x,oy, 5, '255,120,150', a*0.55);
+          glow(x,oy, 11, '255,80,120', a*0.30);
+          // candy-cane stripe ghost
+          ctx.strokeStyle='rgba(255,255,255,'+(a*0.55)+')'; ctx.lineWidth=2;
+          ctx.beginPath(); ctx.moveTo(x-7,oy-3); ctx.lineTo(x+7,oy+3); ctx.stroke();
+        }
+        // bright live head + phase-flash on the freshest blink
+        var hx=stepx(cur);
+        var subt=(ph*steps*1.05)%1;          // 0..1 within the current step
+        glow(hx,oy, 9, '255,255,255', 0.95);
+        glow(hx,oy, 18, '255,150,180', 0.6);
+        if(subt<0.3){ var c=1-subt/0.3; glow(hx,oy, 26*c+6, '200,235,255', c*0.8); for(var k=0;k<6;k++){ var ka=k/6*6.283; glow(hx+Math.cos(ka)*14*c, oy+Math.sin(ka)*14*c, 3, '255,255,255', c*0.8); } }
+        glow(ox,oy, 8, '255,120,150', 0.4);
+     """),
+
+    # ---- PRECISION reroll #2 (was Lollipop Boomerang) --------------------
+    ("glass_splinter", "Sugar-Glass Sniper Splinter", "PRECISION",
+     "A hairline hitscan shard: one ultra-thin bright additive line fired instantly + a refracting prismatic crack that branches off the impact (3-pass bolt) + cold lens-flare bloom. Reads as a glass sniper.",
+     r"""
+        // A near-instant glass splinter: thin beam fires, impact spawns a refracting crack.
+        var oy=H*0.5, ox=14;
+        var period=1.5, ph=(t % period)/period;
+        if(ph<0.18){
+          // tiny aim-charge glint at the muzzle
+          var c=ph/0.18; glow(ox,oy, 4+c*6, '200,245,255', c*0.7);
+        } else {
+          var e=(ph-0.18)/0.82, fade=1-e;
+          // hairline beam, barely-there but razor bright
+          ctx.lineCap='round';
+          ctx.strokeStyle='rgba(180,235,255,'+(0.25*fade)+')'; ctx.lineWidth=3*fade+0.5;
+          ctx.beginPath(); ctx.moveTo(ox,oy); ctx.lineTo(W-14,oy); ctx.stroke();
+          ctx.strokeStyle='rgba(255,255,255,'+(0.9*fade)+')'; ctx.lineWidth=1.1;
+          ctx.beginPath(); ctx.moveTo(ox,oy); ctx.lineTo(W-14,oy); ctx.stroke();
+          // refracting prismatic crack branching at the impact point
+          var ix=W-14;
+          if(e<0.6){
+            bolt(ix,oy, ix-26, oy-30, '120,220,255', 11, fade, 0.6);
+            bolt(ix,oy, ix-30, oy+22, '255,150,230', 23, fade, 0.6);
+            bolt(ix,oy, ix-18, oy+34, '255,235,140', 31, fade, 0.5);
+          }
+          // cold lens flare at impact + muzzle
+          glow(ix,oy, 24*fade+5, '200,240,255', fade*0.85);
+          glow(ix,oy, 9*fade+2, '255,255,255', fade);
+          glow(ox,oy, 14*fade+3, '180,230,255', fade*0.6);
+        }
+     """),
+
+    # ---- SPREAD reroll (was Soda-Spray Fizz Cone) ------------------------
+    ("pixie_scatter", "Pixie-Dust Scatter Bloom", "SPREAD",
+     "A wide forward fan of CPUParticles3D glitter motes with twinkle (random per-particle alpha flicker) + gravity drift so the spread settles like falling sugar dust. Soft, sparkly shotgun.",
+     r"""
+        // A shotgun puff of pixie-dust: bright motes fan out, twinkle, then drift+settle.
+        var ox=18, oy=H*0.5;
+        glow(ox,oy, 16, '255,235,255', 0.4);
+        for(var k=0;k<54;k++){
+          var ph=((t*0.85 + rnd(k))%1);
+          var ang=(rnd(k*3)-0.5)*1.15;           // wide forward fan
+          var spd=90+rnd(k*7)*180;
+          var x=ox + Math.cos(ang)*spd*ph;
+          var y=oy + Math.sin(ang)*spd*ph + ph*ph*70;   // gravity sag -> settles
+          var col=['255,210,250','255,245,190','200,235,255','230,210,255','255,225,235'][k%5];
+          // twinkle: per-mote pulsing brightness
+          var tw=0.5+0.5*Math.sin(t*14 + k*1.7);
+          var sz=1.4+rnd(k*2)*2.4;
+          glow(x,y, sz, col, (1-ph)*0.5 + tw*(1-ph)*0.45);
+          // sharp sparkle cross on the brightest frames
+          if(tw>0.85){ ctx.strokeStyle='rgba(255,255,255,'+((1-ph)*0.8)+')'; ctx.lineWidth=1; ctx.beginPath(); ctx.moveTo(x-4,y); ctx.lineTo(x+4,y); ctx.moveTo(x,y-4); ctx.lineTo(x,y+4); ctx.stroke(); }
+        }
+     """),
+
+    # ---- LOB reroll (was Gummy-Grenade Cluster Pop) ----------------------
+    ("caltrop_lob", "Jellybean Caltrop Mine-Lob", "LOB",
+     "A lobbed pod (additive arc) bursts on landing into several bouncing jellybeans that scatter, settle, ARM (pulsing ring), then flash. CPUParticles3D scatter + per-bean additive pulse sprite.",
+     r"""
+        // A pod lobs in, scatters bouncing beans that settle, arm with a pulse, then pop.
+        var ox=16, oy=H-14, lx=W*0.52, ly=H*0.5;
+        var period=2.0, ph=(t % period)/period;
+        var flight=0.32;
+        if(ph<flight){
+          var f=ph/flight;
+          var x=ox+(lx-ox)*f, y=oy+(ly-oy)*f - Math.sin(f*3.14)*H*0.42;
+          for(var i=0;i<6;i++){ var ff=f-i*0.04; if(ff<0)break; var tx=ox+(lx-ox)*ff, ty=oy+(ly-oy)*ff-Math.sin(ff*3.14)*H*0.42; glow(tx,ty,4*(1-i/8)+2,'255,210,120',(1-i/6)*0.5); }
+          glow(x,y, 8, '255,230,150', 0.9);
+        } else {
+          var e=(ph-flight)/(1-flight);
+          glow(lx,ly, 22*Math.min(1,e*4)*(1-Math.min(1,e*1.4))+4,'255,220,140',(1-Math.min(1,e*1.4))*0.7);
+          for(var k=0;k<7;k++){
+            var ang=rnd(k*3)*6.283;
+            var rest=30+rnd(k*5)*52;
+            var scatter=Math.min(1,e*2.4);     // beans fly out, settle by e~0.42
+            var bx=lx+Math.cos(ang)*rest*scatter;
+            var by=ly+Math.sin(ang)*rest*scatter*0.7 - Math.abs(Math.sin(scatter*9.4))*16*(1-scatter); // little bounce
+            var col=['255,90,130','255,210,90','120,220,255','150,255,150','200,130,255'][k%5];
+            glow(bx,by, 4, col, 0.85);
+            // arming pulse once settled
+            if(scatter>=1){
+              var pulse=0.5+0.5*Math.sin(t*9 + k);
+              glow(bx,by, 6+pulse*8, col, 0.25+pulse*0.4);
+              // detonate near the cycle end
+              if(e>0.8){ var de=(e-0.8)/0.2; glow(bx,by, 20*de+4, '255,255,235', (1-de)*0.9); for(var s=0;s<6;s++){ var sa=s/6*6.283; glow(bx+Math.cos(sa)*de*16, by+Math.sin(sa)*de*16, 2.5, col, (1-de)*0.8); } }
+            }
+          }
+        }
+     """),
+
+    # ---- RIFLE reroll (was Hard-Candy Railgun Slug) ----------------------
+    ("tracer_burst", "Rock-Candy Tracer Burst", "RIFLE",
+     "A fast 3-round burst: three staggered additive crystalline tracer-streaks down the barrel line + a hot per-shot muzzle bloom and CPUParticles3D ejected sugar-shell casings tumbling out. Punchy rifle cadence.",
+     r"""
+        // Three crystalline tracers crack out in quick succession; casings tumble out.
+        var ox=16, oy=H*0.5;
+        var period=1.4, ph=(t % period)/period;
+        for(var n=0;n<3;n++){
+          var start=n*0.10;
+          var sp=ph-start; if(sp<0||sp>0.55)continue;
+          var travel=Math.min(1, sp/0.18);
+          var fade=1-Math.max(0,(sp-0.18)/0.37);
+          var headx=ox+travel*(W-30);
+          var ty=oy+(n-1)*5;
+          // tracer streak: bright head + stretched tail
+          ctx.lineCap='round';
+          ctx.strokeStyle='rgba(170,225,255,'+(0.5*fade)+')'; ctx.lineWidth=4*fade+1;
+          ctx.beginPath(); ctx.moveTo(Math.max(ox,headx-70),ty); ctx.lineTo(headx,ty); ctx.stroke();
+          ctx.strokeStyle='rgba(255,255,255,'+(0.9*fade)+')'; ctx.lineWidth=1.4;
+          ctx.beginPath(); ctx.moveTo(Math.max(ox,headx-40),ty); ctx.lineTo(headx,ty); ctx.stroke();
+          glow(headx,ty, 7*fade+2, '255,255,255', fade);
+          glow(headx,ty, 14*fade+2, '160,220,255', fade*0.6);
+          // per-shot muzzle bloom
+          if(sp<0.1){ var c=1-sp/0.1; glow(ox,ty, 22*c+5,'255,220,150',c*0.85); glow(ox,ty,10*c+3,'255,255,230',c); }
+        }
+        // tumbling ejected sugar casings
+        for(var c=0;c<3;c++){
+          var cp=((t*0.9 + c*0.33)%1);
+          var cx=ox+10 + cp*40;
+          var cy=oy - 10 - Math.sin(cp*3.14)*22 + cp*cp*30;
+          ctx.save(); ctx.translate(cx,cy); ctx.rotate(cp*12+c);
+          ctx.strokeStyle='rgba(255,225,170,'+((1-cp)*0.8)+')'; ctx.lineWidth=2.4; ctx.lineCap='round';
+          ctx.beginPath(); ctx.moveTo(-4,0); ctx.lineTo(4,0); ctx.stroke(); ctx.restore();
+        }
+     """),
+
+    # ---- MARSHMALLOW option 1 of 3 --------------------------------------
+    ("mallow_bounce", "Bouncing Marshmallow Bomb", "HEAVY",
+     "MARSHMALLOW: a soft puffy billboard lobbed in that BOUNCES (per-bounce squash/stretch via non-uniform sprite scale) then bursts into a cottony additive puff. Squish is sold by the scale anim, not a shader.",
+     r"""
+        // A plump marshmallow bomb arcs in and BOUNCES, squashing flat on each contact, then puffs.
+        var period=2.2, ph=(t % period)/period;
+        var ox=18, oy=H-20;
+        var land=0.30;
+        if(ph<land){
+          // lob in
+          var f=ph/land;
+          var x=ox+f*(W*0.42), y=oy - Math.sin(f*3.14)*H*0.42 - f*4;
+          glow(x,y, 13, '255,250,245', 0.9); glow(x,y, 20, '255,235,225', 0.45);
+          ctx.fillStyle='rgba(255,255,255,0.85)'; ctx.beginPath(); ctx.arc(x,y,9,0,7); ctx.fill();
+        } else {
+          var e=(ph-land)/(1-land);
+          var bx=W*0.42 + e*(W*0.32);
+          // 3 decaying bounces: parabolic hops with shrinking height
+          var hops=3, seg=1/hops;
+          var hi=Math.min(hops-1,Math.floor(e/seg));
+          var local=(e/seg)-hi;                 // 0..1 within this hop
+          var hgt=(H*0.34)*Math.pow(0.55,hi);
+          var by=oy - Math.sin(local*3.14159)*hgt;
+          // squash near the ground (start/end of each hop), stretch at apex
+          var contact=Math.min(local, 1-local);          // 0 at contact, 0.5 at apex
+          var squash=contact<0.12 ? (0.12-contact)/0.12 : 0;
+          var sx=9*(1+squash*0.8), sy=9*(1-squash*0.55);
+          glow(bx,by, 14+squash*4, '255,250,245', 0.85);
+          ctx.save(); ctx.translate(bx,by); ctx.scale(sx/9, sy/9);
+          ctx.fillStyle='rgba(255,255,255,0.9)'; ctx.beginPath(); ctx.arc(0,0,9,0,7); ctx.fill();
+          ctx.fillStyle='rgba(255,225,210,0.5)'; ctx.beginPath(); ctx.arc(0,3,9,0,7); ctx.fill(); ctx.restore();
+          // contact dust puff
+          if(squash>0.4){ for(var k=0;k<6;k++){ var ka=k/6*6.283; glow(bx+Math.cos(ka)*12*squash, by+8, 4, '255,245,235', squash*0.5); } }
+          // final burst puff
+          if(e>0.86){ var de=(e-0.86)/0.14; glow(bx,by, 40*de+8, '255,250,245', (1-de)*0.7); for(var k=0;k<10;k++){ var ka=k/10*6.283; glow(bx+Math.cos(ka)*de*34, by+Math.sin(ka)*de*30, 8*(1-de)+2, '255,255,250', (1-de)*0.6); } }
+        }
+     """),
+
+    # ---- MARSHMALLOW option 2 of 3 --------------------------------------
+    ("mallow_torch", "Toasted-Marshmallow Flamethrower", "SPREAD",
+     "MARSHMALLOW: a short gooey flame cone — CPUParticles3D warm billboards (white->golden->toasty-brown) + a few additive molten-sugar drip strands that sag and fall. Cozy, sticky, fire-roasted.",
+     r"""
+        // A toasted-marshmallow torch: a gooey golden flame cone with molten drips sagging off.
+        var ox=18, oy=H*0.5;
+        // muzzle ember
+        glow(ox,oy, 16, '255,180,90', 0.6); glow(ox,oy, 8, '255,240,200', 0.85);
+        // the cone — particles graded from hot white at muzzle to toasty brown at the tips
+        for(var k=0;k<46;k++){
+          var ph=((t*1.2 + rnd(k))%1);
+          var ang=(rnd(k*3)-0.5)*0.8;
+          var spd=70+rnd(k*7)*160;
+          var x=ox + Math.cos(ang)*spd*ph;
+          var y=oy + Math.sin(ang)*spd*ph + ph*ph*26;       // gentle gooey sag
+          // colour graded by distance: white -> gold -> toasted brown
+          var col = ph<0.3 ? '255,250,235' : ph<0.62 ? '255,200,110' : '210,140,70';
+          var sz=3+rnd(k*2)*4;
+          glow(x,y, sz*(1-ph*0.4)+1, col, (1-ph)*0.7);
+        }
+        // molten-sugar drip strands sagging off the cone
+        for(var d=0;d<4;d++){
+          var dp=((t*0.7 + d*0.27)%1);
+          var dx=ox + 40 + d*36;
+          var topy=oy + (d-1.5)*10;
+          var sag=dp*60;
+          ctx.strokeStyle='rgba(255,205,120,'+((1-dp)*0.7)+')'; ctx.lineWidth=3*(1-dp)+1; ctx.lineCap='round';
+          ctx.beginPath(); ctx.moveTo(dx,topy); ctx.quadraticCurveTo(dx+4,topy+sag*0.6, dx+2, topy+sag); ctx.stroke();
+          glow(dx+2, topy+sag, 4*(1-dp)+1, '255,180,90', (1-dp)*0.8);   // hot drip bead
+        }
+     """),
+
+    # ---- MARSHMALLOW option 3 of 3 --------------------------------------
+    ("smores_slam", "S'mores Slam Shock-Puff", "HEAVY",
+     "MARSHMALLOW: a giant marshmallow body-slams the ground — a big squash-puff ring of soft billboards PLUS a one-shot CPUParticles3D burst of graham crumbs + chocolate flecks. Heavy, gooey, premium.",
+     r"""
+        // A giant marshmallow SLAMS down: it squashes flat, blasts a cottony puff ring + s'mores crumbs.
+        var period=1.7, ph=(t % period)/period;
+        var cx=W*0.5, cy=H*0.6;
+        var drop=0.34;
+        if(ph<drop){
+          // the big mallow plummeting in, slightly stretched
+          var f=ph/drop;
+          var y=cy - (1-f)*(H*0.55);
+          var sy=26*(1+ (1-f)*0.25), sx=26*(1- (1-f)*0.12);
+          glow(cx,y, 34, '255,250,245', 0.8);
+          ctx.save(); ctx.translate(cx,y); ctx.scale(sx/26, sy/26);
+          ctx.fillStyle='rgba(255,255,255,0.9)'; ctx.beginPath(); ctx.arc(0,0,26,0,7); ctx.fill(); ctx.restore();
+        } else {
+          var e=(ph-drop)/(1-drop);
+          // squashed mallow flattening on the ground then recovering
+          var sq=Math.max(0, 1-e*2.2);
+          var sx=26*(1+sq*0.7), sy=26*(1-sq*0.6);
+          ctx.save(); ctx.translate(cx,cy+sy*0.4); ctx.scale(sx/26, sy/26);
+          ctx.fillStyle='rgba(255,255,255,'+(0.5+sq*0.4)+')'; ctx.beginPath(); ctx.arc(0,0,26,0,7); ctx.fill(); ctx.restore();
+          // cottony puff ring blooming outward
+          var R=e*W*0.5;
+          for(var k=0;k<14;k++){ var ka=k/14*6.283; glow(cx+Math.cos(ka)*R, cy+Math.sin(ka)*R*0.4, 12*(1-e)+3, '255,250,245', (1-e)*0.6); }
+          // s'mores ejecta — graham crumbs (tan) + chocolate flecks (brown)
+          for(var k=0;k<16;k++){
+            var ka=rnd(k)*6.283; var d=e*W*0.46*(0.6+rnd(k*3)*0.4);
+            var ex=cx+Math.cos(ka)*d, ey=cy+Math.sin(ka)*d*0.7 - e*18 + e*e*30;
+            var col = k%3===0 ? '120,70,40' : '215,165,95';   // chocolate vs graham
+            glow(ex,ey, 3*(1-e)+1, col, (1-e)*0.9);
+          }
+          // warm impact flash
+          glow(cx,cy, 30*sq+6, '255,235,200', sq*0.7);
+        }
+     """),
+
+    # ---- ORGANIC Caramel Lasso re-do (approved; this is the loop shape) ---
+    ("lasso_organic", "Caramel Lasso (organic)", "LASSO",
+     "approved, this is the loop shape — a HAND-THROWN wobbly loop: procedural polyline whose radius breathes with low-freq noise per vertex (NOT a clean oval), gently warping each frame + a racing caramel glint. Pure additive 2D-canvas (frost_bolts-style multi-pass glow).",
+     r"""
+        // An organic hand-thrown lariat: irregular, breathing loop that wobbles — never a perfect oval.
+        var cx=W*0.5, cy=H*0.5, spin=t*2.6;
+        var rx=W*0.30, ry=H*0.20;
+        ctx.lineCap='round'; ctx.lineJoin='round';
+        // per-vertex radius wobble: a few summed low-freq sines => lumpy hand-thrown rope
+        function loopPt(ang){
+          var wob = 1
+            + 0.14*Math.sin(ang*2 + t*1.3)
+            + 0.10*Math.sin(ang*3 - t*0.9 + 1.7)
+            + 0.06*Math.sin(ang*5 + t*2.1);
+          var lean = Math.sin(ang+spin)*10;          // 3D-ish tilt sway
+          var x=cx+Math.cos(ang)*rx*wob;
+          var y=cy+Math.sin(ang)*ry*wob + lean;
+          return [x,y];
+        }
+        // rope, multi-pass glow (frost technique)
+        for(var p=0;p<3;p++){
+          var a=[0.14,0.42,0.85][p], wd=[12,6,2.2][p];
+          ctx.strokeStyle=['rgba(255,160,70,'+a+')','rgba(255,200,120,'+a+')','rgba(255,245,210,'+a+')'][p];
+          ctx.lineWidth=wd; ctx.beginPath();
+          for(var s=0;s<=64;s++){ var ang=s/64*6.283; var pt=loopPt(ang); if(s===0)ctx.moveTo(pt[0],pt[1]); else ctx.lineTo(pt[0],pt[1]); }
+          ctx.closePath(); ctx.stroke();
+        }
+        // a bright caramel glint racing around the irregular loop
+        var ga=(spin*1.4)%6.283;
+        for(var i=0;i<12;i++){ var aa=ga-i*0.11; var pt=loopPt(aa); glow(pt[0],pt[1], 5*(1-i/14)+1, '255,235,180', (1-i/12)*0.85); }
+        var gp=loopPt(ga); glow(gp[0],gp[1], 9, '255,255,255', 0.95);
+        // the held tail wobbling down to the grip
+        var anchor=loopPt(3.6);
+        ctx.strokeStyle='rgba(255,200,120,0.55)'; ctx.lineWidth=4;
+        ctx.beginPath(); ctx.moveTo(anchor[0],anchor[1]);
+        ctx.quadraticCurveTo(anchor[0]-30+Math.sin(t*1.7)*8, (anchor[1]+H-12)*0.5, 16, H-12); ctx.stroke();
+        glow(16,H-12, 8, '255,200,120', 0.5);
+     """),
+]
+
+TAG_COLORS = {
+    "CANDY": "#7ed957", "RIFLE": "#5ac8ff", "FRENZY": "#ff7eb6",
+    "WHIP": "#ff9f5a", "HEAVY": "#ffd23f", "PRECISION": "#9fd8ff",
+    "SPREAD": "#5affd0", "LOB": "#b07eff", "LASSO": "#ffb86b",
+}
+
+TAG_LABELS = {
+    "CANDY": "CANDY (six-shooter)",
+    "RIFLE": "RIFLE",
+    "FRENZY": "FRENZY",
+    "WHIP": "WHIP (liquorice)",
+    "HEAVY": "HEAVY (cannon / marshmallow)",
+    "PRECISION": "PRECISION (rifle)",
+    "SPREAD": "SPREAD (shotgun)",
+    "LOB": "LOB (grenade)",
+    "LASSO": "LASSO (caramel)",
+}
+
+
+def build_tiles_js() -> str:
+    entries = []
+    for key, name, tag, note, body in FX:
+        entries.append(
+            "{key:%r, draw:function(ctx,W,H,t,rnd,glow,bolt){%s}}" % (key, body)
+        )
+    return "[\n" + ",\n".join(entries) + "\n]"
+
+
+def build_cards_html() -> str:
+    cards = []
+    for key, name, tag, note, _ in FX:
+        col = TAG_COLORS.get(tag, "#7ed957")
+        cards.append(f"""    <div class="card" style="border-color:{col}">
+      <div class="tag" style="background:{col}">{tag}</div>
+      <canvas id="fx_{key}" width="240" height="240"></canvas>
+      <div class="cn">{name}</div>
+      <div class="cd">{note}</div>
+    </div>""")
+    return "\n".join(cards)
+
+
+def build_legend_html() -> str:
+    spans = []
+    order = ["HEAVY", "PRECISION", "SPREAD", "LOB", "RIFLE", "LASSO"]
+    for tag in order:
+        col = TAG_COLORS[tag]
+        spans.append(f'    <span style="background:{col}">{TAG_LABELS[tag]}</span>')
+    return "\n".join(spans)
+
+
+def build_html() -> str:
+    return f"""<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Not_This_Again — Weapon-FX Gallery 3 (rerolls + marshmallow + organic lasso)</title>
+<style>
+  *{{box-sizing:border-box}}
+  body{{margin:0;background:#070510;color:#e8def7;font-family:system-ui,-apple-system,sans-serif}}
+  .wrap{{max-width:1180px;margin:0 auto;padding:26px 18px 60px}}
+  h1{{font-size:24px;margin:0 0 6px;color:#ffd23f;letter-spacing:.3px}}
+  .sub{{font-size:14px;line-height:1.6;color:#bda9e0;max-width:900px;margin:0 0 16px}}
+  .sub b{{color:#ffd98a}}
+  .note{{font-size:12.5px;line-height:1.6;color:#9ad9b0;max-width:900px;margin:0 0 22px;
+        border-left:3px solid #2f6b46;padding:6px 0 6px 12px;background:#0a160f}}
+  .mallow{{font-size:12.5px;line-height:1.6;color:#ffe7d6;max-width:900px;margin:0 0 22px;
+        border-left:3px solid #c98b5a;padding:6px 0 6px 12px;background:#170f0a}}
+  .legend{{display:flex;gap:10px;flex-wrap:wrap;margin:0 0 22px;font-size:11px;font-weight:700}}
+  .legend span{{padding:3px 10px;border-radius:7px;color:#0c0814}}
+  .grid{{display:grid;grid-template-columns:repeat(auto-fill,minmax(240px,1fr));gap:18px}}
+  .card{{position:relative;background:#100a1e;border:2px solid #3a2a4f;border-radius:14px;padding:10px;text-align:center;overflow:hidden}}
+  .card canvas{{width:100%;height:auto;aspect-ratio:1/1;border-radius:9px;display:block;background:#040208}}
+  .tag{{position:absolute;top:8px;left:8px;color:#0c0814;font-size:10px;font-weight:800;padding:2px 9px;border-radius:7px;z-index:2}}
+  .cn{{font-size:15px;color:#ffe1a0;margin-top:9px;font-weight:600}}
+  .cd{{font-size:11.5px;color:#b9a6dc;margin-top:4px;line-height:1.45}}
+  .foot{{margin-top:30px;font-size:12px;color:#8d7bb0;line-height:1.6;max-width:900px}}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>Weapon-FX Gallery 3 — fresh rerolls + considered marshmallow + organic lasso</h1>
+  <p class="sub">Round three. The six rerolls below replace the slots you rejected in
+  gallery 2 (<b>Shock-Ring, Taffy Tether, Soda Fizz Cone, Lollipop Boomerang,
+  Gummy Cluster Pop, Railgun Slug</b>) with <b>genuinely new mechanics</b> — none
+  recolor the 11 you already approved, the 8 from gallery 1, or the 14 from
+  gallery 2. They still cover the same weapon types (HEAVY, PRECISION &times;2,
+  SPREAD, LOB, RIFLE).</p>
+  <p class="mallow">You singled out the <b>MARSHMALLOW</b> weapon, so it gets <b>three
+  more-considered options</b> that lean into real marshmallow character —
+  <b>Bouncing Marshmallow Bomb</b> (squash/stretch rebounds), <b>Toasted-Marshmallow
+  Flamethrower</b> (gooey golden flame cone with molten drips), and <b>S'mores Slam
+  Shock-Puff</b> (giant body-slam + graham/chocolate ejecta). Pick the one (or two)
+  that feels most premium.</p>
+  <p class="note">There is also a re-do of the (approved) <b>Caramel Lasso</b> showing
+  the loop as <b>ORGANIC / wobbly</b> — a breathing, irregular, hand-thrown rope, never
+  a perfect oval. That tile is the loop shape to build. Every effect is mobile-safe:
+  shippable with <b>only additive 2D-canvas overlays (&agrave; la frost_bolts.gd),
+  CPUParticles3D, and additive sprites</b> — no custom spatial shaders.</p>
+  <div class="legend">
+{build_legend_html()}
+  </div>
+  <div class="grid">
+{build_cards_html()}
+  </div>
+  <p class="foot">Pure HTML5 &lt;canvas&gt; + JS with <code>globalCompositeOperation='lighter'</code>,
+  soft radial-gradient glow sprites, multi-pass bloom, and motion trails — a direct preview
+  of the additive in-engine look. Tell me which to build and which weapon to bind each to.</p>
+</div>
+<script>
+"use strict";
+// ---- shared additive helpers (same as galleries 1 & 2) -------------------
+function mulberry(seed){{ // tiny deterministic PRNG
+  return function(){{ seed|=0; seed=seed+0x6D2B79F5|0; var t=Math.imul(seed^seed>>>15,1|seed);
+    t=t+Math.imul(t^t>>>7,61|t)^t; return ((t^t>>>14)>>>0)/4294967296; }};
+}}
+function makeRnd(){{ // rnd(intSeed) -> [0,1)
+  return function(s){{ var f=mulberry(s|0); return f(); }};
+}}
+// soft additive radial blob
+function makeGlow(ctx){{
+  return function(x,y,r,col,a){{
+    if(r<=0)return;
+    var g=ctx.createRadialGradient(x,y,0,x,y,r);
+    g.addColorStop(0,'rgba('+col+','+a+')');
+    g.addColorStop(0.45,'rgba('+col+','+(a*0.35)+')');
+    g.addColorStop(1,'rgba('+col+',0)');
+    ctx.fillStyle=g; ctx.beginPath(); ctx.arc(x,y,r,0,7); ctx.fill();
+  }};
+}}
+// fractal midpoint-displacement bolt, 3 additive passes (a la frost_bolts.gd)
+function makeBolt(ctx){{
+  function subdiv(ax,ay,bx,by,depth,w,out,r){{
+    if(depth===0){{ out.push([ax,ay,bx,by,w]); return; }}
+    var mx=(ax+bx)*0.5+(r()-0.5)*depth*7;
+    var my=(ay+by)*0.5+(r()-0.5)*depth*7;
+    subdiv(ax,ay,mx,my,depth-1,w,out,r);
+    subdiv(mx,my,bx,by,depth-1,w,out,r);
+    if(depth>=2 && r()<0.35){{
+      var brx=mx+(r()-0.5)*16, bry=my+(r()-0.5)*16;
+      subdiv(mx,my,brx,bry,depth-2,w*0.5,out,r);
+    }}
+  }}
+  return function(ax,ay,bx,by,col,seed,life,power){{
+    var r=mulberry(seed|0); var segs=[]; subdiv(ax,ay,bx,by,4,1.0,segs,r);
+    ctx.lineCap='round';
+    for(var i=0;i<segs.length;i++){{var s=segs[i];
+      ctx.strokeStyle='rgba('+col+','+(0.16*life*s[4])+')'; ctx.lineWidth=9*s[4]*(1+power*0.3);
+      ctx.beginPath(); ctx.moveTo(s[0],s[1]); ctx.lineTo(s[2],s[3]); ctx.stroke();}}
+    for(var i=0;i<segs.length;i++){{var s=segs[i];
+      ctx.strokeStyle='rgba('+col+','+(0.4*life*s[4])+')'; ctx.lineWidth=4*s[4]*(1+power*0.2);
+      ctx.beginPath(); ctx.moveTo(s[0],s[1]); ctx.lineTo(s[2],s[3]); ctx.stroke();}}
+    for(var i=0;i<segs.length;i++){{var s=segs[i]; if(s[4]<0.6)continue;
+      ctx.strokeStyle='rgba(255,255,255,'+(0.95*life*s[4])+')'; ctx.lineWidth=1.6*s[4];
+      ctx.beginPath(); ctx.moveTo(s[0],s[1]); ctx.lineTo(s[2],s[3]); ctx.stroke();}}
+  }};
+}}
+// ---- tiles ---------------------------------------------------------------
+var TILES = {build_tiles_js()};
+var T0 = performance.now();
+var insts = [];
+for (var i=0;i<TILES.length;i++){{
+  var cv = document.getElementById('fx_'+TILES[i].key);
+  if(!cv) continue;
+  var ctx = cv.getContext('2d');
+  insts.push({{
+    cv:cv, ctx:ctx, draw:TILES[i].draw,
+    rnd:makeRnd(), glow:makeGlow(ctx), bolt:makeBolt(ctx),
+    W:cv.width, H:cv.height
+  }});
+}}
+function frame(now){{
+  var t = (now - T0)/1000;
+  for (var i=0;i<insts.length;i++){{
+    var o=insts[i], ctx=o.ctx;
+    ctx.globalCompositeOperation='source-over';
+    ctx.fillStyle='rgba(4,2,8,0.30)';
+    ctx.fillRect(0,0,o.W,o.H);
+    ctx.globalCompositeOperation='lighter';
+    try {{ o.draw(ctx,o.W,o.H,t,o.rnd,o.glow,o.bolt); }} catch(e){{ /* keep loop alive */ }}
+  }}
+  requestAnimationFrame(frame);
+}}
+requestAnimationFrame(frame);
+</script>
+</body>
+</html>
+"""
+
+
+def main() -> int:
+    if len(sys.argv) != 3:
+        print(__doc__)
+        return 2
+    out_dir = pathlib.Path(sys.argv[1])
+    out_dir.mkdir(parents=True, exist_ok=True)
+    out = out_dir / sys.argv[2]
+    out.write_text(build_html(), encoding="utf-8")
+    print(f"wrote {out} ({out.stat().st_size} bytes, {len(FX)} tiles)")
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
