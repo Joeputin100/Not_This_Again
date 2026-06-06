@@ -3,6 +3,20 @@
 [ext_resource type="Script" path="res://scripts/level_def.gd" id="1_def"]
 [ext_resource type="Script" path="res://scripts/level_event.gd" id="1_onuep"]
 
+[sub_resource type="Resource" id="Resource_kimcrate"]
+script = ExtResource("1_onuep")
+distance = 30.0
+kind = 3
+params = {
+"type": "rainbow"
+}
+
+[sub_resource type="Resource" id="Resource_kimcage"]
+script = ExtResource("1_onuep")
+distance = 55.0
+kind = 10
+params = {}
+
 [sub_resource type="Resource" id="Resource_mnyl5"]
 script = ExtResource("1_onuep")
 distance = 75.0
@@ -20,4 +34,4 @@ weather_type = "RAIN"
 seed = 3
 star_thresholds = Array[int]([0, 2400, 5500])
 outlaw_quota = 85
-events = Array[ExtResource("1_onuep")]([SubResource("Resource_mnyl5")])
+events = Array[ExtResource("1_onuep")]([SubResource("Resource_kimcrate"), SubResource("Resource_kimcage"), SubResource("Resource_mnyl5")])

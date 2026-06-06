@@ -3562,6 +3562,8 @@ func _dispatch_level_event(ev: LevelEvent) -> void:
 			_spawn_hole(ev.params)
 		LevelEvent.EventKind.BONUS:
 			_spawn_bonus_typed(String(ev.params.get("type", "frenzy")))
+		LevelEvent.EventKind.KIMMY:
+			_spawn_kimmy_cage()
 
 # SP2: live (non-captive) enemy count — drives the director's reactive damping
 # + the CLEAR approach-zone exit. Mirrors the dynamic-camera threat count.
