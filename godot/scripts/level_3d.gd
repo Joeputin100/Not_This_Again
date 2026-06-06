@@ -6453,6 +6453,11 @@ func _apply_terrain_theme() -> void:
 	we.name = "TerrainEnv"
 	we.environment = env
 	subviewport.add_child(we)
+	# terrain: build the surface dressing (world root already built in _build_world_terrain).
+	_build_cliff_void()
+	_build_trail_mesh()
+	_build_boardwalk()
+	_build_scatter()
 
 func _build_world_terrain() -> void:
 	if subviewport == null or _world_root != null:
@@ -6542,6 +6547,176 @@ func _build_world_terrain() -> void:
 	if terrain_3d_node != null and "auto_scroll" in terrain_3d_node:
 		terrain_3d_node.auto_scroll = false
 
+# terrain: a worn central trail ribbon laid over the earth down the posse's lane,
+# riding the hills via _terr_vertex (raised a hair to avoid z-fighting). Skips themes
+# with no trail. Called from _apply_terrain_theme (world root already built).
+func _build_trail_mesh() -> void:
+	if _world_root == null:
+		return
+	var theme: Dictionary = TerrainThemes.get_theme(_level_def.terrain if _level_def != null else "frontier")
+	var trail: Variant = theme.get("trail", null)
+	if trail == null:
+		return
+	var half: float = float(trail["half_width"])
+	var st := SurfaceTool.new()
+	st.begin(Mesh.PRIMITIVE_TRIANGLES)
+	var rows: int = int((TERR_Z_BEHIND - TERR_Z_AHEAD) / TERR_DZ)
+	for r in range(rows):
+		var lz0: float = TERR_Z_BEHIND - float(r) * TERR_DZ
+		var lz1: float = lz0 - TERR_DZ
+		var v0: float = -lz0 / 6.0
+		var v1: float = -lz1 / 6.0
+		var pL0 := _terr_vertex(-half, lz0) + Vector3(0, 0.02, 0)
+		var pR0 := _terr_vertex(half, lz0) + Vector3(0, 0.02, 0)
+		var pL1 := _terr_vertex(-half, lz1) + Vector3(0, 0.02, 0)
+		var pR1 := _terr_vertex(half, lz1) + Vector3(0, 0.02, 0)
+		st.set_uv(Vector2(0, v0)); st.add_vertex(pL0)
+		st.set_uv(Vector2(1, v0)); st.add_vertex(pR0)
+		st.set_uv(Vector2(1, v1)); st.add_vertex(pR1)
+		st.set_uv(Vector2(0, v0)); st.add_vertex(pL0)
+		st.set_uv(Vector2(1, v1)); st.add_vertex(pR1)
+		st.set_uv(Vector2(0, v1)); st.add_vertex(pL1)
+	st.generate_normals()
+	var mi := MeshInstance3D.new()
+	mi.name = "Trail"
+	mi.mesh = st.commit()
+	var m := StandardMaterial3D.new()
+	m.albedo_texture = load(trail["albedo"])
+	m.roughness = 1.0
+	m.cull_mode = BaseMaterial3D.CULL_DISABLED
+	mi.material_override = m
+	_world_root.add_child(mi)
+
+# terrain: a wooden plank walk along one shoulder (frontier: right). Rides the hills.
+func _build_boardwalk() -> void:
+	if _world_root == null:
+		return
+	var theme: Dictionary = TerrainThemes.get_theme(_level_def.terrain if _level_def != null else "frontier")
+	var bw: Variant = theme.get("boardwalk", null)
+	if bw == null:
+		return
+	var trail: Variant = theme.get("trail", null)
+	var lip: float = float(trail["half_width"]) if trail != null else 2.6
+	var x0: float = lip + 0.6
+	var x1: float = x0 + float(bw["width"])
+	if String(bw["side"]) == "left":
+		var t := x0; x0 = -x1; x1 = -t
+	var st := SurfaceTool.new()
+	st.begin(Mesh.PRIMITIVE_TRIANGLES)
+	var rows: int = int((TERR_Z_BEHIND - TERR_Z_AHEAD) / TERR_DZ)
+	for r in range(rows):
+		var lz0: float = TERR_Z_BEHIND - float(r) * TERR_DZ
+		var lz1: float = lz0 - TERR_DZ
+		var v0: float = -lz0 / 3.0
+		var v1: float = -lz1 / 3.0
+		var pL0 := _terr_vertex(x0, lz0) + Vector3(0, 0.06, 0)
+		var pR0 := _terr_vertex(x1, lz0) + Vector3(0, 0.06, 0)
+		var pL1 := _terr_vertex(x0, lz1) + Vector3(0, 0.06, 0)
+		var pR1 := _terr_vertex(x1, lz1) + Vector3(0, 0.06, 0)
+		st.set_uv(Vector2(0, v0)); st.add_vertex(pL0)
+		st.set_uv(Vector2(1, v0)); st.add_vertex(pR0)
+		st.set_uv(Vector2(1, v1)); st.add_vertex(pR1)
+		st.set_uv(Vector2(0, v0)); st.add_vertex(pL0)
+		st.set_uv(Vector2(1, v1)); st.add_vertex(pR1)
+		st.set_uv(Vector2(0, v1)); st.add_vertex(pL1)
+	st.generate_normals()
+	var mi := MeshInstance3D.new()
+	mi.name = "Boardwalk"
+	mi.mesh = st.commit()
+	var m := StandardMaterial3D.new()
+	m.albedo_texture = load(bw["albedo"])
+	m.roughness = 1.0
+	m.cull_mode = BaseMaterial3D.CULL_DISABLED
+	mi.material_override = m
+	_world_root.add_child(mi)
+
+# terrain: MultiMesh scatter (grass/scrub/rocks/cactus/etc) on the shoulders, placed
+# deterministically per z-cell so the wrapping world is stable; fog hides far ones, so
+# no per-frame cull is needed. Reads the theme's scatter list. Non-colliding decor.
+func _build_scatter() -> void:
+	if _world_root == null:
+		return
+	var theme: Dictionary = TerrainThemes.get_theme(_level_def.terrain if _level_def != null else "frontier")
+	var sets: Array = theme.get("scatter", [])
+	var x_lo: float = 3.4    # just past the trail lip
+	var x_hi: float = 13.0   # out to the fog/terrain edge
+	var z_lo: float = TERR_Z_AHEAD + 2.0
+	var z_hi: float = TERR_Z_BEHIND - 2.0
+	var cell_dz: float = 6.0
+	var cells: int = int((z_hi - z_lo) / cell_dz)
+	for s in sets:
+		var slug: String = String(s["slug"])
+		var tex_path: String = "res://assets/sprites/props/%s.png" % slug
+		if not ResourceLoader.exists(tex_path):
+			continue
+		var tex: Texture2D = load(tex_path)
+		var side: String = String(s.get("side", "both"))
+		var sc: Array = s.get("scale", [0.6, 1.0])
+		var dens: float = float(s["density"])
+		var xforms: Array = []
+		for c in range(cells):
+			var z0: float = z_lo + float(c) * cell_dz
+			var z1: float = z0 + cell_dz
+			var n: int = int(round(dens * 2.0))
+			for p in TerrainThemes.scatter_positions(hash(slug), c, n, -z1, -z0, x_lo, x_hi):
+				var px: float = p.x
+				if side == "right" and px < 0.0: px = -px
+				if side == "left" and px > 0.0: px = -px
+				var lz: float = p.y
+				var pos: Vector3 = _terr_vertex(px, lz)
+				var rng := RandomNumberGenerator.new(); rng.seed = hash([slug, c, int(px * 100.0)])
+				var scl: float = lerpf(sc[0], sc[1], rng.randf())
+				var b := Basis.IDENTITY.scaled(Vector3(scl, scl, scl))
+				xforms.append(Transform3D(b, pos + Vector3(0, scl * 0.5, 0)))
+		if xforms.is_empty():
+			continue
+		var quad := QuadMesh.new(); quad.size = Vector2(1.0, 1.0)
+		var m := StandardMaterial3D.new()
+		m.albedo_texture = tex
+		m.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA_SCISSOR
+		m.alpha_scissor_threshold = 0.5
+		m.billboard_mode = BaseMaterial3D.BILLBOARD_ENABLED
+		m.billboard_keep_scale = true
+		m.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+		quad.material = m
+		var mm := MultiMesh.new()
+		mm.transform_format = MultiMesh.TRANSFORM_3D
+		mm.mesh = quad
+		mm.instance_count = xforms.size()
+		for i in range(xforms.size()):
+			mm.set_instance_transform(i, xforms[i])
+		var mmi := MultiMeshInstance3D.new()
+		mmi.name = "Scatter_%s" % slug
+		mmi.multimesh = mm
+		_world_root.add_child(mmi)
+
+# terrain: a receding haze/void plane below the cliff lip so the mountain left-drop
+# reads as a gorge into cloud, not a hole.
+func _build_cliff_void() -> void:
+	if _world_root == null:
+		return
+	var theme: Dictionary = TerrainThemes.get_theme(_level_def.terrain if _level_def != null else "frontier")
+	var cliff: Variant = theme.get("cliff", null)
+	if cliff == null:
+		return
+	var depth: float = float(cliff["depth"])
+	var is_left: bool = String(cliff["side"]) == "left"
+	var lip: float = -2.6 if is_left else 2.6
+	var pm := PlaneMesh.new()
+	pm.size = Vector2(depth, absf(TERR_Z_AHEAD - TERR_Z_BEHIND))
+	var mi := MeshInstance3D.new()
+	mi.name = "CliffVoid"
+	mi.mesh = pm
+	mi.rotation_degrees = Vector3(0, 0, -80 if is_left else 80)
+	mi.position = Vector3(lip - (depth * 0.5) * (1.0 if is_left else -1.0),
+		-depth * 0.5, (TERR_Z_AHEAD + TERR_Z_BEHIND) * 0.5)
+	var m := StandardMaterial3D.new()
+	m.albedo_color = theme.get("fog_color", Color(0.86, 0.90, 0.96))
+	m.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	m.cull_mode = BaseMaterial3D.CULL_DISABLED
+	mi.material_override = m
+	_world_root.add_child(mi)
+
 func _grab_ground_texture() -> Texture2D:
 	var flat := get_node_or_null("Terrain3D/SubViewport/Ground")
 	if flat is MeshInstance3D:
@@ -6616,6 +6791,12 @@ func _make_puddle(d: float, gx: float, radius: float) -> MeshInstance3D:
 	mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
 	mat.cull_mode = BaseMaterial3D.CULL_DISABLED
 	mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	# terrain: mountain puddles are FROZEN ICE — frosty pale-cyan, mostly opaque, matte.
+	var _pt: Dictionary = TerrainThemes.get_theme(_level_def.terrain if _level_def != null else "frontier")
+	if String(_pt.get("puddle_style", "water")) == "ice":
+		mat.albedo_color = Color(0.82, 0.92, 0.98, 0.95)
+		mat.metallic = 0.15
+		mat.roughness = 0.55
 	mi.material_override = mat
 	return mi
 

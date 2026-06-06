@@ -58,6 +58,7 @@ params = {
 
 [resource]
 script = ExtResource("1_def")
+terrain = "frontier"
 display_name = "FRONTIER STANDOFF"
 seed = 1
 start_posse = 20
