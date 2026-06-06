@@ -1292,6 +1292,8 @@ func _spawn_building_one(side: float, z: float) -> void:
 		var slug: String = available[_rng.randi() % available.size()]
 		var bx: float = side * (SCENERY_FAR_BAND + _rng.randf_range(-1.0, 1.5))
 		_spawn_prop_from_slug(slug, bx, z, scenery_root)
+		if side > 0:
+			_spawn_boardwalk_segment(z)
 		return
 	var building := Node3D.new()
 	# Body: tall + narrow (4.5w × 4.5h × 2.5d) — Western false-front
@@ -1399,6 +1401,8 @@ func _spawn_building_one(side: float, z: float) -> void:
 	if side < 0:
 		building.rotation_degrees = Vector3(0, 180, 0)
 	scenery_root.add_child(building)
+	if side > 0:
+		_spawn_boardwalk_segment(z)
 
 # Iter 110: bullet-vs-gate collision. Returns true if the bullet hit
 # a not-yet-triggered gate door, in which case the caller queue_frees
@@ -6464,7 +6468,6 @@ func _apply_terrain_theme() -> void:
 	# terrain: build the surface dressing (world root already built in _build_world_terrain).
 	_build_cliff_void()
 	_build_trail_mesh()
-	_build_boardwalk()
 	_build_scatter()
 
 func _build_world_terrain() -> void:
@@ -6634,47 +6637,52 @@ func _build_trail_mesh() -> void:
 	_world_root.add_child(mi)
 
 # terrain: a wooden plank walk along one shoulder (frontier: right). Rides the hills.
-func _build_boardwalk() -> void:
-	if _world_root == null:
+# terrain R2b: a single weathered plank strip on the RIGHT shoulder in front of
+# one building at depth z. Parented to scenery_root so the curve/scroll/despawn
+# system handles it exactly like a building: spawn x = the base lateral lane (NO
+# bend), spawn y = a tiny ground-lift; _apply_path_curve stores those as lane_x/
+# lane_y meta on first frame and then re-adds the path bend + hill_y(d) each frame,
+# and the scenery scroll loop advances z and queue_frees it off-screen.
+func _spawn_boardwalk_segment(z: float) -> void:
+	if scenery_root == null:
 		return
 	var theme: Dictionary = TerrainThemes.get_theme(_level_def.terrain if _level_def != null else "frontier")
 	var bw: Variant = theme.get("boardwalk", null)
-	if bw == null:
+	if bw == null or String(bw["side"]) != "right":
 		return
 	var trail: Variant = theme.get("trail", null)
 	var lip: float = float(trail["half_width"]) if trail != null else 2.6
-	var x0: float = lip + 0.6
-	var x1: float = x0 + float(bw["width"])
-	if String(bw["side"]) == "left":
-		var t := x0; x0 = -x1; x1 = -t
-	var st := SurfaceTool.new()
-	st.begin(Mesh.PRIMITIVE_TRIANGLES)
-	var rows: int = int((TERR_Z_BEHIND - TERR_Z_AHEAD) / TERR_DZ)
-	for r in range(rows):
-		var lz0: float = TERR_Z_BEHIND - float(r) * TERR_DZ
-		var lz1: float = lz0 - TERR_DZ
-		var v0: float = -lz0 / 3.0
-		var v1: float = -lz1 / 3.0
-		var pL0 := _terr_vertex(x0, lz0) + Vector3(0, 0.06, 0)
-		var pR0 := _terr_vertex(x1, lz0) + Vector3(0, 0.06, 0)
-		var pL1 := _terr_vertex(x0, lz1) + Vector3(0, 0.06, 0)
-		var pR1 := _terr_vertex(x1, lz1) + Vector3(0, 0.06, 0)
-		st.set_uv(Vector2(0, v0)); st.add_vertex(pL0)
-		st.set_uv(Vector2(1, v0)); st.add_vertex(pR0)
-		st.set_uv(Vector2(1, v1)); st.add_vertex(pR1)
-		st.set_uv(Vector2(0, v0)); st.add_vertex(pL0)
-		st.set_uv(Vector2(1, v1)); st.add_vertex(pR1)
-		st.set_uv(Vector2(0, v1)); st.add_vertex(pL1)
-	st.generate_normals()
+	var base_w: float = float(bw["width"])
+	# Irregular per-segment width + length. Width sits between the trail lip and the
+	# building band; length runs along z (a few planks' worth, varied).
+	var seg_w: float = base_w * _rng.randf_range(0.82, 1.12)
+	var seg_len: float = _rng.randf_range(5.0, 8.5)
+	var x0: float = lip + _rng.randf_range(0.3, 0.7)
+	# Center the strip between the lip and the building band, on the right (+x).
+	var cx: float = x0 + seg_w * 0.5
 	var mi := MeshInstance3D.new()
-	mi.name = "Boardwalk"
-	mi.mesh = st.commit()
+	mi.name = "BoardwalkSeg"
+	var qm := QuadMesh.new()
+	qm.size = Vector2(seg_w, seg_len)
+	qm.orientation = PlaneMesh.FACE_Y
+	mi.mesh = qm
 	var m := StandardMaterial3D.new()
-	m.albedo_texture = load(bw["albedo"])
+	if ResourceLoader.exists(String(bw["albedo"])):
+		m.albedo_texture = load(bw["albedo"])
+	# Weathered brown-grey tint with per-segment variation (sun-bleached planks).
+	var g: float = _rng.randf_range(0.46, 0.62)
+	m.albedo_color = Color(g * 1.05, g * 0.94, g * 0.80, 1.0)
 	m.roughness = 1.0
 	m.cull_mode = BaseMaterial3D.CULL_DISABLED
+	# Repeat the plank texture along the length so longer segments tile.
+	m.uv1_scale = Vector3(1.0, maxf(1.0, seg_len / 2.2), 1.0)
 	mi.material_override = m
-	_world_root.add_child(mi)
+	# Base lateral lane WITHOUT bend (the curve system adds the bend each frame).
+	# A small +y lift so it reads as sitting on top of the dirt, not z-fighting.
+	mi.position = Vector3(cx, 0.07, z)
+	# Slight random skew so the strip isn't perfectly road-aligned (irregular).
+	mi.rotation.y = deg_to_rad(_rng.randf_range(-4.0, 4.0))
+	scenery_root.add_child(mi)
 
 # terrain: MultiMesh scatter (grass/scrub/rocks/cactus/etc) on the shoulders, placed
 # deterministically per z-cell so the wrapping world is stable; fog hides far ones, so
