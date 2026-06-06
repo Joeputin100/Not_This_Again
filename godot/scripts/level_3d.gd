@@ -365,6 +365,45 @@ const OUTLAW_BULLET_HIT_X: float = 0.5  # iter 119: bullet only hits if within t
 const OUTLAW_HIT_RADIUS_SQ: float = 1.5 * 1.5
 const OUTLAW_HP: int = 10  # iter 118: 3 → 10 (1 cowboy firing 6/clip+1s reload = ~3.5 bullets/sec, dies in ~3s)
 var _outlaw_spawn_timer: float = 0.0
+
+# ── Farm outlaw cast (Level 3) ───────────────────────────────────────────
+# 4 video-billboard enemy kinds, each with its own movement/offense/defense.
+# Streams loaded lazily in _spawn_outlaw; per-kind stats live in OUTLAW_KINDS.
+# "vagrant" keeps the original behavior for all other levels.
+const FARM_OUTLAW_VIDEOS: Dictionary = {
+	"candy_corn":  "res://assets/videos/farm/candy_corn.ogv",
+	"gummi_bear":  "res://assets/videos/farm/gummi_bear.ogv",
+	"fried_dough": "res://assets/videos/farm/fried_dough.ogv",
+	"triffid":     "res://assets/videos/farm/triffid.ogv",
+}
+# kind -> {hp, height}. Roster weights are in FARM_OUTLAW_WEIGHTS below.
+const OUTLAW_KINDS: Dictionary = {
+	"candy_corn":  {"hp": 10, "height": 2.5},
+	"gummi_bear":  {"hp": 8,  "height": 2.3},
+	"fried_dough": {"hp": 16, "height": 2.8},
+	"triffid":     {"hp": 14, "height": 3.0},
+}
+# candy_corn + gummi common; fried_dough + triffid rarer.
+const FARM_OUTLAW_WEIGHTS: Array = [
+	["candy_corn", 35], ["gummi_bear", 35], ["fried_dough", 18], ["triffid", 12],
+]
+# candy_corn KITER: holds this many units in front of the cowboy (stops closing).
+const CANDY_CORN_HOLD_Z: float = 6.0
+const CANDY_CORN_BURST: int = 3        # bullets per fire interval
+const CANDY_CORN_BURST_GAP: float = 0.12
+# gummi BOUNCY: hop arc + apex-only hittable window.
+const GUMMI_SPEED_MUL: float = 1.3
+const GUMMI_HOP_HEIGHT: float = 1.6
+const GUMMI_HOP_PERIOD: float = 0.85   # seconds per hop
+const GUMMI_APEX_WINDOW: float = 0.45  # fraction-of-arc (centered on apex) that is hittable
+# fried_dough RUSHER: closes fast to melee.
+const FRIED_DOUGH_SPEED_MUL: float = 1.6
+# triffid ROOTED: lashes the posse on a cooldown within this z-range.
+const TRIFFID_LASH_RANGE_Z: float = 3.5
+const TRIFFID_LASH_COOLDOWN: float = 1.8
+const TRIFFID_LASH_X: float = 2.0      # lane reach for the whip
+# shared melee contact range (gummi/fried_dough)
+const OUTLAW_MELEE_Z: float = 1.6
 var _outlaws_remaining: int = 0   # ticks down as outlaws leave the field; 0 -> boss
 var _outlaws_spawned: int = 0     # stop spawning once this reaches the quota
 
@@ -5315,16 +5354,52 @@ func _trigger_quota_boss() -> void:
 	_level_state = LevelState.BOSS
 	DebugLog.add("quota cleared -> boss (kind=%s)" % _boss_kind())
 
-func _spawn_outlaw() -> void:
+# Farm outlaw contact/melee/lash drain — pulls one posse member (special
+# followers soak first, like Pete/Rustler melee). pos is the attacker's
+# position for picking the nearest special follower; sfx is played on hit.
+func _outlaw_drain_posse(pos: Vector3, sfx: String = "") -> void:
+	if sfx != "" and get_node_or_null("/root/AudioBus") and AudioBus.has_method("play_sfx"):
+		AudioBus.play_sfx(sfx)
+	var sf: Dictionary = _nearest_special_follower(pos, 99.0)
+	if not sf.is_empty():
+		_damage_special_follower(sf, 1)
+	else:
+		_posse_count_3d = maxi(0, _posse_count_3d - 1)
+		_sync_followers_to_count(_posse_count_3d)
+		_refresh_hud()
+	if get_node_or_null("/root/AudioBus") and AudioBus.has_method("play_sfx"):
+		AudioBus.play_sfx("posse_hurt")
+
+# Pick the kind to spawn. Farm levels draw from the 4-kind roster; every
+# other level keeps the original "vagrant". (Spec: simplest is a terrain check.)
+func _pick_outlaw_kind() -> String:
+	if _level_def == null or _level_def.terrain != "farm":
+		return "vagrant"
+	var total: int = 0
+	for entry in FARM_OUTLAW_WEIGHTS:
+		total += entry[1]
+	var roll: int = _rng.randi_range(0, total - 1)
+	for entry in FARM_OUTLAW_WEIGHTS:
+		roll -= entry[1]
+		if roll < 0:
+			return entry[0]
+	return "candy_corn"
+
+func _spawn_outlaw(kind: String = "") -> void:
 	if _level_def != null and _level_def.outlaw_quota > 0 and _outlaws_spawned >= _level_def.outlaw_quota:
 		return   # quota fully emitted — no more outlaws
+	if kind == "":
+		kind = _pick_outlaw_kind()
+	var is_farm_kind: bool = OUTLAW_KINDS.has(kind)
+	var max_hp: int = OUTLAW_KINDS[kind]["hp"] if is_farm_kind else OUTLAW_HP
 	# Iter 116: re-enable video billboard, but this time via SHARED top-
 	# level SubViewports (see _make_video_billboard) — iter 114 confirmed
 	# that nested-SubViewport video billboards don't render on Android.
 	var outlaw := Node3D.new()
 	var lane_x: float = _rng.randf_range(-OUTLAW_SPAWN_X_MAX, OUTLAW_SPAWN_X_MAX)
 	outlaw.position = Vector3(lane_x, 1.0, OBSTACLE_SPAWN_Z + 4.0)
-	outlaw.set_meta("hp", OUTLAW_HP)
+	outlaw.set_meta("kind", kind)
+	outlaw.set_meta("hp", max_hp)
 	outlaw.set_meta("fire_timer", _rng.randf() * OUTLAW_FIRE_INTERVAL)
 	# Iter 120: per-unit horizontal offset around the cowboy. Without this,
 	# all outlaws lerp to the SAME cowboy_3d.position.x and form a single
@@ -5336,15 +5411,27 @@ func _spawn_outlaw() -> void:
 	outlaw.set_meta("death_timer", 0.0)
 	outlaws_root.add_child(outlaw)
 	outlaw.set_meta("is_outlaw", true)
+	# triffid is ROOTED: stash a per-spawn lash cooldown phase so a cluster
+	# doesn't all lash on the same frame.
+	if kind == "triffid":
+		outlaw.set_meta("lash_timer", _rng.randf() * TRIFFID_LASH_COOLDOWN)
+	# gummi BOUNCY: random hop phase so the swarm hops out of sync.
+	if kind == "gummi_bear":
+		outlaw.set_meta("hop_phase", _rng.randf() * GUMMI_HOP_PERIOD)
 	_outlaws_spawned += 1
-	var billboard: Node3D = _make_video_billboard(VAGRANT_IDLE_STREAM, 2.5)
+	var billboard: Node3D
+	if is_farm_kind:
+		var stream: VideoStream = load(FARM_OUTLAW_VIDEOS[kind])
+		billboard = _make_video_billboard(stream, OUTLAW_KINDS[kind]["height"])
+	else:
+		billboard = _make_video_billboard(VAGRANT_IDLE_STREAM, 2.5)
 	outlaw.add_child(billboard)
 	# Stash the Sprite3D ref so death-anim swap can replace its texture
 	# without searching the tree.
 	if billboard.get_child_count() > 0:
 		outlaw.set_meta("sprite_3d", billboard.get_child(0))
-	# Iter 151: HP bar above the vagrant (hidden until first hit).
-	_attach_outlaw_hp_bar(outlaw, OUTLAW_HP)
+	# Iter 151: HP bar above the outlaw (hidden until first hit).
+	_attach_outlaw_hp_bar(outlaw, max_hp)
 	_outlaw_spawn_count += 1
 	if _outlaw_spawn_count == 1 or _outlaw_spawn_count % 5 == 0:
 		DebugLog.add("outlaw spawn #%d at x=%.1f z=%.1f (outlaws_root.size=%d)" % [
@@ -5758,6 +5845,19 @@ func _outlaw_fire(outlaw: Node3D) -> void:
 	b.set_meta("velocity", vel)
 	outlaw_bullets_root.add_child(b)
 
+# candy_corn KITER triple-volley: 3 quick shots spaced CANDY_CORN_BURST_GAP
+# apart. Each shot is a normal _outlaw_fire from the (still-valid) outlaw, so
+# the burst re-aims at the cowboy mid-volley. Plays its own SFX once.
+func _candy_corn_volley(outlaw: Node3D) -> void:
+	if get_node_or_null("/root/AudioBus") and AudioBus.has_method("play_sfx"):
+		AudioBus.play_sfx("sfx_candy_corn")
+	_outlaw_fire(outlaw)
+	for i in range(1, CANDY_CORN_BURST):
+		var t := get_tree().create_timer(CANDY_CORN_BURST_GAP * float(i))
+		t.timeout.connect(func ():
+			if is_instance_valid(outlaw) and not outlaw.get_meta("dying", false):
+				_outlaw_fire(outlaw))
+
 var _process_first_tick_logged: bool = false
 # Iter 124: test-range mode flag, mirrors 2D level.gd's _test_range_mode.
 # When DebugPreview.pending_test_range is set, level_3d._ready strips
@@ -6043,13 +6143,32 @@ func _process(delta: float) -> void:
 			if dt <= 0.0:
 				outlaw.queue_free()
 			continue
+		# Farm kind: per-kind speed / movement style. "vagrant" + any
+		# unknown kind keep the original behavior below.
+		var _kind: String = outlaw.get_meta("kind", "vagrant")
+		var _rooted: bool = _kind == "triffid"
 		# Iter 120: slow z-scroll once outlaw is close to the cowboy so
 		# they cluster around the posse instead of marching past at
 		# constant speed. Beyond cowboy_z - 2.0 (= still in front), full
 		# OUTLAW_SPEED. Within 2.0 of cowboy_z, slow to 20% speed.
 		var z_speed: float = OUTLAW_SPEED
-		if outlaw.position.z > cowboy_3d.position.z - 2.0:
+		if _kind == "fried_dough":
+			z_speed = OUTLAW_SPEED * FRIED_DOUGH_SPEED_MUL  # RUSHER: keep closing fast
+		elif _kind == "gummi_bear":
+			z_speed = OUTLAW_SPEED * GUMMI_SPEED_MUL
+			if outlaw.position.z > cowboy_3d.position.z - 2.0:
+				z_speed *= 0.20
+		elif _kind == "candy_corn":
+			# KITER: hold ~6 units in front of the cowboy, stop closing.
+			if outlaw.position.z >= cowboy_3d.position.z - CANDY_CORN_HOLD_Z:
+				z_speed = 0.0
+		elif outlaw.position.z > cowboy_3d.position.z - 2.0:
 			z_speed = OUTLAW_SPEED * 0.20
+		# triffid ROOTED: never advances on the posse — it scrolls in with
+		# the world (toward the player as the world moves past).
+		if _rooted:
+			z_speed = 0.0
+			outlaw.position.z += OBSTACLE_SPEED * motion_delta
 		# Iter 173: the pushed cart + its pushers freeze in z — during a
 		# cart encounter the whole world's forward scroll is paused anyway
 		# (terrain + props), so the cart stays in lockstep with the ground.
@@ -6083,9 +6202,9 @@ func _process(delta: float) -> void:
 			if is_instance_valid(_ic):
 				_ic.queue_free()
 			outlaw.remove_meta("ice_cube")
-		if outlaw.get_meta("is_pushed", false) or outlaw.get_meta("is_pusher", false) \
+		if _rooted or outlaw.get_meta("is_pushed", false) or outlaw.get_meta("is_pusher", false) \
 				or outlaw.get_meta("is_kimmy", false):
-			target_x = outlaw.position.x
+			target_x = outlaw.position.x   # triffid is rooted; set-pieces own their x
 		# Iter 136: real delta so x-tracking continues during BOSS state too
 		outlaw.position.x = lerpf(outlaw.position.x, target_x,
 			clampf(1.5 * delta, 0.0, 1.0))
@@ -6094,18 +6213,62 @@ func _process(delta: float) -> void:
 		# at y=1.0 (their foot offset) — use that, not POSSE_BASE_Y, or their feet clip.
 		if not outlaw.get_meta("is_pushed", false) and not outlaw.get_meta("is_pusher", false) \
 				and not outlaw.get_meta("is_kimmy", false):
-			outlaw.position.y = OUTLAW_BASE_Y + _hill_y(_level_distance + (cowboy_3d.position.z - outlaw.position.z))
-		var ft: float = outlaw.get_meta("fire_timer", 0.0)
-		ft -= delta
-		if ft <= 0.0:
-			ft = OUTLAW_FIRE_INTERVAL
-			# Iter 121: only fire when within OUTLAW_FIRE_RANGE_Z of cowboy z.
-			# Halves the effective bullet range — far outlaws hold their fire
-			# until they're close enough to be visually threatening.
-			var z_gap: float = cowboy_3d.position.z - outlaw.position.z
-			if z_gap >= 0.0 and z_gap <= OUTLAW_FIRE_RANGE_Z:
-				_outlaw_fire(outlaw)
-		outlaw.set_meta("fire_timer", ft)
+			var _ground_y: float = OUTLAW_BASE_Y + _hill_y(_level_distance + (cowboy_3d.position.z - outlaw.position.z))
+			if _kind == "gummi_bear":
+				# BOUNCY: sine y-arc hop on top of the ground. hop_t in [0,1) over
+				# GUMMI_HOP_PERIOD; apex at 0.5. Stash hop_t so the defense check
+				# (apex-only-hittable) reads the same phase.
+				var _hp_phase: float = outlaw.get_meta("hop_phase", 0.0) + delta
+				if _hp_phase >= GUMMI_HOP_PERIOD:
+					_hp_phase = fmod(_hp_phase, GUMMI_HOP_PERIOD)
+					if get_node_or_null("/root/AudioBus") and AudioBus.has_method("play_sfx"):
+						AudioBus.play_sfx("sfx_gummi_bear")  # land thump each hop
+				outlaw.set_meta("hop_phase", _hp_phase)
+				var _hop_t: float = _hp_phase / GUMMI_HOP_PERIOD
+				outlaw.set_meta("hop_t", _hop_t)
+				outlaw.position.y = _ground_y + sin(_hop_t * PI) * GUMMI_HOP_HEIGHT
+			else:
+				outlaw.position.y = _ground_y
+		# Per-kind offense.
+		var _z_gap: float = cowboy_3d.position.z - outlaw.position.z
+		if _kind == "gummi_bear" or _kind == "fried_dough":
+			# CONTACT / MELEE: drain a posse member when it reaches them, then
+			# despawn (it spent itself on the hit). Counts toward the quota.
+			if _z_gap >= 0.0 and _z_gap <= OUTLAW_MELEE_Z and absf(outlaw.position.x - cowboy_3d.position.x) <= 1.6:
+				_outlaw_drain_posse(outlaw.position,
+					"sfx_fried_dough" if _kind == "fried_dough" else "sfx_gummi_bear")
+				_outlaw_left_field(outlaw)
+				outlaw.queue_free()
+				continue
+		elif _kind == "triffid":
+			# ROOTED reach-lash: whip posse members in its lane on a cooldown.
+			var lt: float = outlaw.get_meta("lash_timer", 0.0) - delta
+			if lt <= 0.0:
+				var in_z: bool = _z_gap >= -1.0 and _z_gap <= TRIFFID_LASH_RANGE_Z
+				if in_z and absf(outlaw.position.x - cowboy_3d.position.x) <= TRIFFID_LASH_X:
+					_outlaw_drain_posse(outlaw.position, "sfx_triffid")
+					lt = TRIFFID_LASH_COOLDOWN
+				else:
+					lt = 0.3  # re-check soon while waiting for the posse to enter range
+			outlaw.set_meta("lash_timer", lt)
+		elif _kind == "candy_corn":
+			# KITER ranged triple-volley.
+			var ftc: float = outlaw.get_meta("fire_timer", 0.0) - delta
+			if ftc <= 0.0:
+				ftc = OUTLAW_FIRE_INTERVAL
+				if _z_gap >= 0.0 and _z_gap <= OUTLAW_FIRE_RANGE_Z:
+					_candy_corn_volley(outlaw)
+			outlaw.set_meta("fire_timer", ftc)
+		else:
+			# vagrant (+ any unknown kind): the original single-shot fire.
+			var ft: float = outlaw.get_meta("fire_timer", 0.0)
+			ft -= delta
+			if ft <= 0.0:
+				ft = OUTLAW_FIRE_INTERVAL
+				# Iter 121: only fire when within OUTLAW_FIRE_RANGE_Z of cowboy z.
+				if _z_gap >= 0.0 and _z_gap <= OUTLAW_FIRE_RANGE_Z:
+					_outlaw_fire(outlaw)
+			outlaw.set_meta("fire_timer", ft)
 		if outlaw.position.z > OBSTACLE_DESPAWN_Z:
 			_outlaw_left_field(outlaw)
 			outlaw.queue_free()
@@ -6116,6 +6279,13 @@ func _process(delta: float) -> void:
 			var dx: float = bullet.position.x - outlaw.position.x
 			var dz: float = bullet.position.z - outlaw.position.z
 			if dx * dx + dz * dz < OUTLAW_HIT_RADIUS_SQ:
+				# gummi DEFENSE: only hittable near the APEX of its hop. While
+				# grounded/squashed the bullet passes through (not consumed) — a
+				# generous window centered on apex (hop_t == 0.5).
+				if _kind == "gummi_bear":
+					var _ht: float = outlaw.get_meta("hop_t", 0.5)
+					if absf(_ht - 0.5) > GUMMI_APEX_WINDOW * 0.5:
+						continue  # mid-flight pass-through; bullet survives
 				# Iter 134: pushers route to specialized 1-shot-kill handler.
 				if outlaw.get_meta("is_pusher", false):
 					_pusher_take_damage(outlaw)
