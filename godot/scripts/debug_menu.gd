@@ -174,6 +174,13 @@ func _build_sections() -> void:
 		btn.pressed.connect(_on_preview_pushed_wagon.bind("marshmallow_sheriff", "wagon_covered", n))
 		content.add_child(btn)
 
+	# kimmy: Rainbow Kimmy rescue + sugar rush. Equips the RAINBOW weapon and
+	# drops her rock-candy cage so the full crack → transform → screen-clear plays.
+	_add_section_header("RAINBOW KIMMY")
+	var kimmy_btn := _make_button("RAINBOW KIMMY — RESCUE + SUGAR RUSH")
+	kimmy_btn.pressed.connect(_on_preview_kimmy)
+	content.add_child(kimmy_btn)
+
 	_add_section_header("TEST RANGE")
 	var range_btn := _make_button("OPEN CACTUS FIELD (weapon + posse test)")
 	range_btn.pressed.connect(_on_open_test_range)
@@ -284,6 +291,12 @@ func _on_preview_pushed_wagon(hero_slug: String, container_slug: String, n_pushe
 	DebugPreview.pending_captive_hero = hero_slug
 	DebugPreview.pending_captive_container = container_slug
 	DebugPreview.pending_pushed_count = n_pushers
+	get_tree().change_scene_to_file("res://scenes/level_3d.tscn")
+
+func _on_preview_kimmy() -> void:
+	DebugLog.add("KIMMY BUTTON pressed")
+	AudioBus.play_tap()
+	DebugPreview.pending_kimmy = true
 	get_tree().change_scene_to_file("res://scenes/level_3d.tscn")
 
 func _on_open_test_range() -> void:

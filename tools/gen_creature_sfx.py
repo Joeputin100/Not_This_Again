@@ -102,6 +102,12 @@ SFX: dict[str, tuple[str, float]] = {
         "a short triumphant candy-western victory fanfare, bright brass + sparkle, celebratory, ~1.5s",
         1.5,
     ),
+    # --- kimmy: rockstar riff ---
+    "kimmy_riff": (
+        "a triumphant 3-second crescendo electric rock guitar riff, building to a "
+        "big rockstar power-chord finish, celebratory, energetic",
+        3.0,
+    ),
 }
 
 

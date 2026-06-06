@@ -29,6 +29,29 @@ func _init() -> void:
 func _enter_tree() -> void:
 	DebugLog.add("level_3d.gd _enter_tree")
 
+# Rainbow Kimmy: her cage only takes damage from rainbow bullets; non-Kimmy
+# captives are unaffected by this rule (base damage passes through).
+static func kimmy_cage_damage(is_kimmy: bool, bullet_rainbow: bool, base: int) -> int:
+	if is_kimmy and not bullet_rainbow:
+		return 0
+	return base
+
+# Rainbow Kimmy: rescue resolves to "cracked" (freed) the instant cage HP hits
+# 0 (even at the buzzer); else "timed_out" when the window is spent; else "ongoing".
+static func kimmy_rescue_outcome(cage_hp: int, window_left: float) -> String:
+	if cage_hp <= 0:
+		return "cracked"
+	if window_left <= 0.0:
+		return "timed_out"
+	return "ongoing"
+
+# Rainbow Kimmy sugar rush: destroy outlaws + destructible obstacles (incl. bulls);
+# never the cage/captive (Kimmy) or already-dying nodes. `meta` = the node's flags.
+static func kimmy_clears_node(meta: Dictionary) -> bool:
+	if meta.get("is_captive", false) or meta.get("is_kimmy", false) or meta.get("dying", false):
+		return false
+	return true
+
 # Iter 64: prototype 3D level scene. The user chose the full 3D refactor
 # path over the perspective-fake approach. This scene is the foundation
 # for the migration:
@@ -221,6 +244,8 @@ var holes_root: Node3D   # SP2 slice3: pits/cliffs that posse + outlaws fall int
 var _world_root: Node3D = null   # SP2 slice3/iter400: static curved+hilly terrain the posse advances through
 const FrostBoltsScript = preload("res://scripts/frost_bolts.gd")
 var _frost_bolts: Node2D = null   # iter404: FROSTBITE chain-lightning overlay
+const RainbowBoltsScript = preload("res://scripts/rainbow_bolts.gd")
+var _rainbow_bolts: Node2D = null   # kimmy: RAINBOW prism-chain overlay
 var outlaw_bullets_root: Node3D
 var boss_root: Node3D
 # Iter 69: terrain_3d.gd script wasn't attached to the inline Terrain3D
@@ -245,6 +270,17 @@ var scenery_root: Node3D
 
 var _spawn_timer: float = 0.0
 var _volley_dmg: int = 1   # iter406: per-bullet damage = the posse's per-member firepower
+var _kimmy_cue_shown: bool = false   # kimmy: "RAINBOW ONLY" cue shown once per cage
+# iter426: rebalanced for winnability — at a small posse (demo POSSE 20) _volley_dmg
+# is 1, the cage-hit loop breaks after one bullet/frame (~10 hits/s), so 240 HP / 16 s
+# was unwinnable. Per-Kimmy-hit damage now floors at KIMMY_CAGE_HIT_FLOOR, HP is lower,
+# and the window is longer — a focused rainbow burst cracks it in ~7s with margin.
+const KIMMY_CAGE_HP: int = 150          # cracks under sustained rainbow fire within the window
+const KIMMY_CAGE_HIT_FLOOR: int = 2     # min cage damage per rainbow hit (bigger posse > this)
+const KIMMY_RESCUE_WINDOW: float = 20.0 # seconds before the pushers haul her off
+var _kimmy_captive: Node3D = null
+var _kimmy_window_left: float = 0.0
+var _kimmy_countdown: Label = null   # kimmy: rainbow strobing rescue-timer HUD readout
 var _was_reloading: bool = false   # iter413: edge-detect reload start for the click SFX
 var _last_lap: float = 0.0   # iter414: puddle-cross splash detector
 var _fire_timer: float = 0.0
@@ -383,7 +419,7 @@ var _scenery_spawn_timer: float = 0.0
 
 # Iter 88: bullet fire modes. Each pickup changes how _spawn_bullet
 # colors / sizes its bullets. Default = candy palette random.
-enum FireMode { CANDY, RIFLE, FROSTBITE, FRENZY }
+enum FireMode { CANDY, RIFLE, FROSTBITE, FRENZY, RAINBOW }
 var _fire_mode: int = FireMode.CANDY
 var _pete_spawned: bool = false
 var _pete_defeated: bool = false
@@ -547,6 +583,7 @@ func _ready() -> void:
 	_build_world_terrain()   # iter400: static curved+hilly terrain the posse advances through
 	_apply_terrain_theme()   # iter415: per-terrain fog
 	_build_frost_bolts()     # iter404: FROSTBITE chain-lightning overlay
+	_build_rainbow_bolts()   # kimmy: RAINBOW prism-chain overlay
 	if info_label != null:
 		info_label.text = "iter97 RDY-4 3D built"
 	# Iter 72: spawn posse followers at trapezoid offsets behind leader.
@@ -644,6 +681,14 @@ func _ready() -> void:
 			else:
 				DebugLog.add("level_3d: captive preview %s in %s" % [ch, cc])
 				call_deferred("_preview_captive_3d", ch, cc)
+		elif DebugPreview.pending_kimmy:
+			# kimmy: interactive preview — equip the RAINBOW weapon and drop her cage
+			# right away so the rescue + sugar rush can be played without reaching L3.
+			DebugPreview.pending_kimmy = false
+			_fire_mode = FireMode.RAINBOW
+			_update_weapon_label()
+			call_deferred("_spawn_kimmy_cage")
+			DebugLog.add("level_3d: kimmy preview")
 	# Iter 79: initial HUD render.
 	_refresh_hud()
 	# Iter 77: win-modal Retry button.
@@ -2924,15 +2969,19 @@ const BONUS_COLORS: Dictionary = {
 	"rifle":     Color(0.55, 0.32, 0.16, 1),    # brown wood-stock
 	"frostbite": Color(0.55, 0.85, 1.00, 1),    # icy cyan
 	"frenzy":    Color(1.00, 0.55, 0.85, 1),    # pink frenzy
+	"rainbow":   Color(0.7, 0.5, 1.0, 1),
 }
 const BONUS_LABELS: Dictionary = {
 	"rifle":     "R",
 	"frostbite": "❄",
 	"frenzy":    "J!",
+	"rainbow":   "★",
 }
 
 func _spawn_bonus() -> void:
-	var t: String = BONUS_TYPES[_rng.randi() % BONUS_TYPES.size()]
+	_spawn_bonus_typed(BONUS_TYPES[_rng.randi() % BONUS_TYPES.size()])
+
+func _spawn_bonus_typed(t: String) -> void:
 	var glitz: Dictionary = GlitzPrefs.get_bonus_glitz(t)
 	# Iter 179: the bonus crate is a glitz sprite — breathing-shader plane
 	# textured with the crate PNG, with the per-bonus glitz uniforms applied.
@@ -2975,6 +3024,7 @@ func _collect_bonus(bonus: Node3D) -> void:
 		"rifle":     _fire_mode = FireMode.RIFLE
 		"frostbite": _fire_mode = FireMode.FROSTBITE
 		"frenzy":    _fire_mode = FireMode.FRENZY
+		"rainbow":   _fire_mode = FireMode.RAINBOW
 	_update_weapon_label()
 	_spawn_popup_3d(bonus.position + Vector3(0, 2.0, 0),
 		t.to_upper(), BONUS_COLORS[t], 56)
@@ -2985,14 +3035,17 @@ func _collect_bonus(bonus: Node3D) -> void:
 const WEAPON_NAMES := {
 	FireMode.CANDY: "JELLY BEAN", FireMode.RIFLE: "RIFLE",
 	FireMode.FROSTBITE: "FROSTBITE", FireMode.FRENZY: "FRENZY",
+	FireMode.RAINBOW: "RAINBOW",
 }
 const WEAPON_ICONS := {
 	FireMode.CANDY: "candy_red.png", FireMode.RIFLE: "candy_choc_stripe.png",
 	FireMode.FROSTBITE: "candy_freezeray.png", FireMode.FRENZY: "candy_bomb.png",
+	FireMode.RAINBOW: "../props/weapon_rainbow.png",
 }
 const WEAPON_COLORS := {
 	FireMode.CANDY: Color(1.0, 0.62, 0.80, 1), FireMode.RIFLE: Color(0.88, 0.66, 0.40, 1),
 	FireMode.FROSTBITE: Color(0.60, 0.86, 1.0, 1), FireMode.FRENZY: Color(1.0, 0.58, 0.88, 1),
+	FireMode.RAINBOW: Color(0.7, 0.5, 1.0, 1),
 }
 var _weapon_label: Label = null
 var _weapon_icon: TextureRect = null
@@ -3054,20 +3107,24 @@ const WEAPON_HERO := {
 	FireMode.RIFLE: "res://assets/sprites/props/weapon_six_shooter.png",
 	FireMode.FROSTBITE: "res://assets/sprites/props/weapon_six_shooter.png",
 	FireMode.FRENZY: "res://assets/sprites/props/weapon_six_shooter.png",
+	FireMode.RAINBOW: "res://assets/sprites/props/weapon_six_shooter.png",
 }
 # Per-weapon magazine size — drives both the gun + the ammo clip pip count.
 const CLIP_BY_MODE := {
 	FireMode.CANDY: 6, FireMode.RIFLE: 4, FireMode.FROSTBITE: 5, FireMode.FRENZY: 8,
+	FireMode.RAINBOW: 7,
 }
 # Per-weapon rate of fire (seconds between shots) — lower = faster.
 const FIRE_INTERVAL_BY_MODE := {
 	FireMode.CANDY: 0.18, FireMode.RIFLE: 0.34, FireMode.FROSTBITE: 0.26, FireMode.FRENZY: 0.07,
+	FireMode.RAINBOW: 0.10,
 }
 # Per-weapon range: the z a bullet travels to before despawning (more negative
 # = longer reach; outlaws spawn at z=-24, so the rifle reaches them, the
 # short-range frostbite only hits close).
 const RANGE_Z_BY_MODE := {
 	FireMode.CANDY: -10.0, FireMode.RIFLE: -26.0, FireMode.FROSTBITE: -6.0, FireMode.FRENZY: -13.0,
+	FireMode.RAINBOW: -20.0,
 }
 var _bullet_despawn_z: float = -10.0   # current weapon's bullet range (set on weapon change)
 
@@ -3517,6 +3574,10 @@ func _dispatch_level_event(ev: LevelEvent) -> void:
 				DebugLog.add("SP2: approach zone (%s) at dist %.1f" % [exit_name, ev.distance])
 		LevelEvent.EventKind.HOLE:
 			_spawn_hole(ev.params)
+		LevelEvent.EventKind.BONUS:
+			_spawn_bonus_typed(String(ev.params.get("type", "frenzy")))
+		LevelEvent.EventKind.KIMMY:
+			_spawn_kimmy_cage()
 
 # SP2: live (non-captive) enemy count — drives the director's reactive damping
 # + the CLEAR approach-zone exit. Mirrors the dynamic-camera threat count.
@@ -4245,6 +4306,9 @@ const CONTAINER_TEX: Dictionary = {
 	"wagon_covered": {"path": "res://assets/sprites/props/wagon_covered.png", "w": 3.3, "h": 2.2, "body_half_w": 1.16},
 	"mining_cart":   {"path": "res://assets/sprites/props/mining_cart.png",   "w": 2.0, "h": 1.4, "body_half_w": 0.69},
 	"barrel":        {"path": "res://assets/sprites/props/barrel.png",        "w": 1.2, "h": 1.6, "body_half_w": 0.53},
+	# kimmy: the rock-candy cage wagon (back layer — wagon + rear crystal bars).
+	# Frame is 320x380; back container drawn 280w @ y113. Tall, narrow body.
+	"kimmy_cage_back": {"path": "res://assets/sprites/props/kimmy_cage_back.png", "w": 3.5, "h": 4.2, "body_half_w": 1.25},
 }
 const HERO_TEX: Dictionary = {
 	"marshmallow_sheriff": "res://assets/sprites/props/hero_marshmallow_sheriff.png",
@@ -4253,6 +4317,7 @@ const HERO_TEX: Dictionary = {
 	"chocolate_outlaw":    "res://assets/sprites/props/hero_chocolate_outlaw.png",
 	"sugar_doc":           "res://assets/sprites/props/hero_sugar_doc.png",
 	"taffy_kid":           "res://assets/sprites/props/hero_taffy_kid.png",
+	"kimmy_caged":         "res://assets/sprites/props/kimmy_caged.png",
 }
 
 # Captive root structure (added to outlaws_root for bullet-collision reuse):
@@ -4372,10 +4437,18 @@ func _pusher_take_damage(pusher: Node3D) -> void:
 # Iter 133: handle bullet hitting a captive — damages container, on
 # HP=0 triggers the release ceremony. Called from the bullet/outlaw
 # collision loop when outlaw.get_meta("is_captive") is true.
-func _captive_take_damage(captive: Node3D, bullet_pos: Vector3) -> void:
+func _captive_take_damage(captive: Node3D, bullet_pos: Vector3, bullet_rainbow: bool = false) -> void:
 	if captive.get_meta("released", false):
 		return  # iter 164: already freed — ignore trailing bullets
-	var hp: int = captive.get_meta("hp", 0) - 1
+	# kimmy: cage takes damage ONLY from rainbow-mode bullets.
+	var is_kimmy: bool = captive.get_meta("is_kimmy", false)
+	var base_dmg: int = maxi(_volley_dmg, KIMMY_CAGE_HIT_FLOOR) if is_kimmy else 1
+	var dmg: int = kimmy_cage_damage(is_kimmy, bullet_rainbow, base_dmg)
+	if dmg <= 0:
+		if is_kimmy:
+			_kimmy_rainbow_only_cue(bullet_pos)
+		return
+	var hp: int = captive.get_meta("hp", 0) - dmg
 	captive.set_meta("hp", hp)
 	var max_hp: int = captive.get_meta("max_hp", 60)
 	# Update HP label
@@ -4388,7 +4461,7 @@ func _captive_take_damage(captive: Node3D, bullet_pos: Vector3) -> void:
 			.set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
 	# Damage popup
 	_spawn_popup_3d(bullet_pos + Vector3(0, 0.5, 0),
-		"-1", Color(1.0, 0.55, 0.40, 1), 36)
+		"-%d" % dmg, Color(1.0, 0.55, 0.40, 1), 36)
 	# Small flash modulate on container
 	var container_sprite: Sprite3D = captive.get_meta("container_sprite", null)
 	if container_sprite != null and is_instance_valid(container_sprite):
@@ -4397,6 +4470,365 @@ func _captive_take_damage(captive: Node3D, bullet_pos: Vector3) -> void:
 		flash_tw.tween_property(container_sprite, "modulate", Color.WHITE, 0.12)
 	if hp <= 0:
 		_release_captive_hero_pushed_aware(captive)
+
+# kimmy: one-time "RAINBOW ONLY" hint when a non-rainbow bullet pings Kimmy's cage.
+func _kimmy_rainbow_only_cue(pos: Vector3) -> void:
+	if _kimmy_cue_shown:
+		return
+	_kimmy_cue_shown = true
+	_spawn_popup_3d(pos + Vector3(0, 1.5, 0), "RAINBOW ONLY!", Color(0.7, 0.5, 1.0, 1), 56)
+
+# kimmy: spawn the 3-layer rock-candy cage at the locked centre-lane placement.
+# Layers (z back→front): kimmy_cage_back (wagon + rear crystals) → kimmy_caged
+# (the plain caged stallion, the captive "hero") → kimmy_cage_front (front bars).
+# _spawn_captive_hero builds the back container + the stallion + hp/labels; we
+# bolt the FRONT bars on as an extra child rendered over everything.
+func _spawn_kimmy_cage() -> void:
+	_kimmy_cue_shown = false
+	# Centre lane, a touch ahead of the posse (matches the pushed-wagon lane_z).
+	_kimmy_captive = _spawn_captive_hero("kimmy_cage_back", "kimmy_caged", 0.0, -5.0, 2)
+	if _kimmy_captive == null:
+		return
+	_kimmy_captive.set_meta("is_kimmy", true)
+	# Override HP to the high cage value (the tier system only gives 60).
+	_kimmy_captive.set_meta("hp", KIMMY_CAGE_HP)
+	_kimmy_captive.set_meta("max_hp", KIMMY_CAGE_HP)
+	var hp_label: Label3D = _kimmy_captive.get_meta("hp_label", null)
+	if hp_label != null and is_instance_valid(hp_label):
+		hp_label.text = str(KIMMY_CAGE_HP)
+		hp_label.position.y += 0.4   # kimmy: raise the cage HP number up very slightly
+	var trapped: Label3D = _kimmy_captive.get_meta("trapped_label", null)
+	if trapped != null and is_instance_valid(trapped):
+		trapped.text = "CAGED!"
+		trapped.modulate = Color(0.80, 0.55, 1.0, 1.0)
+	# Derive the back container's rendered geometry so the front bars line up
+	# proportionally (locked tuner layout: back 280w@y113, stallion 183w@y119,
+	# front 200w@y119 in a 320x380 frame → front ≈ 0.71× back width).
+	var c_data: Dictionary = CONTAINER_TEX["kimmy_cage_back"]
+	var back_h: float = float(c_data.h)              # back container world height
+	var fbars := Sprite3D.new()
+	var ftex: Texture2D = load("res://assets/sprites/props/kimmy_cage_front.png")
+	fbars.texture = ftex
+	fbars.billboard = 1
+	fbars.shaded = false
+	# 80% opacity so the caged stallion reads clearly THROUGH the bars. alpha_cut=0
+	# (DISABLED) lets the modulate alpha actually blend (scissor would be binary).
+	fbars.alpha_cut = 0
+	fbars.modulate.a = 0.80
+	fbars.render_priority = 5     # draw over the stallion + back container
+	# Back container rendered width ≈ back_tex_w * (back_h / back_tex_h). Front
+	# bars target ≈ 0.71× that. Size the front sprite to hit that world width.
+	var back_tex: Texture2D = load(c_data.path)
+	var back_render_w: float = float(back_tex.get_width()) * (back_h / float(back_tex.get_height()))
+	var front_target_w: float = back_render_w * 0.66
+	fbars.pixel_size = front_target_w / float(ftex.get_width())
+	# Vertical: bars sit over the stallion (hero centre ≈ back_h*0.65), centred,
+	# pushed forward in z so they read as "in front of" the caged stallion.
+	fbars.position = Vector3(0.0, back_h * 0.64, 0.30)
+	_kimmy_captive.add_child(fbars)
+	_kimmy_captive.set_meta("front_bars", fbars)
+	# kimmy: the caged stallion paces/rocks in her cell so she reads as alive and
+	# agitated, not a static prop. Gentle looping local sway + a slight tilt.
+	var caged_hs: Sprite3D = _kimmy_captive.get_meta("hero_sprite", null)
+	if caged_hs is Sprite3D:
+		var bx: float = caged_hs.position.x
+		var sway := caged_hs.create_tween().set_loops()
+		sway.tween_property(caged_hs, "position:x", bx + 0.14, 0.7) \
+			.set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN_OUT)
+		sway.parallel().tween_property(caged_hs, "rotation:z", deg_to_rad(-5.0), 0.7) \
+			.set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN_OUT)
+		sway.tween_property(caged_hs, "position:x", bx - 0.14, 0.7) \
+			.set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN_OUT)
+		sway.parallel().tween_property(caged_hs, "rotation:z", deg_to_rad(5.0), 0.7) \
+			.set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN_OUT)
+	_kimmy_window_left = KIMMY_RESCUE_WINDOW
+	_kimmy_spawn_countdown()
+	# Halt the world scroll while she blocks the path. _update_pushed_wagons also
+	# auto-sets this each frame (the cage is an is_captive node), but set it now
+	# so the very first frame is already frozen.
+	_set_cart_encounter(true)
+
+# kimmy: the rescue-timer HUD readout — a big Rye-font countdown just BELOW the
+# top-left taffy cutout ($UI/HeartsCutout, which ends at y≈571). Rainbow-strobed
+# + pulsed each frame in _process while the cage is up; freed on resolve.
+func _kimmy_spawn_countdown() -> void:
+	var ui: Node = get_node_or_null("UI")
+	if ui == null:
+		return
+	_kimmy_clear_countdown()
+	var lbl := Label.new()
+	lbl.name = "KimmyCountdown"
+	lbl.add_theme_font_override("font", _RYE3D)
+	lbl.add_theme_font_size_override("font_size", 96)
+	lbl.add_theme_color_override("font_outline_color", Color(0.16, 0.05, 0.04, 1))
+	lbl.add_theme_constant_override("outline_size", 12)
+	lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	lbl.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	lbl.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	# Align under the taffy cutout (offset_left 12 → right 588, bottom 571).
+	lbl.offset_left = 12.0
+	lbl.offset_top = 560.0
+	lbl.offset_right = 588.0
+	lbl.offset_bottom = 700.0
+	lbl.pivot_offset = Vector2(288.0, 70.0)
+	lbl.text = str(int(ceil(KIMMY_RESCUE_WINDOW)))
+	ui.add_child(lbl)
+	_kimmy_countdown = lbl
+
+# kimmy: per-frame countdown tick — rainbow-cycle the colour + pulse the scale so
+# it strobes urgently. Called from _process while _kimmy_captive is alive.
+func _kimmy_update_countdown() -> void:
+	if _kimmy_countdown == null or not is_instance_valid(_kimmy_countdown):
+		return
+	_kimmy_countdown.text = str(maxi(0, int(ceil(_kimmy_window_left))))
+	var t: float = float(Time.get_ticks_msec()) * 0.001
+	# Rainbow strobe: cycle hue fast; pulse brightness + scale on a faster beat.
+	_kimmy_countdown.modulate = Color.from_hsv(fmod(t * 1.6, 1.0), 0.85, 1.0)
+	var pulse: float = 1.0 + 0.12 * sin(t * 12.0)
+	_kimmy_countdown.scale = Vector2(pulse, pulse)
+
+# kimmy: remove the countdown HUD (on rescue, haul-away, or respawn).
+func _kimmy_clear_countdown() -> void:
+	if _kimmy_countdown != null and is_instance_valid(_kimmy_countdown):
+		_kimmy_countdown.queue_free()
+	_kimmy_countdown = null
+
+# kimmy: rescue window expired — the pushers haul her off. Miss, but NO soft-lock:
+# the cage slides off-left, frees, and the world scroll resumes.
+func _kimmy_haul_away(captive: Node3D) -> void:
+	var ui: Node = get_node_or_null("UI")
+	if ui != null:
+		FlourishBanner.spawn(ui, "SHE GOT AWAY")
+	if is_instance_valid(captive):
+		var t := captive.create_tween()
+		t.tween_property(captive, "position:x", captive.position.x - 14.0, 1.0)
+		t.tween_callback(captive.queue_free)
+	_kimmy_resume_scroll()
+
+# kimmy: drop the scroll-halt and let the world advance again.
+func _kimmy_resume_scroll() -> void:
+	_set_cart_encounter(false)
+
+const KIMMY_BOMB_TEX := preload("res://assets/sprites/props/kimmy_bomb.png")
+const KIMMY_RAINBOW_TEX := preload("res://assets/sprites/props/kimmy_rainbow.png")
+var _kimmy_glow_tex: GradientTexture2D = null   # cached soft radial glow (blooms + embers)
+
+# A soft white radial glow that fades to transparent — the additive building block
+# for the Skittles Bloom (bloom core + each candy ember) and the 2D overlay glow.
+func _kimmy_soft_glow() -> GradientTexture2D:
+	if _kimmy_glow_tex != null:
+		return _kimmy_glow_tex
+	var g := Gradient.new()
+	g.set_color(0, Color(1, 1, 1, 1))
+	g.set_color(1, Color(1, 1, 1, 0))
+	g.add_point(0.35, Color(1, 1, 1, 0.55))
+	var t := GradientTexture2D.new()
+	t.gradient = g
+	t.width = 128
+	t.height = 128
+	t.fill = GradientTexture2D.FILL_RADIAL
+	t.fill_from = Vector2(0.5, 0.5)
+	t.fill_to = Vector2(1.0, 0.5)
+	_kimmy_glow_tex = t
+	return t
+
+# kimmy: the sugar rush. The cage is gone, a big 2D Rainbow Kimmy overlay takes the
+# screen (bounce in -> crescendo glow -> launch off the top), and gumball bombs rock
+# down onto every on-screen outlaw + destructible obstacle, each detonating in a
+# Skittles Bloom. Posse + the cage are never targeted.
+func _rush_kimmy(freed_captive: Node3D) -> void:
+	if is_instance_valid(freed_captive):
+		freed_captive.queue_free()
+	_kimmy_clear_countdown()
+	if get_node_or_null("/root/AudioBus") and AudioBus.has_method("play_sfx"):
+		AudioBus.play_sfx("kimmy_riff")
+	var ui: Node = get_node_or_null("UI")
+	if ui != null:
+		FlourishBanner.spawn(ui, "RAINBOW KIMMY")
+	_play_kimmy_overlay()
+	var targets: Array = []
+	for o in outlaws_root.get_children():
+		if o is Node3D and kimmy_clears_node(_node_meta_flags(o)):
+			targets.append(o)
+	for ob in obstacles_root.get_children():
+		if ob is Node3D and kimmy_clears_node(_node_meta_flags(ob)):
+			targets.append(ob)
+	# Candy-bomb cascade, staggered so it reads as a wave rolling across the screen.
+	var i: int = 0
+	for t in targets:
+		get_tree().create_timer(1.2 + float(i) * 0.06).timeout.connect(_kimmy_drop_bomb.bind(t))
+		i += 1
+	await get_tree().create_timer(3.4).timeout
+	_kimmy_resume_scroll()
+
+# kimmy: the 2D cinematic. Rainbow Kimmy bounces up from the bottom, pulse/glows with
+# the riff crescendo, then launches up and off the top. CanvasLayer overlay only.
+func _play_kimmy_overlay() -> void:
+	var ui: Node = get_node_or_null("UI")
+	if ui == null:
+		return
+	var screen := Vector2(1080.0, 1920.0)
+	var root := Control.new()
+	root.name = "KimmyOverlay"
+	root.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	root.set_anchors_preset(Control.PRESET_FULL_RECT)
+	ui.add_child(root)
+	# Additive glow behind her.
+	var glow := TextureRect.new()
+	glow.texture = _kimmy_soft_glow()
+	glow.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	glow.size = Vector2(1200.0, 1200.0)
+	glow.position = Vector2(screen.x * 0.5 - 600.0, screen.y * 0.66 - 600.0)
+	glow.modulate = Color(1.0, 0.72, 0.32, 0.0)
+	var gmat := CanvasItemMaterial.new()
+	gmat.blend_mode = CanvasItemMaterial.BLEND_MODE_ADD
+	glow.material = gmat
+	root.add_child(glow)
+	# Kimmy.
+	var kim := TextureRect.new()
+	kim.texture = KIMMY_RAINBOW_TEX
+	kim.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	kim.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+	kim.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	var kw := 760.0
+	var kh := kw * float(KIMMY_RAINBOW_TEX.get_height()) / float(KIMMY_RAINBOW_TEX.get_width())
+	kim.size = Vector2(kw, kh)
+	kim.pivot_offset = Vector2(kw * 0.5, kh * 0.5)
+	var cx := screen.x * 0.5 - kw * 0.5
+	var rest_y := screen.y - kh * 0.92      # planted near the bottom, mostly on-screen
+	kim.position = Vector2(cx, screen.y + kh)   # start fully below
+	root.add_child(kim)
+	# Position track: rise (small overshoot) -> settle -> hold -> launch off top -> free.
+	var pos := kim.create_tween()
+	pos.tween_property(kim, "position:y", rest_y - 36.0, 0.34).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
+	pos.tween_property(kim, "position:y", rest_y, 0.18).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN_OUT)
+	pos.tween_interval(1.7)
+	pos.tween_property(kim, "position:y", -kh, 0.55).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_IN)
+	pos.tween_callback(root.queue_free)
+	# Scale pulse track: pulses START small and GROW toward the crescendo peak.
+	var scl := kim.create_tween()
+	scl.tween_interval(0.5)
+	for amp in [1.04, 1.07, 1.10, 1.15]:
+		scl.tween_property(kim, "scale", Vector2(amp, amp), 0.20).set_trans(Tween.TRANS_SINE)
+		scl.tween_property(kim, "scale", Vector2.ONE, 0.20).set_trans(Tween.TRANS_SINE)
+	# Glow track: fade in, swell with the crescendo, then fade as she launches.
+	var gt := glow.create_tween()
+	gt.tween_property(glow, "modulate:a", 0.55, 0.5)
+	gt.tween_property(glow, "modulate:a", 1.0, 1.6)
+	gt.tween_property(glow, "modulate:a", 0.0, 0.5)
+
+# kimmy: a gumball bomb rocks down onto `target` and detonates in a Skittles Bloom.
+func _kimmy_drop_bomb(target: Node3D) -> void:
+	if not is_instance_valid(target):
+		return
+	var land: Vector3 = target.position + Vector3(0, 0.6, 0)
+	var bomb := Sprite3D.new()
+	bomb.texture = KIMMY_BOMB_TEX
+	bomb.shaded = false
+	bomb.no_depth_test = true
+	bomb.render_priority = 6
+	bomb.pixel_size = 0.010
+	bomb.position = land + Vector3(0, 9.0, 0)
+	bomb.rotation.z = deg_to_rad(-12.0)
+	popups_root.add_child(bomb)
+	var fall := bomb.create_tween()
+	fall.tween_property(bomb, "position", land, 0.5).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_IN)
+	fall.tween_callback(_kimmy_bomb_land.bind(target, land, bomb))
+	# Rock while falling (independent loop; auto-stops when the bomb frees).
+	var rock := bomb.create_tween().set_loops()
+	rock.tween_property(bomb, "rotation:z", deg_to_rad(12.0), 0.14).set_trans(Tween.TRANS_SINE)
+	rock.tween_property(bomb, "rotation:z", deg_to_rad(-12.0), 0.14).set_trans(Tween.TRANS_SINE)
+
+func _kimmy_bomb_land(target: Node3D, land: Vector3, bomb: Node3D) -> void:
+	_kimmy_skittles_bloom(land)
+	if is_instance_valid(target):
+		_add_bounty(50)
+		if target.get_meta("is_outlaw", false):
+			_outlaw_left_field(target)   # decrement the quota via the existing path
+		target.queue_free()
+	if is_instance_valid(bomb):
+		bomb.queue_free()
+
+# Collect the flags kimmy_clears_node() checks from a live node's meta.
+func _node_meta_flags(n: Node) -> Dictionary:
+	return {
+		"is_outlaw": n.get_meta("is_outlaw", false),
+		"is_bull": n.get_meta("is_bull", false),
+		"is_captive": n.get_meta("is_captive", false),
+		"is_kimmy": n.get_meta("is_kimmy", false),
+		"dying": n.get_meta("dying", false),
+	}
+
+# kimmy: the "Skittles Bloom" explosion — additive, FROSTBITE/Prism-caliber. A warm
+# bloom core flash + an expanding rainbow shock ring + a burst of soft glowing candy
+# embers that drift out and fade. All additive sprites/particles — no shaders.
+func _kimmy_skittles_bloom(pos: Vector3) -> void:
+	_kimmy_bloom_flash(pos)
+	_spawn_rainbow_shock(pos)
+	var p := CPUParticles3D.new()
+	p.position = pos
+	p.amount = 40
+	p.lifetime = 0.9
+	p.one_shot = true
+	p.explosiveness = 0.92
+	p.spread = 180.0
+	p.direction = Vector3(0, 1, 0)
+	p.initial_velocity_min = 2.5
+	p.initial_velocity_max = 7.0
+	p.gravity = Vector3(0, -5.0, 0)
+	p.damping_min = 1.0
+	p.damping_max = 2.5
+	p.scale_amount_min = 0.22
+	p.scale_amount_max = 0.55
+	# Per-ember random candy colour (color_initial_ramp), faded out over life (color_ramp).
+	var candy := Gradient.new()
+	candy.offsets = PackedFloat32Array([0.0, 0.25, 0.5, 0.75, 1.0])
+	candy.colors = PackedColorArray([Color(1,0.25,0.25), Color(1,0.82,0.25),
+		Color(0.35,1,0.42), Color(0.3,0.65,1), Color(0.78,0.38,1)])
+	p.color_initial_ramp = candy
+	var fade := Gradient.new()
+	fade.set_color(0, Color(1, 1, 1, 1))
+	fade.set_color(1, Color(1, 1, 1, 0))
+	p.color_ramp = fade
+	# Each ember draws a soft additive glow quad (a meshless CPUParticles3D is invisible).
+	var quad := QuadMesh.new()
+	quad.size = Vector2(0.5, 0.5)
+	var mat := StandardMaterial3D.new()
+	mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	mat.blend_mode = BaseMaterial3D.BLEND_MODE_ADD
+	mat.billboard_mode = BaseMaterial3D.BILLBOARD_ENABLED
+	mat.albedo_texture = _kimmy_soft_glow()
+	mat.vertex_color_use_as_albedo = true
+	mat.texture_filter = BaseMaterial3D.TEXTURE_FILTER_LINEAR
+	quad.material = mat
+	p.mesh = quad
+	popups_root.add_child(p)
+	p.emitting = true
+	get_tree().create_timer(1.6).timeout.connect(p.queue_free)
+
+# kimmy: warm additive bloom core that pops + fades — the bright heart of the bloom.
+func _kimmy_bloom_flash(pos: Vector3) -> void:
+	var s := Sprite3D.new()
+	s.texture = _kimmy_soft_glow()
+	s.shaded = false
+	s.no_depth_test = true
+	s.render_priority = 7
+	s.modulate = Color(1.0, 0.86, 0.5, 1.0)
+	s.pixel_size = 0.012
+	s.position = pos
+	var mat := StandardMaterial3D.new()
+	mat.blend_mode = BaseMaterial3D.BLEND_MODE_ADD
+	mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	mat.albedo_texture = _kimmy_soft_glow()
+	mat.billboard_mode = BaseMaterial3D.BILLBOARD_ENABLED
+	s.material_override = mat
+	popups_root.add_child(s)
+	var t := s.create_tween().set_parallel(true)
+	t.tween_property(s, "pixel_size", 0.032, 0.30).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
+	t.tween_property(s, "modulate:a", 0.0, 0.30)
+	t.chain().tween_callback(s.queue_free)
 
 # Iter 133: container shatters → hero pops out → flips to face forward
 # → joins posse formation.
@@ -5405,6 +5837,25 @@ func _process(delta: float) -> void:
 	# pusher mechanic never ran — fixes carts not stopping the scroll.
 	if _level_state == LevelState.PLAYING or _level_state == LevelState.BOSS:
 		_update_pushed_wagons(delta)
+	# kimmy: resolve the cage rescue each frame -- crack (rainbow fire broke the
+	# cage) -> rush; time out (pushers haul her off) -> miss + resume scroll.
+	if is_instance_valid(_kimmy_captive):
+		_kimmy_window_left -= delta
+		_kimmy_update_countdown()
+		var k_hp: int = int(_kimmy_captive.get_meta("hp", 0))
+		match kimmy_rescue_outcome(k_hp, _kimmy_window_left):
+			"cracked":
+				var freed := _kimmy_captive
+				_kimmy_captive = null
+				_kimmy_clear_countdown()
+				_rush_kimmy(freed)
+			"timed_out":
+				var lost := _kimmy_captive
+				_kimmy_captive = null
+				_kimmy_clear_countdown()
+				_kimmy_haul_away(lost)
+			_:
+				pass
 	# Iter 118: world motion delta — 0 during BOSS so obstacles/gates/
 	# outlaws/scenery freeze in place during the duel. Cowboy steering +
 	# bullets + Pete continue to update on the real delta.
@@ -5533,7 +5984,10 @@ func _process(delta: float) -> void:
 		# Iter 173: the pushed cart + its pushers freeze in z — during a
 		# cart encounter the whole world's forward scroll is paused anyway
 		# (terrain + props), so the cart stays in lockstep with the ground.
-		if outlaw.get_meta("is_pushed", false) or outlaw.get_meta("is_pusher", false):
+		# kimmy: her cage is a STATIC blocker (not pushed) — freeze it in z too,
+		# so it sits still in the halted world instead of creeping like an outlaw.
+		if outlaw.get_meta("is_pushed", false) or outlaw.get_meta("is_pusher", false) \
+				or outlaw.get_meta("is_kimmy", false):
 			z_speed = 0.0
 		# Iter 136: real delta (not motion_delta) so outlaws keep advancing
 		# on the posse even while the world scroll is paused / during BOSS.
@@ -5549,7 +6003,8 @@ func _process(delta: float) -> void:
 			-COWBOY_X_BOUND - PATH_AMP, COWBOY_X_BOUND + PATH_AMP)
 		# Iter 164: the set-piece doesn't x-track the posse — the wagon
 		# "tracking the posse" was this lerp. Pushers move it instead.
-		if outlaw.get_meta("is_pushed", false) or outlaw.get_meta("is_pusher", false):
+		if outlaw.get_meta("is_pushed", false) or outlaw.get_meta("is_pusher", false) \
+				or outlaw.get_meta("is_kimmy", false):
 			target_x = outlaw.position.x
 		# Iter 136: real delta so x-tracking continues during BOSS state too
 		outlaw.position.x = lerpf(outlaw.position.x, target_x,
@@ -5557,7 +6012,8 @@ func _process(delta: float) -> void:
 		# iter400: ride the hilly terrain (sit on the ground, not float over it).
 		# Skip the pushed-wagon set-piece (it owns its own y). iter401: outlaws spawn
 		# at y=1.0 (their foot offset) — use that, not POSSE_BASE_Y, or their feet clip.
-		if not outlaw.get_meta("is_pushed", false) and not outlaw.get_meta("is_pusher", false):
+		if not outlaw.get_meta("is_pushed", false) and not outlaw.get_meta("is_pusher", false) \
+				and not outlaw.get_meta("is_kimmy", false):
 			outlaw.position.y = OUTLAW_BASE_Y + _hill_y(_level_distance + (cowboy_3d.position.z - outlaw.position.z))
 		var ft: float = outlaw.get_meta("fire_timer", 0.0)
 		ft -= delta
@@ -5588,7 +6044,7 @@ func _process(delta: float) -> void:
 				# Iter 133: captives route to specialized damage handler
 				# (HP scales with hero tier, no death-stream, release ceremony).
 				if outlaw.get_meta("is_captive", false):
-					_captive_take_damage(outlaw, bullet.position)
+					_captive_take_damage(outlaw, bullet.position, bullet.get_meta("rainbow", false))
 					bullet.queue_free()
 					break
 				var hp: int = outlaw.get_meta("hp", 1) - bullet.get_meta("dmg", 1)
@@ -6542,6 +6998,7 @@ const CANDY_BULLET_TEX := {
 	FireMode.FROSTBITE: ["candy_freezeray.png"],
 	FireMode.FRENZY: ["candy_red.png", "candy_green.png", "candy_blue.png", "candy_amber.png",
 		"candy_cotton.png", "candy_bomb.png", "candy_fireball.png", "candy_jawbreaker.png"],
+	FireMode.RAINBOW: ["../props/candy_rainbow.png"],
 }
 
 # iter404: the chain-lightning overlay sits on the UI CanvasLayer, behind the HUD
@@ -6590,6 +7047,82 @@ func _emit_frost_chain() -> void:
 	if pts.size() >= 2:
 		_frost_bolts.call("add_chain", pts, 1.0)
 
+# kimmy: rainbow prism-chain overlay, mirrors _build_frost_bolts.
+func _build_rainbow_bolts() -> void:
+	var ui: Node = get_node_or_null("UI")
+	if ui == null:
+		return
+	_rainbow_bolts = RainbowBoltsScript.new()
+	_rainbow_bolts.name = "RainbowBolts"
+	ui.add_child(_rainbow_bolts)
+	ui.move_child(_rainbow_bolts, 0)
+
+const VFX_RAINBOW_SHOCK := preload("res://assets/sprites/props/vfx_rainbow_shock.png")
+
+# kimmy: every posse member is equipped with the Rainbow weapon, so the prism
+# chain fires from the leader AND a bounded sample of crowd members — rainbow
+# bolts crackle across the whole posse front, not just the leader.
+const KIMMY_CHAIN_MEMBERS: int = 4   # extra crowd origins that emit a chain per shot
+func _emit_rainbow_chain() -> void:
+	if _rainbow_bolts == null or camera == null or cowboy_3d == null:
+		return
+	# Leader chain (carries the shock pops so they don't stack per member).
+	_emit_rainbow_chain_from(cowboy_3d.position, true)
+	if _posse_crowd != null:
+		var origins: PackedVector3Array = _posse_crowd.call("member_origins")
+		var n: int = mini(origins.size(), KIMMY_CHAIN_MEMBERS)
+		for i in range(n):
+			var o: Vector3 = origins[i]
+			_emit_rainbow_chain_from(
+				Vector3(_posse_crowd.position.x + o.x, 0.0, _posse_crowd.position.z + o.z), false)
+
+# Emit one prism chain from `origin`'s muzzle through nearby enemies (reuses
+# _frost_chain_targets). `with_shock` adds an additive Skittles shock pop per link.
+func _emit_rainbow_chain_from(origin: Vector3, with_shock: bool) -> void:
+	var muzzle: Vector3 = origin + Vector3(0, 0.95, 0)
+	if camera.is_position_behind(muzzle):
+		return
+	var pts := PackedVector2Array()
+	pts.append(camera.unproject_position(muzzle))
+	var targets: Array = _frost_chain_targets(muzzle, 3)
+	if targets.is_empty():
+		var fwd := Vector3(origin.x, 0.95, _bullet_despawn_z)
+		if not camera.is_position_behind(fwd):
+			pts.append(camera.unproject_position(fwd))
+	else:
+		for t in targets:
+			var tp: Vector3 = t + Vector3(0, 0.9, 0)
+			if not camera.is_position_behind(tp):
+				pts.append(camera.unproject_position(tp))
+			if with_shock:
+				_spawn_rainbow_shock(t + Vector3(0, 0.9, 0))
+	if pts.size() >= 2:
+		_rainbow_bolts.call("add_chain", pts, 1.0)
+
+# kimmy: premium additive rainbow shockwave ring at an enemy hit (Skittles ring).
+func _spawn_rainbow_shock(pos: Vector3) -> void:
+	var s := Sprite3D.new()
+	s.billboard = BaseMaterial3D.BILLBOARD_ENABLED
+	s.shaded = false
+	s.no_depth_test = true
+	s.render_priority = 7
+	s.pixel_size = 0.0020
+	s.position = pos
+	var mat := StandardMaterial3D.new()
+	mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	mat.blend_mode = BaseMaterial3D.BLEND_MODE_ADD
+	mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	mat.albedo_texture = VFX_RAINBOW_SHOCK
+	mat.texture_filter = BaseMaterial3D.TEXTURE_FILTER_LINEAR
+	mat.billboard_mode = BaseMaterial3D.BILLBOARD_ENABLED
+	s.material_override = mat
+	popups_root.add_child(s)
+	var t := create_tween().set_parallel(true)
+	t.tween_property(s, "pixel_size", 0.0060, 0.28) \
+		.set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
+	t.tween_property(s, "modulate:a", 0.0, 0.28)
+	t.chain().tween_callback(s.queue_free)
+
 # iter409: impact blast on bullet -> gate/prop collision (was missing in gameplay;
 # ported from the SP1 testbed). Billboard, draws on top, pops via pixel_size + fades.
 const IMPACT_BLAST_TEX := preload("res://assets/sprites/ui/blast.png")
@@ -6617,6 +7150,9 @@ func _spawn_bullet() -> void:
 	# iter404: FROSTBITE fires chain lightning through nearby enemies.
 	if _fire_mode == FireMode.FROSTBITE:
 		_emit_frost_chain()
+	# kimmy: RAINBOW fires a rainbow prism chain + additive shock pops.
+	if _fire_mode == FireMode.RAINBOW:
+		_emit_rainbow_chain()
 	# iter406: firepower SCALES with the posse. We can't spawn 1000 bullet nodes per
 	# shot, so a bounded sample of bullets fires and EACH carries the damage of the
 	# members it represents (volley damage ≈ the whole posse's per-member fire). A
@@ -6660,6 +7196,7 @@ func _spawn_bullet_at(world_x: float, world_z: float) -> void:
 		despawn = minf(despawn, bz - 2.0)
 	bullet.set_meta("despawn_z", despawn)
 	bullet.set_meta("dmg", _volley_dmg)   # iter406: posse-scaled damage
+	bullet.set_meta("rainbow", _fire_mode == FireMode.RAINBOW)
 	bullets_root.add_child(bullet)
 
 # Shared candy-sprite factory: a camera-facing Sprite3D sized to world_diam,

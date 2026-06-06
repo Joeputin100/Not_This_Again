@@ -165,9 +165,9 @@ func _load_from_disk() -> void:
 	var cfg := ConfigFile.new()
 	if cfg.load(_save_path()) != OK:
 		return
-	# Directly assign without going through the setter (we don't want
-	# to trigger _save_to_disk in a load loop or emit signals before
-	# subscribers are wired).
+	# NOTE: hearts/bounty have setters, so these assignments DO run through them
+	# (one redundant _save_to_disk on load — benign, since we load before any
+	# subscribers are wired so no stale signals are acted on).
 	hearts = clampi(int(cfg.get_value("hearts", "current", MAX_HEARTS)), 0, MAX_HEARTS)
 	_last_spend_unix = int(cfg.get_value("hearts", "last_spend_unix", 0))
 	bounty = int(cfg.get_value("meta", "bounty", 0))

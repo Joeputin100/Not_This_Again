@@ -321,6 +321,12 @@ var _kimmy_window_left: float = 0.0
 
 - [ ] **Step 2: Spawn helper.** Reuse `_spawn_captive_hero` (READ its signature `(container_slug, hero_slug, ...)` and how it sets `is_captive`/`hp`/`hp_label` + whether it sets `_cart_encounter` to halt the scroll). Add:
 ```gdscript
+**Cage part placement (locked by the user via the tuner).** Compose the cage as a 3-sprite stack — `kimmy_cage_back` (behind) → `kimmy_caged` stallion (middle) → `kimmy_cage_front` (front bars) — to MATCH this reference layout (measured in a 320w×380h frame, all horizontally centred, z back→stallion→front):
+- `kimmy_cage_back`: 280px wide, top y=113
+- `kimmy_caged` (stallion): 183px wide, top y=119
+- `kimmy_cage_front`: 200px wide, top y=119
+i.e. relative to the back wagon: front bars ≈ 0.71× the wagon width and the stallion ≈ 0.65×, with the stallion + front bars at the same y a hair below the wagon top. Translate these to the captive's billboard positions/`pixel_size` and screenshot-tune until it matches (stallion clearly enclosed front+back by the rock-candy bars).
+
 func _spawn_kimmy_cage() -> void:
 	_kimmy_cue_shown = false
 	# container = the cage-wagon art; hero = the plain caged stallion.
