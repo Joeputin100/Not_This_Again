@@ -256,6 +256,8 @@ const FrostBoltsScript = preload("res://scripts/frost_bolts.gd")
 var _frost_bolts: Node2D = null   # iter404: FROSTBITE chain-lightning overlay
 const RainbowBoltsScript = preload("res://scripts/rainbow_bolts.gd")
 var _rainbow_bolts: Node2D = null   # kimmy: RAINBOW prism-chain overlay
+const CometStreakScript = preload("res://scripts/comet_streak.gd")
+var _comet_streak: Node2D = null   # weapon fx: RIFLE rainbow-comet trail overlay
 var outlaw_bullets_root: Node3D
 var boss_root: Node3D
 # Iter 69: terrain_3d.gd script wasn't attached to the inline Terrain3D
@@ -602,6 +604,7 @@ func _ready() -> void:
 	_apply_terrain_theme()   # iter415: per-terrain fog
 	_build_frost_bolts()     # iter404: FROSTBITE chain-lightning overlay
 	_build_rainbow_bolts()   # kimmy: RAINBOW prism-chain overlay
+	_build_comet_streak()    # weapon fx: RIFLE rainbow-comet trail overlay
 	if info_label != null:
 		info_label.text = "iter97 RDY-4 3D built"
 	# Iter 72: spawn posse followers at trapezoid offsets behind leader.
@@ -7496,6 +7499,301 @@ func _spawn_rainbow_shock(pos: Vector3) -> void:
 	t.tween_property(s, "modulate:a", 0.0, 0.28)
 	t.chain().tween_callback(s.queue_free)
 
+# ============================================================================
+# weapon fx: the 5 owner-approved fire-FX. Mobile-safe ONLY — additive 2D-canvas
+# overlays, CPUParticles3D with a mesh + additive material, and additive Sprite3D
+# billboards. NO custom spatial shaders (Android white-rects them). All FX are
+# bounded (capped particle counts, short lifetimes, freed via a one-shot timer) so
+# big-posse FPS holds, and they're fire-rate-gated by _spawn_bullet's cadence.
+#
+# Each FX is a reusable _emit_<fx>() called from _spawn_bullet. The assigned ones
+# fire from the leader + a bounded crowd-member sample (mirrors _emit_rainbow_chain
+# / KIMMY_CHAIN_MEMBERS) so the effect crackles across the posse front. The two
+# unassigned (sparkle-swarm, confetti-cannon) are callable for future roster weapons.
+# ============================================================================
+
+# Candy palette shared by the new FX (gumdrop pellets, sparkles, confetti).
+# (Not a const — a PackedColorArray() call isn't a constant expression in GDScript.)
+var WFX_CANDY_COLORS: PackedColorArray = PackedColorArray([
+	Color(1, 0.25, 0.25), Color(1, 0.82, 0.25), Color(0.35, 1, 0.42),
+	Color(0.3, 0.65, 1), Color(0.78, 0.38, 1), Color(1, 0.55, 0.85)])
+const WFX_CREW_SAMPLE: int = 4   # extra crowd origins that emit per shot (matches KIMMY_CHAIN_MEMBERS)
+
+# Bounded crowd-origin sample (leader + up to WFX_CREW_SAMPLE members), as world
+# positions. Mirrors the loop in _emit_rainbow_chain / _spawn_bullet.
+func _wfx_emit_origins() -> PackedVector3Array:
+	var out := PackedVector3Array()
+	if cowboy_3d != null:
+		out.append(cowboy_3d.position)
+	if _posse_crowd != null:
+		var origins: PackedVector3Array = _posse_crowd.call("member_origins")
+		var n: int = mini(origins.size(), WFX_CREW_SAMPLE)
+		for i in range(n):
+			var o: Vector3 = origins[i]
+			out.append(Vector3(_posse_crowd.position.x + o.x, 0.0, _posse_crowd.position.z + o.z))
+	return out
+
+# Build an additive, unshaded, billboarded glow material backed by the reusable
+# soft-glow texture. Used as the mesh material for the new CPUParticles3D bursts.
+# (A meshless CPUParticles3D renders NOTHING, so every burst gets a glow quad.)
+func _wfx_glow_quad(size: float) -> QuadMesh:
+	var quad := QuadMesh.new()
+	quad.size = Vector2(size, size)
+	var mat := StandardMaterial3D.new()
+	mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	mat.blend_mode = BaseMaterial3D.BLEND_MODE_ADD
+	mat.billboard_mode = BaseMaterial3D.BILLBOARD_ENABLED
+	mat.albedo_texture = _kimmy_soft_glow()
+	mat.vertex_color_use_as_albedo = true
+	mat.texture_filter = BaseMaterial3D.TEXTURE_FILTER_LINEAR
+	quad.material = mat
+	return quad
+
+# Quick additive muzzle-bloom pop at a world position (small soft glow that pops
+# in scale + fades). Reused by the buckshot scatter + gatling bloom.
+func _wfx_muzzle_pop(pos: Vector3, tint: Color, start_px: float = 0.010, end_px: float = 0.026, dur: float = 0.18) -> void:
+	var s := Sprite3D.new()
+	s.texture = _kimmy_soft_glow()
+	s.shaded = false
+	s.no_depth_test = true
+	s.render_priority = 7
+	s.modulate = tint
+	s.pixel_size = start_px
+	s.position = pos
+	var mat := StandardMaterial3D.new()
+	mat.blend_mode = BaseMaterial3D.BLEND_MODE_ADD
+	mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	mat.albedo_texture = _kimmy_soft_glow()
+	mat.billboard_mode = BaseMaterial3D.BILLBOARD_ENABLED
+	s.material_override = mat
+	popups_root.add_child(s)
+	var t := s.create_tween().set_parallel(true)
+	t.tween_property(s, "pixel_size", end_px, dur).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
+	t.tween_property(s, "modulate:a", 0.0, dur)
+	t.chain().tween_callback(s.queue_free)
+
+# --- FX 1: Gumdrop Buckshot Scatter (wired to FireMode.CANDY) ----------------
+# One-shot cone/sphere burst of multicolor gumdrop pellets (additive glow quads,
+# candy color_initial_ramp) + a quick additive muzzle-bloom pop at the muzzle.
+func _emit_buckshot_scatter() -> void:
+	if camera == null:
+		return
+	for origin in _wfx_emit_origins():
+		_emit_buckshot_from(origin + Vector3(0, 0.95, 0))
+
+func _emit_buckshot_from(muzzle: Vector3) -> void:
+	_wfx_muzzle_pop(muzzle, Color(1.0, 0.85, 0.5, 1.0))
+	var p := CPUParticles3D.new()
+	p.position = muzzle
+	p.amount = 14
+	p.lifetime = 0.45
+	p.one_shot = true
+	p.explosiveness = 1.0
+	p.spread = 38.0                      # forward cone toward the enemies
+	p.direction = Vector3(0, 0.25, -1)   # downrange (−z) with a slight lift
+	p.initial_velocity_min = 6.0
+	p.initial_velocity_max = 11.0
+	p.gravity = Vector3(0, -7.0, 0)
+	p.damping_min = 0.5
+	p.damping_max = 1.5
+	p.scale_amount_min = 0.18
+	p.scale_amount_max = 0.34
+	var candy := Gradient.new()
+	candy.offsets = PackedFloat32Array([0.0, 0.2, 0.4, 0.6, 0.8, 1.0])
+	candy.colors = WFX_CANDY_COLORS
+	p.color_initial_ramp = candy
+	var fade := Gradient.new()
+	fade.set_color(0, Color(1, 1, 1, 1))
+	fade.set_color(1, Color(1, 1, 1, 0))
+	p.color_ramp = fade
+	p.mesh = _wfx_glow_quad(0.4)
+	popups_root.add_child(p)
+	p.emitting = true
+	get_tree().create_timer(1.0).timeout.connect(p.queue_free)
+
+# --- FX 2: Rainbow Comet Trail (wired to FireMode.RIFLE) ---------------------
+# Bright additive comet head + fading hue-scrolling ribbon launched downrange.
+# Drawn as a 2D-canvas additive streak (comet_streak.gd) from screen-projected
+# muzzle → target (or forward) points, mirroring the frost/rainbow overlays.
+func _emit_comet_trail() -> void:
+	if _comet_streak == null or camera == null:
+		return
+	for origin in _wfx_emit_origins():
+		_emit_comet_from(origin + Vector3(0, 0.95, 0))
+
+func _emit_comet_from(muzzle: Vector3) -> void:
+	if camera.is_position_behind(muzzle):
+		return
+	var a: Vector2 = camera.unproject_position(muzzle)
+	var tip3: Vector3
+	var targets: Array = _frost_chain_targets(muzzle, 1)
+	if targets.is_empty():
+		tip3 = Vector3(muzzle.x, 0.95, _bullet_despawn_z)
+	else:
+		tip3 = (targets[0] as Vector3) + Vector3(0, 0.9, 0)
+	if camera.is_position_behind(tip3):
+		return
+	var b: Vector2 = camera.unproject_position(tip3)
+	_comet_streak.call("add_streak", a, b, _rng.randf())
+
+# --- FX 3: Gumball Gatling Bloom (wired to FireMode.FRENZY) -------------------
+# Stuttering additive muzzle-flash (rapid bloom pops) + a fast forward tracer jet
+# of small additive particles.
+func _emit_gatling_bloom() -> void:
+	if camera == null:
+		return
+	for origin in _wfx_emit_origins():
+		_emit_gatling_from(origin + Vector3(0, 0.95, 0))
+
+func _emit_gatling_from(muzzle: Vector3) -> void:
+	# Stuttering flash: 2 quick bloom pops at slightly different scales.
+	_wfx_muzzle_pop(muzzle, Color(1.0, 0.7, 0.9, 1.0), 0.006, 0.016, 0.09)
+	get_tree().create_timer(0.05).timeout.connect(
+		_wfx_muzzle_pop.bind(muzzle, Color(1.0, 0.9, 0.6, 1.0), 0.008, 0.020, 0.10))
+	# Fast forward tracer jet (small, short-lived, narrow cone).
+	var p := CPUParticles3D.new()
+	p.position = muzzle
+	p.amount = 10
+	p.lifetime = 0.30
+	p.one_shot = true
+	p.explosiveness = 0.85
+	p.spread = 8.0
+	p.direction = Vector3(0, 0.05, -1)
+	p.initial_velocity_min = 16.0
+	p.initial_velocity_max = 24.0
+	p.gravity = Vector3.ZERO
+	p.scale_amount_min = 0.12
+	p.scale_amount_max = 0.22
+	var ramp := Gradient.new()
+	ramp.offsets = PackedFloat32Array([0.0, 0.5, 1.0])
+	ramp.colors = PackedColorArray([Color(1, 0.55, 0.85), Color(1, 0.85, 0.4), Color(0.5, 0.8, 1)])
+	p.color_initial_ramp = ramp
+	var fade := Gradient.new()
+	fade.set_color(0, Color(1, 1, 1, 1))
+	fade.set_color(1, Color(1, 1, 1, 0))
+	p.color_ramp = fade
+	p.mesh = _wfx_glow_quad(0.3)
+	popups_root.add_child(p)
+	p.emitting = true
+	get_tree().create_timer(0.8).timeout.connect(p.queue_free)
+
+# --- FX 4: Homing Sparkle Swarm (reusable, UNASSIGNED) -----------------------
+# TODO(roster): wire to a future homing-sparkle weapon FireMode. CPUParticles3D
+# sparkles that spiral/curve toward the nearest enemy. CPUParticles3D has no true
+# per-particle homing, so we approximate: aim the emission cone at the target,
+# add a tangential (orbit) velocity for the spiral, and a gentle attractor-ish
+# inward pull via gravity pointed at the target. Bounded + auto-freed.
+func _emit_sparkle_swarm() -> void:
+	if camera == null:
+		return
+	for origin in _wfx_emit_origins():
+		_emit_sparkle_swarm_from(origin + Vector3(0, 0.95, 0))
+
+func _emit_sparkle_swarm_from(muzzle: Vector3) -> void:
+	var targets: Array = _frost_chain_targets(muzzle, 1)
+	var target: Vector3
+	if targets.is_empty():
+		target = Vector3(muzzle.x, 0.95, _bullet_despawn_z)
+	else:
+		target = (targets[0] as Vector3) + Vector3(0, 0.9, 0)
+	var to_t: Vector3 = (target - muzzle)
+	var dir: Vector3 = to_t.normalized() if to_t.length() > 0.01 else Vector3(0, 0, -1)
+	var p := CPUParticles3D.new()
+	p.position = muzzle
+	p.amount = 16
+	p.lifetime = 0.6
+	p.one_shot = true
+	p.explosiveness = 0.7
+	p.spread = 22.0
+	p.direction = dir
+	p.initial_velocity_min = 5.0
+	p.initial_velocity_max = 9.0
+	# Tangential velocity → orbit/spiral; gravity toward the target → curved homing pull.
+	p.tangential_accel_min = 6.0
+	p.tangential_accel_max = 12.0
+	p.gravity = dir * 14.0
+	p.scale_amount_min = 0.12
+	p.scale_amount_max = 0.26
+	var candy := Gradient.new()
+	candy.offsets = PackedFloat32Array([0.0, 0.2, 0.4, 0.6, 0.8, 1.0])
+	candy.colors = WFX_CANDY_COLORS
+	p.color_initial_ramp = candy
+	var fade := Gradient.new()
+	fade.offsets = PackedFloat32Array([0.0, 0.7, 1.0])
+	fade.colors = PackedColorArray([Color(1, 1, 1, 1), Color(1, 1, 1, 0.8), Color(1, 1, 1, 0)])
+	p.color_ramp = fade
+	p.mesh = _wfx_glow_quad(0.3)
+	popups_root.add_child(p)
+	p.emitting = true
+	get_tree().create_timer(1.2).timeout.connect(p.queue_free)
+
+# --- FX 5: Confetti Cannon (reusable, UNASSIGNED) ----------------------------
+# TODO(roster): wire to a future confetti-cannon weapon FireMode. Wide cone of
+# flat spinning confetti quads with gravity + candy colors. Uses a plain (alpha)
+# QuadMesh so the confetti reads as solid paper flakes rather than glow; particle
+# angle/angular-velocity spins them. Bounded + auto-freed.
+func _emit_confetti_cannon() -> void:
+	if camera == null:
+		return
+	for origin in _wfx_emit_origins():
+		_emit_confetti_from(origin + Vector3(0, 0.95, 0))
+
+func _emit_confetti_from(muzzle: Vector3) -> void:
+	var p := CPUParticles3D.new()
+	p.position = muzzle
+	p.amount = 22
+	p.lifetime = 1.1
+	p.one_shot = true
+	p.explosiveness = 0.95
+	p.spread = 55.0
+	p.direction = Vector3(0, 0.6, -1)
+	p.initial_velocity_min = 6.0
+	p.initial_velocity_max = 12.0
+	p.gravity = Vector3(0, -9.0, 0)
+	p.damping_min = 0.5
+	p.damping_max = 1.5
+	# Spin the flakes.
+	p.angle_min = 0.0
+	p.angle_max = 360.0
+	p.angular_velocity_min = -360.0
+	p.angular_velocity_max = 360.0
+	p.scale_amount_min = 0.16
+	p.scale_amount_max = 0.30
+	var candy := Gradient.new()
+	candy.offsets = PackedFloat32Array([0.0, 0.2, 0.4, 0.6, 0.8, 1.0])
+	candy.colors = WFX_CANDY_COLORS
+	p.color_initial_ramp = candy
+	var fade := Gradient.new()
+	fade.offsets = PackedFloat32Array([0.0, 0.8, 1.0])
+	fade.colors = PackedColorArray([Color(1, 1, 1, 1), Color(1, 1, 1, 1), Color(1, 1, 1, 0)])
+	p.color_ramp = fade
+	# Flat spinning paper flake — alpha (not additive) so confetti reads as solid.
+	var quad := QuadMesh.new()
+	quad.size = Vector2(0.28, 0.28)
+	var mat := StandardMaterial3D.new()
+	mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	mat.albedo_color = Color(1, 1, 1, 1)
+	mat.vertex_color_use_as_albedo = true
+	mat.cull_mode = BaseMaterial3D.CULL_DISABLED   # flakes visible from both sides
+	quad.material = mat
+	p.mesh = quad
+	popups_root.add_child(p)
+	p.emitting = true
+	get_tree().create_timer(1.6).timeout.connect(p.queue_free)
+
+# weapon fx: RIFLE rainbow-comet trail overlay builder (mirrors _build_rainbow_bolts).
+func _build_comet_streak() -> void:
+	var ui: Node = get_node_or_null("UI")
+	if ui == null:
+		return
+	_comet_streak = CometStreakScript.new()
+	_comet_streak.name = "CometStreak"
+	ui.add_child(_comet_streak)
+	ui.move_child(_comet_streak, 0)
+
 # iter409: impact blast on bullet -> gate/prop collision (was missing in gameplay;
 # ported from the SP1 testbed). Billboard, draws on top, pops via pixel_size + fades.
 const IMPACT_BLAST_TEX := preload("res://assets/sprites/ui/blast.png")
@@ -7526,6 +7824,13 @@ func _spawn_bullet() -> void:
 	# kimmy: RAINBOW fires a rainbow prism chain + additive shock pops.
 	if _fire_mode == FireMode.RAINBOW:
 		_emit_rainbow_chain()
+	# weapon fx: the 3 newly-assigned signature fire-FX.
+	if _fire_mode == FireMode.CANDY:
+		_emit_buckshot_scatter()    # Gumdrop Buckshot Scatter
+	elif _fire_mode == FireMode.RIFLE:
+		_emit_comet_trail()         # Rainbow Comet Trail
+	elif _fire_mode == FireMode.FRENZY:
+		_emit_gatling_bloom()       # Gumball Gatling Bloom
 	# iter406: firepower SCALES with the posse. We can't spawn 1000 bullet nodes per
 	# shot, so a bounded sample of bullets fires and EACH carries the damage of the
 	# members it represents (volley damage ≈ the whole posse's per-member fire). A
