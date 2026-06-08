@@ -473,6 +473,7 @@ const RAISIN_WARP_X_MAX: float = 4.0    # lateral range he can reappear at
 const RAISIN_FLURRY_DPS: float = 4.0    # posse drained/sec during a Grapes of Wrath flurry
 var _raisin: RaisinKiddState = null
 var _raisin_flurry_accum: float = 0.0
+var _raisin_hit_voice_cd: float = 0.0
 
 # Iter 88: bonus pickup spawn parameters. Pickups appear periodically
 # at a random lane x, hover with sine y-bob, scroll toward cowboy.
@@ -4101,11 +4102,15 @@ func _process_raisin_kidd(boss: Node3D, delta: float) -> void:
 		if dx * dx + dz * dz < PETE_HIT_RADIUS_SQ:
 			hits += 1
 			bullet.queue_free()
+	_raisin_hit_voice_cd = maxf(0.0, _raisin_hit_voice_cd - delta)
 	if hits > 0:
 		_raisin.register_fire(hits)
 		if _raisin.is_vulnerable():
 			_spawn_popup_3d(boss.position + Vector3(0, 1.6, 0),
 				"-%d" % hits, Color(0.85, 0.45, 0.85, 1), 64)
+			if _raisin_hit_voice_cd <= 0.0:
+				_raisin_hit_voice_cd = 3.5
+				_raisin_say("hit")
 		else:
 			_spawn_popup_3d(boss.position + Vector3(0, 1.6, 0), "TINK",
 				Color(0.8, 0.85, 1.0, 1), 48)
@@ -4307,7 +4312,36 @@ func _show_fail() -> void:
 	if get_node_or_null("/root/AudioBus") and AudioBus.has_method("stop_gunfire"):
 		AudioBus.stop_gunfire()
 	info_label.text = "DEAD  ·  posse 0  ·  hits %d" % _hits
+	# Level-5: if the player fell at Raisin Kidd, play his Five-Point finisher
+	# cinematic before the Fail modal. (_failed is already true, so re-entry is
+	# guarded.)
+	var raisin_live := false
+	if boss_root.get_child_count() > 0:
+		var b: Node = boss_root.get_child(0)
+		raisin_live = is_instance_valid(b) and b.get_meta("boss_kind", "") == "raisin"
+	if raisin_live:
+		await _play_raisin_finisher()
 	_present_fail_modal()
+
+# Five-Point Raisin Exploding Gumdrop Technique — the lose cinematic, only when
+# the player is defeated AT the Raisin Kidd boss. Non-interactive flourish that
+# runs before the Fail modal.
+func _play_raisin_finisher() -> void:
+	if _manga_fx == null:
+		return
+	var vp: Vector2 = get_viewport_rect().size
+	var center: Vector2 = vp * Vector2(0.5, 0.42)
+	var strike: Vector2 = vp * Vector2(0.5, 0.6)
+	_raisin_say("dying")   # his cackle; a dedicated finisher line can swap in later
+	_manga_fx.title_card("FIVE-POINT RAISIN\nEXPLODING GUMDROP!")
+	await get_tree().create_timer(1.1).timeout
+	for i in range(5):
+		_manga_fx.burst(strike + Vector2((i - 2) * 30, (i - 2) * 12), "BAP!")
+		await get_tree().create_timer(0.12).timeout
+	_manga_fx.gumdrop_countdown(strike)
+	await get_tree().create_timer(0.45 * 5.0 + 0.9).timeout
+	_manga_fx.title_card("DEFEATED")
+	await get_tree().create_timer(0.9).timeout
 
 # Iter 77/81: trigger the win flow. Pop the WIN overlay AFTER playing
 # the iter 81 Gold Rush salute ceremony — each remaining posse member
