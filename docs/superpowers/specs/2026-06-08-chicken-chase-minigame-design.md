@@ -21,7 +21,7 @@ Reuses the main game's 3D auto-runner, shrunk to a single self-contained chase:
 - **Setting:** a short, sunny lane on the existing **farm terrain theme**, starting at a **busted chicken coop** (the guilt callback — feathers everywhere). No outlaws, gates, pits, or obstacles — *only chickens.*
 - **Duration:** a fixed **allotted time** (≈25 s, device-tuned) — the length of the lane. There is **no hard fail**; the run simply ends when time/lane runs out.
 - **The cowboy auto-runs** forward (same movement/steering code as the main game). The player **swipes left/right** to steer toward birds.
-- **A flock of 8 chickens** flutters ahead, juking, hopping, and scattering. They reuse the existing chicken sprites/breeds.
+- **A flock of 8 popcorn chickens** flutters ahead, juking, hopping, and scattering. The hens are **made of popcorn** — puffed-popcorn bodies, little kernel beaks, butter-yellow tufts (owner-loved detail). Restyle of the existing chicken sprites into the popcorn look.
 - **Catch input:** tap/flick toward a nearby chicken → the cowboy performs a **lunge-grab** (a quick dive) with a short **recovery window** so mashing doesn't work.
 - **Chickens are slippery:** a chicken in range can **juke at the last instant** — telegraphed by a wind-up *cluck* + feather puff — so a mistimed lunge **whiffs** and the bird scoots past. Catching cleanly means reading the juke.
 - **Score = your haul:** the `caught / 8` counter is the score. Uncaught hens at the end simply don't count.
@@ -63,7 +63,9 @@ Formula: `bonus = round(caught / 8 * 20)`.
 
 ## 6. Candy Granny — character
 
-Adapted from the owner's reference (`granny_ref.webp`) into the game's candy-claymation style. **Keep the reference's silhouette + personality:** wild frazzled hair, hunched posture, long draped cloak, **heavy-lidded sly half-smiling eyes** (harmless-frazzled on the surface, clearly scheming underneath). Recast in candy:
+**Visual style (LOCKED 2026-06-08): 2D paper-cut-out illustration, Candy-Crush / Soda-Crush register** — juicy, flat-illustration, paper-cutout — NOT the 3D-claymation/Veo-billboard look the bosses use. Granny, her hut/cauldron, and the popcorn chickens are all **paper-cutout sprites**, animated with the project's existing **breathing/sway cutout shader** (the "popsicle-stick puppet with bounce" motion — see [[feedback_prop_motion_aesthetic]]); Granny can use a small **jointed cutout rig** (the Candy Rustler `candy_rustler_rig.gd` pattern) for the cackle/ladle if richer motion is wanted. The rendered concept art (`granny_concept_study.png`, `granny_hut_scene_a/b.png`) is direction/personality reference; **final assets are paper-cutout illustration** (the `granny_hut_scene_a` illustration look, not the claymation `_b`).
+
+Adapted from the owner's reference (`granny_ref.webp`). **Keep the reference's silhouette + personality:** wild frazzled hair, hunched posture, long draped cloak, **heavy-lidded sly half-smiling eyes** (harmless-frazzled on the surface, clearly scheming underneath). Recast in candy:
 
 - Hair → wild tangle of greyed **spun-sugar / cotton-candy floss**
 - Cloak/shawl → draped **grey licorice-taffy** wrap
@@ -82,9 +84,9 @@ Adapted from the owner's reference (`granny_ref.webp`) into the game's candy-cla
 
 Reuse the proven main-game tech; add as little new as possible.
 
-- **Reuse:** the 3D auto-runner movement + swipe steering; **video-billboard** enemies → chickens (breeds already exist as sprites; chickens may stay sprite/flipbook rather than video if cheaper); the **farm terrain theme**; the **win/fail modal** pattern (repurposed as the results screen); the **feather/coop FX**; the level-select map + terrain-anchored characters (for the Granny badge).
-- **New:** swipe-to-**lunge-grab** input + the chicken **juke AI**; the **catch counter** UI; **Candy Granny** (concept art → Veo billboard → VO) + her **cauldron** + the **gingerbread hut** prop; the **pop-up + cooldown/badge** UI; the **pending-booster** plumbing and the **"+N starting posse" hook** at level start.
-- **No new custom 3D shaders** (mobile white-rects them — reuse the chroma-key billboard + breathing-prop shaders already in the project).
+- **Reuse:** the 3D auto-runner movement + swipe steering; the **paper-cutout breathing/sway prop pipeline** (`_make_breathing_prop` + `breathing_prop.gdshader`) for the **popcorn chickens** (cutout sprites, NOT video billboards); the optional **jointed cutout rig** (`candy_rustler_rig.gd`) for Granny; the **farm terrain theme**; the **win/fail modal** pattern (repurposed as the results screen); the **feather/coop FX**; the level-select map + terrain-anchored characters (for the Granny badge).
+- **New (all paper-cutout illustration assets):** swipe-to-**lunge-grab** input + the popcorn-chicken **juke AI**; the **catch counter** UI; the **popcorn-chicken** cutout sprite(s); **Candy Granny** cutout (+ optional rig) + VO + her **cauldron** + **gingerbread hut** cutout; the **pop-up + cooldown/badge** UI; the **pending-booster** plumbing and the **"+N starting posse" hook** at level start.
+- **No new custom 3D shaders** (mobile white-rects them — reuse the breathing-prop + chroma-key shaders already in the project). The Candy-Crush juice (squash/stretch, bounce, pop FX) comes from the cutout breathing/sway + additive 2D-canvas FX, not new spatial shaders.
 
 ---
 
@@ -107,7 +109,7 @@ Scores/leaderboards; multiple brew types or a brew-choice menu; difficulty tiers
 
 ## 10. Build-time TODOs
 
-- Candy Granny concept → owner pick → Veo green-screen billboard clips (idle/cackle/ladle) → EL VO line set.
-- The gingerbread-hut + cauldron props (steam/bubble FX = additive 2D or CPUParticles with a mesh).
+- Candy Granny **paper-cutout** art (illustration style, from the concepts) + her cauldron + gingerbread-hut cutouts; animate via breathing/sway (and/or a jointed cutout rig for the cackle/ladle). EL VO line set (voice `vFLqXa8bgbofGarf6fZh`).
+- **Popcorn-chicken** cutout sprite(s) — puffed-popcorn body, kernel beak — as a breathing/sway cutout (a couple of frames/poses for the flap if cheap).
+- Cauldron steam/bubble FX = additive 2D-canvas or CPUParticles (with a mesh).
 - Device tuning: allotted time, chicken speed/juke frequency, lunge recovery window, flock spacing — tuned so a focused player can sweep 8 but a casual run still nets a few.
-- Decide chicken render: reuse static/flipbook sprites vs. a video billboard (start with the cheapest that reads well).
