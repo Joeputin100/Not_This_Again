@@ -74,6 +74,23 @@ const TERRAIN_THEMES: Dictionary = {
 			{"slug": "rock_large", "density": 0.4, "scale": [0.6, 1.2], "side": "right"},
 		],
 	},
+	"badlands": {
+		"ground_albedo": "res://assets/textures/ground_badlands.png",
+		"ground_normal": "res://assets/textures/ground_badlands_n.png",
+		"ground_detail": "res://assets/textures/ground_detail.png",
+		"ground_uv_tile": 24.0, "macro_strength": 2.6,
+		"backdrop": "res://assets/sprites/props/backdrop_badlands.png",
+		"tint_low": Color(0.46, 0.26, 0.18), "tint_high": Color(0.86, 0.52, 0.32),
+		"fog_color": Color(0.96, 0.74, 0.52), "fog_density": 0.020,
+		"trail": {"albedo": "res://assets/textures/trail_badlands.png", "half_width": 2.6},
+		"boardwalk": null, "cliff": null,
+		"scatter": [
+			{"slug": "rock_large", "density": 0.5, "scale": [0.7, 1.4]},
+			{"slug": "rock_small", "density": 0.6, "scale": [0.5, 1.0]},
+			{"slug": "cactus_prickly", "density": 0.3, "scale": [0.8, 1.4]},
+			{"slug": "scrub", "density": 0.4, "scale": [0.5, 0.9]},
+		],
+	},
 }
 
 # Hill profile = sum of sine octaves whose periods all divide HILL_PERIOD, so it
