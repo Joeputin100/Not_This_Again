@@ -65,7 +65,9 @@ Formula: `bonus = round(caught / 8 * 20)`.
 
 ## 6. Candy Granny — character
 
-**Visual style (LOCKED 2026-06-08): 2D paper-cut-out illustration, Candy-Crush / Soda-Crush register** — juicy, flat-illustration, paper-cutout — NOT the 3D-claymation/Veo-billboard look the bosses use. Granny, her hut/cauldron, and the popcorn chickens are all **paper-cutout sprites**, animated with the project's existing **breathing/sway cutout shader** (the "popsicle-stick puppet with bounce" motion — see [[feedback_prop_motion_aesthetic]]); Granny can use a small **jointed cutout rig** (the Candy Rustler `candy_rustler_rig.gd` pattern) for the cackle/ladle if richer motion is wanted. The rendered concept art (`granny_concept_study.png`, `granny_hut_scene_a/b.png`) is direction/personality reference; **final assets are paper-cutout illustration** (the `granny_hut_scene_a` illustration look, not the claymation `_b`).
+**Visual style (LOCKED 2026-06-08): 2D paper-cut-out illustration, Candy-Crush / Soda-Crush register** — juicy, flat-illustration, paper-cutout — NOT the 3D-claymation/Veo-billboard look the bosses use. Granny, her hut/cauldron, and the popcorn chickens are all **paper-cutout sprites**, animated with the project's existing **breathing/sway cutout shader** (the "popsicle-stick puppet with bounce" motion — see [[feedback_prop_motion_aesthetic]]). Granny gets a proper **cackle animation** — built either as a short **paper-cutout flipbook** (a few hand-drawn frames: neutral → wind-up → head-back/jaw-open → settle, played via the project's flipbook system) *or* as a small **jointed cutout rig** (the Candy Rustler `candy_rustler_rig.gd` pattern). The flipbook is the cheaper v1; the rig is the richer upgrade.
+
+**The cackle (signature beat):** Granny **cackles inappropriately at random times** — a running gag. Wherever she's on screen (the pop-up, the results screen, idling by her cauldron), a loose timer (random ~5–12 s) fires a **cackle**: head snaps back, jaw flies open, shoulders/torso bounce, the stir-spoon or a hand jerks up — paired with a short cackle VO burst (`granny_dialog_cackle`). It should land at *un*-prompted, slightly-wrong moments for comic effect. The cackle animation is a **first-class deliverable** ("a good cackle animation") authored on the rig. The rendered concept art (`granny_concept_study.png`, `granny_hut_scene_a/b.png`) is direction/personality reference; **final assets are paper-cutout illustration** (the `granny_hut_scene_a` illustration look, not the claymation `_b`).
 
 Adapted from the owner's reference (`granny_ref.webp`). **Keep the reference's silhouette + personality:** wild frazzled hair, hunched posture, long draped cloak, **heavy-lidded sly half-smiling eyes** (harmless-frazzled on the surface, clearly scheming underneath). Recast in candy:
 
@@ -95,6 +97,7 @@ Adapted from the owner's reference (`granny_ref.webp`). **Keep the reference's s
 - **`win_partial`** (1–7): "Well, a few hens'll have to do. Half a brew's better than none — sip it down, sugar."
 - **`win_zero`** (0): "Bah! Not a single one?! My cauldron stays COLD for that. Off with ye."
 - **`cooldown`** (when she's on cooldown / dismissed): "Cauldron's got to simmer, dearie. Come back tomorrow and we'll have another go."
+- **`cackle`** (the random inappropriate cackle bursts — short, paired with the cackle animation): "Heeheehee-HAAA!" · "Hoo-hoo-HEE! ...what? Nothin'." · "AH-ha-ha-ha-haaa!" · "Hee hee... *snort* ...hee."
 
 **Concept art:** `granny_concept_study.png` (character), `granny_hut_scene_a/b.png` (her stationed in front of the hut with the bubbling/steaming cauldron). Animation later via Veo claymation green-screen billboard (the boss pattern).
 
