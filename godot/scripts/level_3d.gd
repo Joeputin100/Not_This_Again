@@ -4105,6 +4105,8 @@ func _process_raisin_kidd(boss: Node3D, delta: float) -> void:
 	_raisin_hit_voice_cd = maxf(0.0, _raisin_hit_voice_cd - delta)
 	if hits > 0:
 		_raisin.register_fire(hits)
+		_hits += hits        # run hit tally (matches rustler/Pete), feeds the end-of-run bounty
+		_refresh_hud()
 		if _raisin.is_vulnerable():
 			_spawn_popup_3d(boss.position + Vector3(0, 1.6, 0),
 				"-%d" % hits, Color(0.85, 0.45, 0.85, 1), 64)
@@ -4118,6 +4120,8 @@ func _process_raisin_kidd(boss: Node3D, delta: float) -> void:
 	boss.set_meta("hp", _raisin.hp)
 	_refresh_pete_hp(boss)
 	var anchor: Vector2 = get_viewport_rect().size * Vector2(0.5, 0.4)
+	# Unlisted events (gow_recovery_open/_end, guard_reform) are intentionally
+	# not handled here — the vulnerability window is read via _raisin.is_vulnerable().
 	for e in events:
 		match e:
 			"gow_windup":
