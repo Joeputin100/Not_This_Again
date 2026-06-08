@@ -256,6 +256,8 @@ const FrostBoltsScript = preload("res://scripts/frost_bolts.gd")
 var _frost_bolts: Node2D = null   # iter404: FROSTBITE chain-lightning overlay
 const RainbowBoltsScript = preload("res://scripts/rainbow_bolts.gd")
 var _rainbow_bolts: Node2D = null   # kimmy: RAINBOW prism-chain overlay
+const MangaFxScript = preload("res://scripts/manga_fx.gd")
+var _manga_fx: Control = null   # level5: Raisin Kidd manga FX overlay
 const CometStreakScript = preload("res://scripts/comet_streak.gd")
 var _comet_streak: Node2D = null   # weapon fx: RIFLE rainbow-comet trail overlay
 var outlaw_bullets_root: Node3D
@@ -460,6 +462,18 @@ var _rustler_melee_accum: float = 0.0
 var _rustler_taunt_timer: float = 5.0
 var _rustler_hit_voice_cd: float = 0.0
 
+# Iter (level5): Raisin Kidd — the "Untouchable" deflect/counter boss. Combat
+# timing lives in RaisinKiddState (unit-tested); this scene drives rendering,
+# contact, FX, audio, and the WIN/lose flow from its events.
+const _RAISIN_KIDD_STATE := preload("res://scripts/raisin_kidd_state.gd")
+const RAISIN_GUARD_STREAM := "res://assets/videos/raisin_kidd/guard_idle.ogv"
+const RAISIN_STAY_Z: float = -7.0       # arena center, like the Rustler
+const RAISIN_HEIGHT: float = 5.0
+const RAISIN_WARP_X_MAX: float = 4.0    # lateral range he can reappear at
+const RAISIN_FLURRY_DPS: float = 4.0    # posse drained/sec during a Grapes of Wrath flurry
+var _raisin: RaisinKiddState = null
+var _raisin_flurry_accum: float = 0.0
+
 # Iter 88: bonus pickup spawn parameters. Pickups appear periodically
 # at a random lane x, hover with sine y-bob, scroll toward cowboy.
 # Collision with cowboy → BulletFireMode change for the rest of level.
@@ -657,6 +671,7 @@ func _ready() -> void:
 	_apply_terrain_theme()   # iter415: per-terrain fog
 	_build_frost_bolts()     # iter404: FROSTBITE chain-lightning overlay
 	_build_rainbow_bolts()   # kimmy: RAINBOW prism-chain overlay
+	_build_manga_fx()        # level5: Raisin Kidd manga FX overlay
 	_build_comet_streak()    # weapon fx: RIFLE rainbow-comet trail overlay
 	if info_label != null:
 		info_label.text = "iter97 RDY-4 3D built"
@@ -3627,8 +3642,11 @@ func _dispatch_level_event(ev: LevelEvent) -> void:
 		LevelEvent.EventKind.BOSS:
 			if not _pete_spawned and not _test_range_mode and not _quota_driven():
 				_pete_spawned = true
-				if String(ev.params.get("boss", "pete")) == "rustler":
+				var _bk := String(ev.params.get("boss", "pete"))
+				if _bk == "rustler":
 					_spawn_candy_rustler()
+				elif _bk == "raisin":
+					_spawn_raisin_kidd()
 				else:
 					_spawn_pete()
 				# iter418: clear on-screen gates so the boss isn't hidden behind one
@@ -3898,7 +3916,7 @@ func _pete_spawn_taunt(pete: Node3D) -> void:
 # Iter 157: The Candy Rustler — level-2 boss.
 # ===========================================================================
 
-# Which boss spawns this run. Level 2 → The Candy Rustler; all else → Pete.
+# Which boss spawns this run. Level 2 → The Candy Rustler; level 5 → Raisin Kidd; all else → Pete.
 func _boss_kind() -> String:
 	var lvl: int = 1
 	if get_node_or_null("/root/GameState") != null:
@@ -4033,6 +4051,109 @@ func _process_rustler(boss: Node3D, delta: float) -> void:
 				_show_win("The Candy Rustler", boss,
 					boss.get_meta("viewport", null))
 				break
+
+# Spawn the Level-5 boss, Raisin Kidd. Video-billboard actor (guard idle clip),
+# HUD HP bar mirrored from RaisinKiddState. Per-frame logic is _process_raisin_kidd.
+func _spawn_raisin_kidd() -> void:
+	_raisin = _RAISIN_KIDD_STATE.new()
+	var boss := Node3D.new()
+	boss.position = Vector3(0.0, 2.25, OBSTACLE_SPAWN_Z + 4.0)
+	boss.set_meta("hp", _raisin.hp)
+	boss.set_meta("hp_max", RaisinKiddState.MAX_HP)
+	boss.set_meta("boss_kind", "raisin")
+	boss_root.add_child(boss)
+	var bb: Node3D = _make_video_billboard(load(RAISIN_GUARD_STREAM), RAISIN_HEIGHT)
+	boss.add_child(bb)
+	if bb.get_child_count() > 0:
+		boss.set_meta("sprite_3d", bb.get_child(0))
+	var name_plate := Label3D.new()
+	name_plate.text = "RAISIN KIDD"
+	name_plate.font_size = 44
+	name_plate.outline_size = 9
+	name_plate.modulate = Color(0.85, 0.45, 0.85, 1)
+	name_plate.billboard = BaseMaterial3D.BILLBOARD_ENABLED
+	name_plate.no_depth_test = true
+	name_plate.position = Vector3(0, 0.6, 0.6)
+	boss.add_child(name_plate)
+	_install_pete_hud(boss, "RAISIN KIDD")
+	_refresh_pete_hp(boss)
+	info_label.text = "BOSS — RAISIN KIDD"
+	_raisin_say("intro")
+	DebugLog.add("raisin kidd spawned at z=%.1f, HP=%d" % [boss.position.z, _raisin.hp])
+
+# Raisin Kidd per-frame behavior. Counts overlapping posse bullets into the
+# state machine, reacts to the events it emits (deflect sparks / damage popups,
+# manga FX, warp reposition, GoW posse drain, WIN flow). The boss holds near
+# arena center, so manga FX anchor at a fixed upper-center screen point (robust
+# vs projecting the SubViewport camera; device-tune later).
+func _process_raisin_kidd(boss: Node3D, delta: float) -> void:
+	if _raisin == null or boss.get_meta("dying", false):
+		return
+	if boss.position.z < RAISIN_STAY_Z:
+		boss.position.z += RUSTLER_SPEED * delta
+	# Overlapping posse bullets this frame (consumed visually either way).
+	var hits := 0
+	for bullet in bullets_root.get_children():
+		if not (bullet is Node3D):
+			continue
+		var dx: float = bullet.position.x - boss.position.x
+		var dz: float = bullet.position.z - boss.position.z
+		if dx * dx + dz * dz < PETE_HIT_RADIUS_SQ:
+			hits += 1
+			bullet.queue_free()
+	if hits > 0:
+		_raisin.register_fire(hits)
+		if _raisin.is_vulnerable():
+			_spawn_popup_3d(boss.position + Vector3(0, 1.6, 0),
+				"-%d" % hits, Color(0.85, 0.45, 0.85, 1), 64)
+		else:
+			_spawn_popup_3d(boss.position + Vector3(0, 1.6, 0), "TINK",
+				Color(0.8, 0.85, 1.0, 1), 48)
+	var events: Array = _raisin.tick(delta)
+	boss.set_meta("hp", _raisin.hp)
+	_refresh_pete_hp(boss)
+	var anchor: Vector2 = get_viewport_rect().size * Vector2(0.5, 0.4)
+	for e in events:
+		match e:
+			"gow_windup":
+				if _manga_fx: _manga_fx.focus_lines(anchor)
+				_raisin_say("gow")
+			"gow_flurry":
+				if _manga_fx: _manga_fx.burst(anchor, "DOON!")
+			"warp":
+				boss.position.x = _rng.randf_range(-RAISIN_WARP_X_MAX, RAISIN_WARP_X_MAX)
+				if _manga_fx: _manga_fx.burst(anchor, "")
+				_raisin_say("warp")
+			"phase2":
+				_raisin_say("phase2")
+			"guard_shatter":
+				if _manga_fx: _manga_fx.burst(anchor, "KRAK!")
+			"defeat":
+				boss.set_meta("dying", true)
+				_raisin_say("dying")
+				_show_win("Raisin Kidd", boss, null)
+				return
+	if _raisin.mode == RaisinKiddState.Mode.FLURRY:
+		_raisin_flurry_accum += delta * RAISIN_FLURRY_DPS
+		while _raisin_flurry_accum >= 1.0:
+			_raisin_flurry_accum -= 1.0
+			_outlaw_drain_posse(boss.position, "")
+
+# Raisin Kidd voice line. Banks generated in a later task; no-ops safely until
+# the audio + keys exist (mirrors the rustler/pete line pattern).
+func _raisin_say(kind: String) -> void:
+	var banks: Dictionary = {
+		"intro": ["raisin_intro_", 2], "gow": ["raisin_gow_", 3],
+		"warp": ["raisin_warp_", 3], "phase2": ["raisin_phase2_", 2],
+		"hit": ["raisin_hit_", 4], "dying": ["raisin_dying_", 2],
+	}
+	if not banks.has(kind):
+		return
+	var audio := get_node_or_null("/root/AudioBus")
+	if audio == null or not audio.has_method("play_character_line"):
+		return
+	var entry: Array = banks[kind]
+	audio.play_character_line("%s%d" % [entry[0], randi() % int(entry[1])])
 
 # Candy Rustler voice line + speech bubble. kind ∈ intro/taunt/hit/dying.
 # Bookend lines (intro/dying) always play; mid-fight chatter (taunt/hit)
@@ -5365,6 +5486,8 @@ func _trigger_quota_boss() -> void:
 	_pete_spawned = true
 	if _boss_kind() == "rustler":
 		_spawn_candy_rustler()
+	elif _boss_kind() == "raisin":
+		_spawn_raisin_kidd()
 	else:
 		_spawn_pete()
 	for _g in gates_root.get_children():
@@ -6434,6 +6557,8 @@ func _process(delta: float) -> void:
 		# every other level → Slippery Pete.
 		if _boss_kind() == "rustler":
 			_spawn_candy_rustler()
+		elif _boss_kind() == "raisin":
+			_spawn_raisin_kidd()
 		else:
 			_spawn_pete()
 		# iter414b: clear any gates so the boss isn't hidden behind one.
@@ -6445,7 +6570,7 @@ func _process(delta: float) -> void:
 	# check bullet hits.
 	if _pete_spawned and boss_root.get_child_count() > 0:
 		var pete: Node3D = boss_root.get_child(0)
-		if is_instance_valid(pete) and pete is Node3D and pete.get_meta("boss_kind", "pete") != "rustler":
+		if is_instance_valid(pete) and pete is Node3D and not (pete.get_meta("boss_kind", "pete") in ["rustler", "raisin"]):
 			# Iter 146: anim revert timer — if running, count down; on
 			# expiry switch Pete back to IDLE.
 			var revert_t: float = pete.get_meta("anim_revert_t", 0.0)
@@ -6549,6 +6674,8 @@ func _process(delta: float) -> void:
 		var rustler_boss: Node3D = boss_root.get_child(0)
 		if is_instance_valid(rustler_boss) and rustler_boss.get_meta("boss_kind", "pete") == "rustler":
 			_process_rustler(rustler_boss, delta)
+		elif is_instance_valid(rustler_boss) and rustler_boss.get_meta("boss_kind", "pete") == "raisin":
+			_process_raisin_kidd(rustler_boss, delta)
 	# Iter 115: GunState-driven auto-fire. Replaces the iter-66 fixed
 	# fire_timer. tick(delta) advances the cooldown + reload countdown;
 	# the while-can_fire loop drains as many shots as the cowboy is
@@ -7569,6 +7696,15 @@ func _build_frost_bolts() -> void:
 	_frost_bolts.name = "FrostBolts"
 	ui.add_child(_frost_bolts)
 	ui.move_child(_frost_bolts, 0)
+
+func _build_manga_fx() -> void:
+	var ui: Node = get_node_or_null("UI")
+	if ui == null:
+		return
+	_manga_fx = MangaFxScript.new()
+	_manga_fx.name = "MangaFx"
+	ui.add_child(_manga_fx)
+	ui.move_child(_manga_fx, 0)
 
 # Up to `n` live enemies in front of `from`, nearest first — the chain targets.
 func _frost_chain_targets(from: Vector3, n: int) -> Array:
