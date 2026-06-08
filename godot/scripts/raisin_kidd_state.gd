@@ -70,6 +70,7 @@ func tick(delta: float) -> Array:
 		if fired > 0:
 			hp = maxi(0, hp - fired * DAMAGE_PER_HIT)
 	elif mode == Mode.GUARD or mode == Mode.WINDUP or mode == Mode.FLURRY:
+		# meter carries across GoW cycles (only reset on shatter/reform) — pressure persists
 		if fired > 0:
 			meter += fired * GUARD_BREAK_FILL_PER_HIT
 		else:
@@ -89,6 +90,13 @@ func tick(delta: float) -> Array:
 			mode = Mode.DEAD
 			events.append("defeat")
 		return events
+
+	# Warp runs on wall-clock cadence (independent of mode) so it reliably
+	# resets the player's aim every WARP_INTERVAL seconds, even mid-flurry.
+	_warp_t -= delta
+	if _warp_t <= 0.0:
+		_warp_t = warp_interval()
+		events.append("warp")
 
 	# guard-break shatter (only while guarding-ish)
 	if (mode == Mode.GUARD or mode == Mode.WINDUP or mode == Mode.FLURRY) \
@@ -117,10 +125,6 @@ func tick(delta: float) -> Array:
 
 	# Grapes of Wrath cycle (progresses only while GUARD-ing)
 	if mode == Mode.GUARD:
-		_warp_t -= delta
-		if _warp_t <= 0.0:
-			_warp_t = warp_interval()
-			events.append("warp")
 		_gow_t -= delta
 		if _gow_t <= 0.0:
 			mode = Mode.WINDUP
