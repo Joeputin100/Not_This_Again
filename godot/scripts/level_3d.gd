@@ -4330,7 +4330,6 @@ func _play_raisin_finisher() -> void:
 	if _manga_fx == null:
 		return
 	var vp: Vector2 = get_viewport_rect().size
-	var center: Vector2 = vp * Vector2(0.5, 0.42)
 	var strike: Vector2 = vp * Vector2(0.5, 0.6)
 	_raisin_say("dying")   # his cackle; a dedicated finisher line can swap in later
 	_manga_fx.title_card("FIVE-POINT RAISIN\nEXPLODING GUMDROP!")
@@ -4339,7 +4338,9 @@ func _play_raisin_finisher() -> void:
 		_manga_fx.burst(strike + Vector2((i - 2) * 30, (i - 2) * 12), "BAP!")
 		await get_tree().create_timer(0.12).timeout
 	_manga_fx.gumdrop_countdown(strike)
-	await get_tree().create_timer(0.45 * 5.0 + 0.9).timeout
+	# matches manga_fx.gd PIP_STEP*5 + BLOOM_LIFE (5 pips, then the KA-BLOOM)
+	var countdown_dur: float = 0.45 * 5.0 + 0.9
+	await get_tree().create_timer(countdown_dur).timeout
 	_manga_fx.title_card("DEFEATED")
 	await get_tree().create_timer(0.9).timeout
 
@@ -5570,8 +5571,8 @@ func _spawn_outlaw(kind: String = "") -> void:
 		return   # quota fully emitted — no more outlaws
 	if kind == "":
 		kind = _pick_outlaw_kind()
-	var is_farm_kind: bool = OUTLAW_KINDS.has(kind)
-	var max_hp: int = OUTLAW_KINDS[kind]["hp"] if is_farm_kind else OUTLAW_HP
+	var has_kind_stats: bool = OUTLAW_KINDS.has(kind)
+	var max_hp: int = OUTLAW_KINDS[kind]["hp"] if has_kind_stats else OUTLAW_HP
 	# Iter 116: re-enable video billboard, but this time via SHARED top-
 	# level SubViewports (see _make_video_billboard) — iter 114 confirmed
 	# that nested-SubViewport video billboards don't render on Android.

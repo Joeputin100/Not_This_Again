@@ -26,7 +26,6 @@ var _focus: Array = []
 var _bursts: Array = []
 var _titles: Array = []
 var _counts: Array = []
-var _rng := RandomNumberGenerator.new()
 var _font: Font
 
 func _ready() -> void:
