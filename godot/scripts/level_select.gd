@@ -266,6 +266,11 @@ func _ready() -> void:
 	_snap_timer.one_shot = true
 	_snap_timer.timeout.connect(_snap_to_focus)
 	add_child(_snap_timer)
+	# Chicken-chase: Granny pops up when the chase is available.
+	var granny := preload("res://scenes/ui/granny_popup.tscn").instantiate()
+	add_child(granny)
+	granny.play_pressed.connect(func():
+		get_tree().change_scene_to_file("res://scenes/chicken_chase.tscn"))
 
 # Iter 336: same self-building sky as gameplay — sun/moon + clouds + candy
 # mountains in the level-select terrain SubViewport. Time of day follows the
