@@ -378,15 +378,29 @@ const FARM_OUTLAW_VIDEOS: Dictionary = {
 }
 # kind -> {hp, height}. Roster weights are in FARM_OUTLAW_WEIGHTS below.
 const OUTLAW_KINDS: Dictionary = {
-	"candy_corn":  {"hp": 10, "height": 2.5},
-	"gummi_bear":  {"hp": 8,  "height": 2.3},
-	"fried_dough": {"hp": 16, "height": 2.8},
-	"triffid":     {"hp": 14, "height": 3.0},
+	"candy_corn":    {"hp": 10, "height": 2.5},
+	"gummi_bear":    {"hp": 8,  "height": 2.3},
+	"fried_dough":   {"hp": 16, "height": 2.8},
+	"triffid":       {"hp": 14, "height": 3.0},
+	"fireball_monk": {"hp": 18, "height": 2.7},
+	"star_monk":     {"hp": 9,  "height": 2.5},
 }
 # candy_corn + gummi common; fried_dough + triffid rarer.
 const FARM_OUTLAW_WEIGHTS: Array = [
 	["candy_corn", 35], ["gummi_bear", 35], ["fried_dough", 18], ["triffid", 12],
 ]
+# Level-5 Shaolin candy-monks (no guns). Same video-billboard path as the
+# farm kinds. fireball_monk = orange, slow/heavy telegraphed lob; star_monk =
+# blue, fast/light multi-shot harasser. Tuned on device (Task 10).
+const MONK_OUTLAW_VIDEOS: Dictionary = {
+	"fireball_monk": "res://assets/videos/candy_monk/hadouken.ogv",
+	"star_monk":     "res://assets/videos/candy_monk/candy_star_blue.ogv",
+}
+const BADLANDS_OUTLAW_WEIGHTS: Array = [
+	["fireball_monk", 45], ["star_monk", 55],
+]
+const FIREBALL_MONK_HOLD_Z: float = 7.0     # heavy lobber holds at range
+const STAR_MONK_HOLD_Z: float = 5.0         # harasser closes a bit more
 # candy_corn KITER: holds this many units in front of the cowboy (stops closing).
 const CANDY_CORN_HOLD_Z: float = 6.0
 const CANDY_CORN_BURST: int = 3        # bullets per fire interval
@@ -5377,17 +5391,22 @@ func _outlaw_drain_posse(pos: Vector3, sfx: String = "") -> void:
 # Pick the kind to spawn. Farm levels draw from the 4-kind roster; every
 # other level keeps the original "vagrant". (Spec: simplest is a terrain check.)
 func _pick_outlaw_kind() -> String:
-	if _level_def == null or _level_def.terrain != "farm":
+	if _level_def == null:
 		return "vagrant"
+	var roster: Array
+	match _level_def.terrain:
+		"farm": roster = FARM_OUTLAW_WEIGHTS
+		"badlands": roster = BADLANDS_OUTLAW_WEIGHTS
+		_: return "vagrant"
 	var total: int = 0
-	for entry in FARM_OUTLAW_WEIGHTS:
+	for entry in roster:
 		total += entry[1]
 	var roll: int = _rng.randi_range(0, total - 1)
-	for entry in FARM_OUTLAW_WEIGHTS:
+	for entry in roster:
 		roll -= entry[1]
 		if roll < 0:
 			return entry[0]
-	return "candy_corn"
+	return roster[0][0]
 
 func _spawn_outlaw(kind: String = "") -> void:
 	if _level_def != null and _level_def.outlaw_quota > 0 and _outlaws_spawned >= _level_def.outlaw_quota:
@@ -5424,9 +5443,10 @@ func _spawn_outlaw(kind: String = "") -> void:
 		outlaw.set_meta("hop_phase", _rng.randf() * GUMMI_HOP_PERIOD)
 	_outlaws_spawned += 1
 	var billboard: Node3D
-	if is_farm_kind:
-		var stream: VideoStream = load(FARM_OUTLAW_VIDEOS[kind])
-		billboard = _make_video_billboard(stream, OUTLAW_KINDS[kind]["height"])
+	if FARM_OUTLAW_VIDEOS.has(kind):
+		billboard = _make_video_billboard(load(FARM_OUTLAW_VIDEOS[kind]), OUTLAW_KINDS[kind]["height"])
+	elif MONK_OUTLAW_VIDEOS.has(kind):
+		billboard = _make_video_billboard(load(MONK_OUTLAW_VIDEOS[kind]), OUTLAW_KINDS[kind]["height"])
 	else:
 		billboard = _make_video_billboard(VAGRANT_IDLE_STREAM, 2.5)
 	outlaw.add_child(billboard)
