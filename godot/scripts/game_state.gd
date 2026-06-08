@@ -40,6 +40,13 @@ var level_best: Dictionary = {}
 var just_won_level: int = 0
 var continue_to_next: bool = false  # transient: after the win celebration, auto-start the next level
 
+# Chicken-chase minigame: unix time the last attempt was SPENT (0 = never),
+# and the one-shot starting-posse bonus awarded by the brew (consumed at the
+# next level start). Both persisted.
+const CHICKEN_CHASE_COOLDOWN_S: int = 24 * 3600
+var chicken_chase_last_unix: int = 0
+var pending_posse_bonus: int = 0
+
 var hearts: int = MAX_HEARTS:
 	set(value):
 		var clamped := clampi(value, 0, MAX_HEARTS)
@@ -104,6 +111,35 @@ func apply_regen() -> bool:
 	hearts = new_hearts
 	return true
 
+func chicken_chase_available() -> bool:
+	if chicken_chase_last_unix == 0:
+		return true
+	return int(Time.get_unix_time_from_system()) - chicken_chase_last_unix >= CHICKEN_CHASE_COOLDOWN_S
+
+# Seconds until the chase is available again (0 if available now).
+func seconds_until_chase() -> int:
+	if chicken_chase_available():
+		return 0
+	return CHICKEN_CHASE_COOLDOWN_S - (int(Time.get_unix_time_from_system()) - chicken_chase_last_unix)
+
+# Spend the daily attempt (call when a run actually BEGINS).
+func chicken_chase_spend() -> void:
+	chicken_chase_last_unix = int(Time.get_unix_time_from_system())
+	_save_to_disk()
+
+# Award the brew for a finished run's haul (sets the pending one-shot bonus).
+func chicken_chase_award(caught: int) -> void:
+	pending_posse_bonus = posse_bonus_for(caught)
+	_save_to_disk()
+
+# Consume the pending bonus at level start: returns it and clears to 0.
+func claim_posse_bonus() -> int:
+	var b: int = pending_posse_bonus
+	pending_posse_bonus = 0
+	if b != 0:
+		_save_to_disk()
+	return b
+
 # Seconds until the next heart arrives. 0 if hearts are full.
 func seconds_until_next_heart() -> int:
 	if hearts >= MAX_HEARTS or _last_spend_unix == 0:
@@ -157,6 +193,8 @@ func _save_to_disk() -> void:
 	cfg.set_value("meta", "bounty", bounty)
 	cfg.set_value("meta", "current_level", current_level)
 	cfg.set_value("meta", "level_best", level_best)
+	cfg.set_value("minigame", "chicken_chase_last_unix", chicken_chase_last_unix)
+	cfg.set_value("minigame", "pending_posse_bonus", pending_posse_bonus)
 	var _err: int = cfg.save(_save_path())
 
 func _load_from_disk() -> void:
@@ -173,6 +211,8 @@ func _load_from_disk() -> void:
 	bounty = int(cfg.get_value("meta", "bounty", 0))
 	current_level = maxi(1, int(cfg.get_value("meta", "current_level", 1)))
 	level_best = cfg.get_value("meta", "level_best", {})
+	chicken_chase_last_unix = int(cfg.get_value("minigame", "chicken_chase_last_unix", 0))
+	pending_posse_bonus = int(cfg.get_value("minigame", "pending_posse_bonus", 0))
 	# Apply any regen that happened while the app was closed.
 	apply_regen()
 
@@ -192,6 +232,11 @@ static func win_header(stars: int, hits: int, posse_end: int, posse_start: int,
 	if stars == 2:
 		return {"text": "TRIGGER TREAT!", "color": Color(1.0, 0.62, 0.17)}
 	return {"text": "SWEET SHOT!", "color": Color(1.0, 0.62, 0.17)}
+
+# Proportional Posse Brew: round(caught/8 * 20), clamped 0..20. Pure + testable.
+static func posse_bonus_for(caught: int) -> int:
+	var c: int = clampi(caught, 0, 8)
+	return int(round(float(c) / 8.0 * 20.0))
 
 # Win/retry flow: stars (1..3) earned for a run's bounty against ascending
 # thresholds. A win always grants >= 1 star; result is clamped to 3.
