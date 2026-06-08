@@ -704,6 +704,12 @@ func _ready() -> void:
 	# SP2: starting posse size from the level definition (default 5).
 	if _level_def != null and _level_def.start_posse > 0 and _level_def.start_posse != _posse_count_3d:
 		_posse_count_3d = _level_def.start_posse
+		# Chicken-chase Posse Brew: one-shot starting-posse bonus, consumed here.
+		if get_node_or_null("/root/GameState") != null:
+			var _brew: int = GameState.claim_posse_bonus()
+			if _brew > 0:
+				_posse_count_3d += _brew
+				DebugLog.add("posse brew applied: +%d (start now %d)" % [_brew, _posse_count_3d])
 		_sync_followers_to_count(_posse_count_3d)
 		_refresh_hud()
 	if _level_def != null and not _level_def.events.is_empty():
