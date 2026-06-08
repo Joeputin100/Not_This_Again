@@ -18,6 +18,7 @@ const LANE_HALF_W: float = 4.0
 const LUNGE_RANGE_Z: float = 3.0
 const LUNGE_RANGE_X: float = 1.6
 const CHICKEN_JUKE_CHANCE: float = 0.45
+const JUKE_DODGE_T: float = 0.9       # seconds a juked hen darts away + is uncatchable
 const OBSTACLE_HIT_RADIUS: float = 1.1
 
 var _run: ChickenChaseRun = null
@@ -152,6 +153,7 @@ func _attempt_lunge() -> void:
 		return
 	if randf() < CHICKEN_JUKE_CHANCE and not target.get_meta("juking", false):
 		target.set_meta("juking", true)
+		target.set_meta("juke_t", JUKE_DODGE_T)
 		return
 	if _run.try_catch():
 		_fly_hen_to_taffy(target)
@@ -207,6 +209,11 @@ func _advance_flock(delta: float) -> void:
 			if away == 0.0:
 				away = 1.0
 			h.position.x = clampf(h.position.x + away * 4.0 * delta, -LANE_HALF_W, LANE_HALF_W)
+			var jt: float = float(h.get_meta("juke_t", 0.0)) - delta
+			if jt <= 0.0:
+				h.set_meta("juking", false)   # dodge over — catchable again
+			else:
+				h.set_meta("juke_t", jt)
 
 func _spawn_obstacles() -> void:
 	var tex := _try_tex(_OBSTACLE_TEX, _HEN_FALLBACK)
