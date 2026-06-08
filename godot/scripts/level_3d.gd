@@ -4155,6 +4155,7 @@ func _raisin_say(kind: String) -> void:
 		"intro": ["raisin_intro_", 2], "gow": ["raisin_gow_", 3],
 		"warp": ["raisin_warp_", 3], "phase2": ["raisin_phase2_", 2],
 		"hit": ["raisin_hit_", 4], "dying": ["raisin_dying_", 2],
+		"finisher": ["raisin_finisher_", 2],
 	}
 	if not banks.has(kind):
 		return
@@ -4335,7 +4336,7 @@ func _play_raisin_finisher() -> void:
 		return
 	var vp: Vector2 = get_viewport_rect().size
 	var strike: Vector2 = vp * Vector2(0.5, 0.6)
-	_raisin_say("dying")   # his cackle; a dedicated finisher line can swap in later
+	_raisin_say("finisher")   # triumphant five-point cackle (he WON this exchange)
 	_manga_fx.title_card("FIVE-POINT RAISIN\nEXPLODING GUMDROP!")
 	await get_tree().create_timer(1.1).timeout
 	for i in range(5):

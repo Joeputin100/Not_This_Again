@@ -64,6 +64,39 @@
       "Ya can't... recycle... a LEGEND...",
       "Crinkle... crinkle... *sigh*",
       "RA-SSAA-FRACKIN' biodegradable—"
+    ],
+    "raisin_kidd_name": "RAISIN KIDD",
+    "raisin_dialog_intro": [
+      "Ahh... fresh sugar, so eager to be crushed. You face Raisin Kidd — old, wrinkled, and utterly untouchable.",
+      "Come, little candies. Throw yourselves upon my palms. I have waited a hundred dry years for a snack."
+    ],
+    "raisin_dialog_gow": [
+      "Behold — the GRAPES of WRATH!",
+      "Witness a thousand strikes you will never see!",
+      "Dance for me, sugar-dust... GRAPES OF WRATH!"
+    ],
+    "raisin_dialog_warp": [
+      "Too slow. Always too slow.",
+      "Where is the old raisin now? Heh heh heh...",
+      "You cannot strike what you cannot follow."
+    ],
+    "raisin_dialog_phase2": [
+      "Hmph. So the candy has a little crunch after all. Now I am awake.",
+      "Enough games. You have angered the Kidd."
+    ],
+    "raisin_dialog_when_hit": [
+      "Gah! A lucky grain!",
+      "You... touched me?!",
+      "Impossible — no one breaks the guard of Raisin Kidd!",
+      "Rrrgh — sticky little pests!"
+    ],
+    "raisin_dialog_dying": [
+      "Impossible... wrinkled... but never... beaten...",
+      "A hundred years... undone by... jellybeans..."
+    ],
+    "raisin_dialog_finisher": [
+      "Heh heh heh... Five-Point... Exploding... GUMDROP!",
+      "Sleep now, little candies. The Kidd has won."
     ]
   },
   "humbug": {
