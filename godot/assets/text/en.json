@@ -99,6 +99,36 @@
       "Sleep now, little candies. The Kidd has won."
     ]
   },
+  "granny": {
+    "granny_dialog_intro": [
+      "Ooh, a strappin' young gunslinger — just the sugar I need! My hens have flown the coop, on account of YOUR posse stampin' it flat, I might add.",
+      "Don't give Granny that look, dearie. Somebody's six-shooters turned my henhouse to kindlin'. Help an old gal round 'em up?",
+      "Catch my hens and I'll brew ye a little pick-me-up. Straight from the cauldron. Heh heh heh."
+    ],
+    "granny_dialog_chatter": [
+      "Built this whole place out of gingerbread and gumdrops, I did. Who wouldn't want to live in a house made of candy?",
+      "Mind the walls, sugar — last fella took a bite, and I had to re-frost the entire parlor.",
+      "That cauldron's been bubblin' since before yer granny was a twinkle. Smells divine, don't it?",
+      "Real marzipan roof, that. The popcorn hens keep peckin' it — cheeky little kernels.",
+      "Oh, I do love comp'ny. Stay a while, won't ye? ...Stay forever, even. Heh heh heh."
+    ],
+    "granny_dialog_chase": [
+      "Faster, sugar — they're poppin' off ever' which way!",
+      "Ooh, slippery little kernels, ain't they?"
+    ],
+    "granny_dialog_win_full": [
+      "HA! Every last hen! Yer a natural, dearie — drink up, the posse's on Granny!"
+    ],
+    "granny_dialog_win_partial": [
+      "Well, a few hens'll have to do. Half a brew's better than none — sip it down, sugar."
+    ],
+    "granny_dialog_win_zero": [
+      "Bah! Not a single one?! My cauldron stays COLD for that. Off with ye."
+    ],
+    "granny_dialog_cooldown": [
+      "Cauldron's got to simmer, dearie. Come back tomorrow and we'll have another go."
+    ]
+  },
   "humbug": {
     "tips": [
       "Choose the MULTIPLY doors, my sugar-dusted darlings — a posse grows grandest by ×, never by mere addition!",
