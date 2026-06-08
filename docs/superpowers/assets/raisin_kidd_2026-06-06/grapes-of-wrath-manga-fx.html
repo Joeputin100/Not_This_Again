@@ -1,0 +1,124 @@
+<!DOCTYPE html><html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Grapes of Wrath — manga FX</title><style>
+ body{margin:0;background:#0b0713;color:#e8def7;font-family:system-ui,sans-serif}
+ .wrap{max-width:980px;margin:0 auto;padding:20px}
+ h2{color:#ffd98a;margin:4px 0} .sub{color:#cbb6ea;font-size:14px;line-height:1.5;margin-bottom:16px}
+ .grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:16px}
+ .card{background:#140e22;border:2px solid #3a2a4f;border-radius:12px;padding:10px;text-align:center}
+ .card.full{grid-column:span 2;border-color:#e84d86}
+ canvas{width:100%;border-radius:8px;display:block;background:#000}
+ .cn{font-size:15px;color:#ffd98a;margin-top:8px} .cd{font-size:12px;color:#cbb6ea;margin-top:3px;line-height:1.4}
+ b{color:#ffd23f}
+</style></head><body><div class="wrap">
+<h2>The Grapes of Wrath — manga speed-lines + visual SFX</h2>
+<div class="sub">Raisin Kidd's signature flurry, drawn as it will ship: an <b>additive / normal 2D-canvas overlay</b> (the frost_bolts-style tech) — mobile-safe, no spatial shaders. The bottom tile is the full attack sequence (windup → title drop → impact). Tell me to dial the speed, line density, SFX words, or colors.</div>
+<div class="grid">
+ <div class="card"><canvas id="c_focus" width="340" height="240"></canvas>
+  <div class="cn">Focus lines — the windup</div><div class="cd">集中線: action lines converge as he charges. The telegraph that opens his vulnerability window.</div></div>
+ <div class="card"><canvas id="c_burst" width="340" height="240"></canvas>
+  <div class="cn">Burst lines — the impact</div><div class="cd">Lines explode outward with a white flash on the hit.</div></div>
+ <div class="card"><canvas id="c_sfx" width="340" height="240"></canvas>
+  <div class="cn">Onomatopoeia SFX pops</div><div class="cd">Comic impact words slam in with star-burst + halftone backing. Cycling sample set.</div></div>
+ <div class="card"><canvas id="c_kanji" width="340" height="240"></canvas>
+  <div class="cn">Slash / speed streaks</div><div class="cd">Diagonal motion streaks for the grape-volley dashes.</div></div>
+ <div class="card full"><canvas id="c_seq" width="700" height="260"></canvas>
+  <div class="cn">FULL SEQUENCE — "THE GRAPES OF WRATH!"</div><div class="cd">Windup focus lines → manga title slam → burst lines + BA-DOON! impact → settle. This is what the player sees when he commits.</div></div>
+</div></div>
+<script>
+function rnd(s){ s=Math.sin(s*127.1)*43758.5453; return s-Math.floor(s); }
+function lerp(a,b,t){return a+(b-a)*t;}
+function easeIn(t){return t*t;}
+function easeOut(t){return 1-(1-t)*(1-t);}
+function bg(ctx,W,H){ var g=ctx.createLinearGradient(0,0,0,H); g.addColorStop(0,'#2a1530'); g.addColorStop(1,'#140a1e'); ctx.fillStyle=g; ctx.fillRect(0,0,W,H); }
+
+function focusLines(ctx,W,H,t,conv,col){
+  var cx=W/2, cy=H/2, R=Math.max(W,H)*0.78, N=46;
+  ctx.save(); ctx.translate(cx,cy); ctx.rotate(t*0.05);
+  for(var i=0;i<N;i++){
+    var a=i/N*6.283;
+    var inner=lerp(R*0.6,16,easeIn(conv))*(0.8+0.4*rnd(i));
+    ctx.lineWidth = rnd(i*3)>0.7?3.4:1.2;
+    ctx.strokeStyle='rgba('+col+','+(0.22+0.5*rnd(i*5))+')';
+    ctx.beginPath(); ctx.moveTo(Math.cos(a)*R,Math.sin(a)*R); ctx.lineTo(Math.cos(a)*inner,Math.sin(a)*inner); ctx.stroke();
+  }
+  ctx.restore();
+  if(conv>0.8){ var f=(conv-0.8)/0.2; var rg=ctx.createRadialGradient(cx,cy,0,cx,cy,60*f+8); rg.addColorStop(0,'rgba(255,255,255,'+(f*0.9)+')'); rg.addColorStop(1,'rgba(255,255,255,0)'); ctx.fillStyle=rg; ctx.fillRect(0,0,W,H); }
+}
+function burstLines(ctx,W,H,t,prog,col){
+  var cx=W/2, cy=H/2, R=Math.max(W,H)*0.85*easeOut(prog), N=42;
+  ctx.save(); ctx.translate(cx,cy); ctx.rotate(t*0.03);
+  for(var i=0;i<N;i++){
+    var a=i/N*6.283+rnd(i)*0.05, inner=12+rnd(i*2)*18;
+    ctx.lineWidth = rnd(i*3)>0.6?3.6:1.4;
+    ctx.strokeStyle='rgba('+col+','+((1-prog)*0.9*(0.4+0.6*rnd(i*7)))+')';
+    var rr=R*(0.7+0.3*rnd(i*9));
+    ctx.beginPath(); ctx.moveTo(Math.cos(a)*inner,Math.sin(a)*inner); ctx.lineTo(Math.cos(a)*rr,Math.sin(a)*rr); ctx.stroke();
+  }
+  ctx.restore();
+}
+function starBurst(ctx,cx,cy,r,pts,rot,fill){
+  ctx.save(); ctx.translate(cx,cy); ctx.rotate(rot); ctx.beginPath();
+  for(var i=0;i<pts*2;i++){ var rr=i%2?r*0.5:r; var a=i/(pts*2)*6.283; var x=Math.cos(a)*rr*(0.9+0.2*rnd(i)), y=Math.sin(a)*rr*(0.9+0.2*rnd(i)); if(i)ctx.lineTo(x,y); else ctx.moveTo(x,y); }
+  ctx.closePath(); ctx.fillStyle=fill; ctx.fill(); ctx.restore();
+}
+function sfx(ctx,cx,cy,txt,scale,rot,fill,size){
+  ctx.save(); ctx.translate(cx,cy); ctx.rotate(rot); ctx.scale(scale,scale);
+  ctx.font="900 "+(size||44)+"px 'Arial Black',Impact,sans-serif"; ctx.textAlign='center'; ctx.textBaseline='middle'; ctx.lineJoin='round';
+  ctx.lineWidth=11; ctx.strokeStyle='#1a0b22'; ctx.strokeText(txt,0,0);
+  ctx.lineWidth=4; ctx.strokeStyle='#ffffff'; ctx.strokeText(txt,0,0);
+  ctx.fillStyle=fill; ctx.fillText(txt,0,0);
+  ctx.restore();
+}
+function halftone(ctx,W,H,alpha){
+  ctx.fillStyle='rgba(255,255,255,'+alpha+')';
+  for(var y=0;y<H;y+=11){ for(var x=0;x<W;x+=11){ var d=Math.hypot(x-W/2,y-H/2); var r=Math.max(0,2.4-d/110); if(r>0.2){ ctx.beginPath(); ctx.arc(x,y,r,0,6.283); ctx.fill(); } } }
+}
+var WORDS=['DON!','ZUSH!','BA-DOON!','KRA-KOW!','FWASH!','POW!','ZWOMP!'];
+var COLS=['#ff4d9d','#ffa23a','#b06be8','#ffd23f','#ff6b4d'];
+
+function drawFocus(ctx,W,H,t){ bg(ctx,W,H); focusLines(ctx,W,H,t,(t%2.0)/2.0,'255,250,228'); }
+function drawBurst(ctx,W,H,t){ var p=(t%1.6)/1.6; bg(ctx,W,H);
+  if(p<0.12){ ctx.fillStyle='rgba(255,255,255,'+(1-p/0.12)*0.8+')'; ctx.beginPath(); ctx.arc(W/2,H/2,40*(1-p/0.12)+10,0,6.283); ctx.fill(); }
+  burstLines(ctx,W,H,t,p,'255,245,210'); }
+function drawSfx(ctx,W,H,t){ bg(ctx,W,H);
+  var span=0.78, idx=Math.floor(t/span)%WORDS.length, lt=(t%span)/span;
+  var sc = lt<0.22? easeOut(lt/0.22)*1.18 : 1.18-0.14*easeIn((lt-0.22)/0.78);
+  var al = lt>0.78? 1-(lt-0.78)/0.22 : 1;
+  var rot=(rnd(idx*3)-0.5)*0.5, shx=lt<0.3?(rnd(Math.floor(t*60))-0.5)*8:0;
+  starBurst(ctx,W/2,H/2,86*sc,11,rot*0.5,'rgba(255,225,77,'+(al*0.85)+')');
+  ctx.globalAlpha=al*0.5; halftone(ctx,W,H,0.5); ctx.globalAlpha=1;
+  sfx(ctx,W/2+shx,H/2,WORDS[idx],sc,rot,COLS[idx%COLS.length]); }
+function drawKanji(ctx,W,H,t){ bg(ctx,W,H); // diagonal slash/speed streaks
+  ctx.save(); ctx.translate(W/2,H/2); ctx.rotate(-0.5);
+  for(var i=0;i<16;i++){ var off=(i-8)*16; var ph=((t*260+i*40)%(W*1.6))-W*0.8;
+    var len=70+rnd(i)*90; ctx.lineWidth=rnd(i*2)>0.6?4:1.6; ctx.strokeStyle='rgba(255,250,230,'+(0.2+0.5*rnd(i*5))+')';
+    ctx.beginPath(); ctx.moveTo(ph,off); ctx.lineTo(ph+len,off); ctx.stroke(); }
+  ctx.restore(); }
+
+function titleCard(ctx,cx,cy,sc,shx){
+  ctx.save(); ctx.translate(cx+shx,cy); ctx.rotate(-0.04); ctx.scale(sc,sc);
+  ctx.textAlign='center'; ctx.textBaseline='middle'; ctx.lineJoin='round';
+  function line(txt,y,size,fill){ ctx.font="900 "+size+"px 'Arial Black',Impact,sans-serif";
+    ctx.lineWidth=13; ctx.strokeStyle='#1a0b22'; ctx.strokeText(txt,0,y);
+    ctx.lineWidth=4.5; ctx.strokeStyle='#fff'; ctx.strokeText(txt,0,y);
+    ctx.fillStyle=fill; ctx.fillText(txt,0,y); }
+  line('THE GRAPES',-26,44,'#b06be8'); line('OF WRATH!',26,48,'#ff4d9d');
+  ctx.restore();
+}
+function drawSeq(ctx,W,H,t){ bg(ctx,W,H);
+  var P=3.8, lt=t%P;
+  if(lt<1.05) focusLines(ctx,W,H,t,lt/1.05,'255,250,228');
+  if(lt>=1.45 && lt<2.2) burstLines(ctx,W,H,t,(lt-1.45)/0.75,'255,245,210');
+  if(lt>=1.4 && lt<1.62){ ctx.fillStyle='rgba(255,255,255,'+(1-(lt-1.4)/0.22)*0.75+')'; ctx.fillRect(0,0,W,H); }
+  if(lt>=1.05 && lt<3.4){ var tl=lt-1.05; var sc=tl<0.28?2.3-1.3*easeOut(tl/0.28):1.0; var shx=tl<0.4?(rnd(Math.floor(t*60))-0.5)*9*(1-tl/0.4):0;
+    var fade=tl>2.0?1-(tl-2.0)/0.35:1; ctx.globalAlpha=Math.max(0,fade); titleCard(ctx,W*0.5,H*0.4,sc,shx); ctx.globalAlpha=1; }
+  if(lt>=1.5 && lt<2.25){ var s=(lt-1.5)/0.75; var sc=s<0.22?easeOut(s/0.22)*1.25:1.25-0.22*((s-0.22)/0.78); var al=s>0.72?1-(s-0.72)/0.28:1;
+    starBurst(ctx,W*0.62,H*0.74,76*sc,11,0.2,'rgba(255,225,77,'+(al*0.9)+')'); sfx(ctx,W*0.62,H*0.74,'BA-DOON!',sc*0.95,-0.07,'#ff4d9d'); }
+}
+var TILES=[['c_focus',drawFocus],['c_burst',drawBurst],['c_sfx',drawSfx],['c_kanji',drawKanji],['c_seq',drawSeq]];
+var CTX=TILES.map(function(x){var c=document.getElementById(x[0]);return [c.getContext('2d'),c.width,c.height,x[1]];});
+var t0=performance.now();
+function frame(now){ var t=(now-t0)/1000; for(var i=0;i<CTX.length;i++){ var c=CTX[i]; c[3](c[0],c[1],c[2],t); } requestAnimationFrame(frame); }
+requestAnimationFrame(frame);
+</script></body></html>
