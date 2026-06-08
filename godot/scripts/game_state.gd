@@ -163,6 +163,8 @@ func reset() -> void:
 	bounty = 0
 	current_level = 1
 	_last_spend_unix = 0
+	chicken_chase_last_unix = 0
+	pending_posse_bonus = 0
 
 # Win/retry flow: record a level result, keeping the best stars and bounty.
 func record_level_result(level: int, stars: int, run_bounty: int) -> void:

@@ -41,6 +41,15 @@ func test_try_catch_credits_when_clear():
 	assert_true(r.try_catch())
 	assert_eq(r.caught, 1)
 
+func test_register_catch_bypasses_stumble_gate():
+	# register_catch is the escape hatch: it credits even mid-stumble (by design),
+	# unlike try_catch which gates on can_lunge().
+	var r = _run()
+	r.stumble()
+	assert_false(r.can_lunge(), "precondition: stumbling")
+	r.register_catch()
+	assert_eq(r.caught, 1, "register_catch bypasses the stumble gate")
+
 func test_timer_ends_the_run():
 	var r = _run()
 	r.tick(ChickenChaseRun.DURATION + 0.1)
