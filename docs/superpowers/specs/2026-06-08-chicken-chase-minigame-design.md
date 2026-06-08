@@ -72,7 +72,7 @@ Adapted from the owner's reference (`granny_ref.webp`) into the game's candy-cla
 
 **Her gingerbread cottage** (ref `granny_hut_ref.webp`): frosting-iced scalloped roof, gumdrop + peppermint trim, candy-cane posts, glowing warm windows, a gumdrop-and-peppermint garden path. It frames the entry prompt and the chase's start.
 
-**Voice-over** (ElevenLabs, the boss VO pipeline): a cackle, an intro guilt-trip plea, a scaled win line (full cackle vs. "a few'll have to do"), and a grumble on a goose-egg. Cackling sweet-but-sly register.
+**Voice-over** — ElevenLabs voice **`vFLqXa8bgbofGarf6fZh`** (owner-provided), via the boss VO pipeline (`tools/gen_*_vo.py` pattern, eleven_v3, `apply_text_normalization="on"`, en.json as text source-of-truth). Lines: a cackle, an intro guilt-trip plea, a scaled win line (full cackle vs. "a few'll have to do"), and a grumble on a goose-egg. Cackling sweet-but-sly register.
 
 **Concept art:** `granny_concept_study.png` (character), `granny_hut_scene_a/b.png` (her stationed in front of the hut with the bubbling/steaming cauldron). Animation later via Veo claymation green-screen billboard (the boss pattern).
 
