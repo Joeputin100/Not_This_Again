@@ -3889,7 +3889,11 @@ func _boss_kind() -> String:
 	var lvl: int = 1
 	if get_node_or_null("/root/GameState") != null:
 		lvl = GameState.current_level
-	return "rustler" if lvl == 2 else "pete"
+	if lvl == 2:
+		return "rustler"
+	if lvl == 5:
+		return "raisin"
+	return "pete"
 
 # Spawn The Candy Rustler. Mirrors _spawn_pete's framing (a Node3D in
 # boss_root + the 2D HUD HP bar) but the billboard wraps the jointed rig

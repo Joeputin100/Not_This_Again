@@ -1,0 +1,23 @@
+[gd_resource type="Resource" script_class="LevelDef" format=3]
+
+[ext_resource type="Script" path="res://scripts/level_def.gd" id="1_def"]
+[ext_resource type="Script" path="res://scripts/level_event.gd" id="1_hrksf"]
+
+[sub_resource type="Resource" id="Resource_r5boss"]
+script = ExtResource("1_hrksf")
+distance = 75.0
+kind = 5
+params = {
+"boss": "raisin"
+}
+
+[resource]
+script = ExtResource("1_def")
+difficulty = 5
+terrain = "badlands"
+display_name = "BADLANDS VINEYARD VENGEANCE"
+weather_type = "HEAT"
+seed = 5
+star_thresholds = Array[int]([0, 4000, 9000])
+outlaw_quota = 140
+events = Array[ExtResource("1_hrksf")]([SubResource("Resource_r5boss")])
