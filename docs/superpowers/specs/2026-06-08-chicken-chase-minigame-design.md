@@ -18,13 +18,15 @@ A "nice diversion" — bite-sized, comedic, family-friendly, and **never pay-to-
 
 Reuses the main game's 3D auto-runner, shrunk to a single self-contained chase:
 
-- **Setting:** a short, sunny lane on the existing **farm terrain theme**, starting at a **busted chicken coop** (the guilt callback — feathers everywhere). No outlaws, gates, pits, or obstacles — *only chickens.*
+- **Setting:** a short, sunny lane on the existing **farm terrain theme**, starting at a **busted chicken coop** (the guilt callback — feathers everywhere). No outlaws, gates, or pits — *chickens, plus a few light obstacles.*
 - **Duration:** a fixed **allotted time** (≈25 s, device-tuned) — the length of the lane. There is **no hard fail**; the run simply ends when time/lane runs out.
 - **The cowboy auto-runs** forward (same movement/steering code as the main game). The player **swipes left/right** to steer toward birds.
 - **A flock of 8 popcorn chickens** flutters ahead, juking, hopping, and scattering. The hens are **made of popcorn** — puffed-popcorn bodies, little kernel beaks, butter-yellow tufts (owner-loved detail). Restyle of the existing chicken sprites into the popcorn look.
+- **A few obstacles** dot the lane (candy-farm props — e.g. candy-straw **haybales**, **barrels**, **fence posts**; reuse the existing obstacle/scenery system). They are **non-lethal**: clipping one makes the cowboy **stumble** (a brief ~0.6 s recovery where he can't lunge and the flock scoots ahead) — a tax on your haul, never a death. Swerve to chase cleanly.
 - **Catch input:** tap/flick toward a nearby chicken → the cowboy performs a **lunge-grab** (a quick dive) with a short **recovery window** so mashing doesn't work.
 - **Chickens are slippery:** a chicken in range can **juke at the last instant** — telegraphed by a wind-up *cluck* + feather puff — so a mistimed lunge **whiffs** and the bird scoots past. Catching cleanly means reading the juke.
-- **Score = your haul:** the `caught / 8` counter is the score. Uncaught hens at the end simply don't count.
+- **Catch feedback (Soda-Crush collection):** a caught popcorn chicken **arcs/flies to a "wrapped taffy" collection candy** (the existing taffy cutout, the same juicy fly-to-the-jar feel as Soda Crush's rescued bears), then **pops into the counter** (+1, squash-stretch + sparkle). The taffy candy *is* the catch counter — it reads `caught / 8` and fills up as hens fly in.
+- **Score = your haul:** the taffy's `caught / 8` is the score. Uncaught hens at the end simply don't count.
 
 **Fairness principle:** because it's one attempt per day (§4) *and* the reward is proportional (§3), the run should feel rewarding at any skill level — a focused player can sweep all 8, a sloppy run still nets a few. The difficulty is in **maximizing** the haul (reading jukes, not whiffing), never in raw speed or luck.
 
@@ -74,7 +76,25 @@ Adapted from the owner's reference (`granny_ref.webp`). **Keep the reference's s
 
 **Her gingerbread cottage** (ref `granny_hut_ref.webp`): frosting-iced scalloped roof, gumdrop + peppermint trim, candy-cane posts, glowing warm windows, a gumdrop-and-peppermint garden path. It frames the entry prompt and the chase's start.
 
-**Voice-over** — ElevenLabs voice **`vFLqXa8bgbofGarf6fZh`** (owner-provided), via the boss VO pipeline (`tools/gen_*_vo.py` pattern, eleven_v3, `apply_text_normalization="on"`, en.json as text source-of-truth). Lines: a cackle, an intro guilt-trip plea, a scaled win line (full cackle vs. "a few'll have to do"), and a grumble on a goose-egg. Cackling sweet-but-sly register.
+**Voice-over** — ElevenLabs voice **`vFLqXa8bgbofGarf6fZh`** (owner-provided), via the boss VO pipeline (`tools/gen_granny_vo.py` like `gen_rustler_vo.py`, eleven_v3, `apply_text_normalization="on"`, en.json `granny_dialog_*` as text source-of-truth). She is **chatty** — sweet-but-sly, cackling, and *delighted* with her candy house. Banks:
+
+- **`intro`** (plea / guilt-trip, played when she offers the chase):
+  - "Ooh, a strappin' young gunslinger — just the sugar I need! My hens have flown the coop, on account of YOUR posse stampin' it flat, I might add."
+  - "Don't give Granny that look, dearie. Somebody's six-shooters turned my henhouse to kindlin'. Help an old gal round 'em up?"
+  - "Catch my hens and I'll brew ye a little pick-me-up. Straight from the cauldron. Heh heh heh."
+- **`chatter`** (ambient, she loves her candy house — rotates while idle / on the results screen):
+  - "Built this whole place out of gingerbread and gumdrops, I did. Who wouldn't want to live in a house made of candy?"
+  - "Mind the walls, sugar — last fella took a bite, and I had to re-frost the entire parlor."
+  - "That cauldron's been bubblin' since before yer granny was a twinkle. Smells divine, don't it?"
+  - "Real marzipan roof, that. The popcorn hens keep peckin' it — cheeky little kernels."
+  - "Oh, I do love comp'ny. Stay a while, won't ye? ...Stay forever, even. Heh heh heh."
+- **`chase`** (heckle/cheer during the run):
+  - "Faster, sugar — they're poppin' off ever' which way!"
+  - "Ooh, slippery little kernels, ain't they?"
+- **`win_full`** (all 8): "HA! Every last hen! Yer a natural, dearie — drink up, the posse's on Granny!"
+- **`win_partial`** (1–7): "Well, a few hens'll have to do. Half a brew's better than none — sip it down, sugar."
+- **`win_zero`** (0): "Bah! Not a single one?! My cauldron stays COLD for that. Off with ye."
+- **`cooldown`** (when she's on cooldown / dismissed): "Cauldron's got to simmer, dearie. Come back tomorrow and we'll have another go."
 
 **Concept art:** `granny_concept_study.png` (character), `granny_hut_scene_a/b.png` (her stationed in front of the hut with the bubbling/steaming cauldron). Animation later via Veo claymation green-screen billboard (the boss pattern).
 
@@ -84,7 +104,7 @@ Adapted from the owner's reference (`granny_ref.webp`). **Keep the reference's s
 
 Reuse the proven main-game tech; add as little new as possible.
 
-- **Reuse:** the 3D auto-runner movement + swipe steering; the **paper-cutout breathing/sway prop pipeline** (`_make_breathing_prop` + `breathing_prop.gdshader`) for the **popcorn chickens** (cutout sprites, NOT video billboards); the optional **jointed cutout rig** (`candy_rustler_rig.gd`) for Granny; the **farm terrain theme**; the **win/fail modal** pattern (repurposed as the results screen); the **feather/coop FX**; the level-select map + terrain-anchored characters (for the Granny badge).
+- **Reuse:** the 3D auto-runner movement + swipe steering; the **paper-cutout breathing/sway prop pipeline** (`_make_breathing_prop` + `breathing_prop.gdshader`) for the **popcorn chickens** (cutout sprites, NOT video billboards); the optional **jointed cutout rig** (`candy_rustler_rig.gd`) for Granny; the existing **obstacle/scenery spawn system** (barrel/haybale/fence props) for the lane obstacles + the stumble reaction; the **wrapped-taffy cutout** (the winflow taffy used for hearts/counter) as the catch-collection candy + a **fly-to-target tween** for the caught hen; the **farm terrain theme**; the **win/fail modal** pattern (repurposed as the results screen); the **feather/coop FX**; the level-select map + terrain-anchored characters (for the Granny badge).
 - **New (all paper-cutout illustration assets):** swipe-to-**lunge-grab** input + the popcorn-chicken **juke AI**; the **catch counter** UI; the **popcorn-chicken** cutout sprite(s); **Candy Granny** cutout (+ optional rig) + VO + her **cauldron** + **gingerbread hut** cutout; the **pop-up + cooldown/badge** UI; the **pending-booster** plumbing and the **"+N starting posse" hook** at level start.
 - **No new custom 3D shaders** (mobile white-rects them — reuse the breathing-prop + chroma-key shaders already in the project). The Candy-Crush juice (squash/stretch, bounce, pop FX) comes from the cutout breathing/sway + additive 2D-canvas FX, not new spatial shaders.
 
