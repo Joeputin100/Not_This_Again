@@ -487,6 +487,19 @@ var _raisin: RaisinKiddState = null
 var _raisin_flurry_accum: float = 0.0
 var _raisin_hit_voice_cd: float = 0.0
 
+# Level6: Queen of the Night sing-duel. State machine in queen_duel_state.gd;
+# the swipe-response overlay is sing_duel_fx.gd. _queen_swiping gates input
+# routing into the FX during an open response window.
+const _QUEEN_DUEL_STATE := preload("res://scripts/queen_duel_state.gd")
+const QUEEN_IDLE_STREAM := "res://assets/videos/queen/idle.ogv"
+const QUEEN_STAY_Z: float = -7.0
+const QUEEN_HEIGHT: float = 6.0
+var _queen: QueenDuelState = null
+const SingDuelFxScript = preload("res://scripts/sing_duel_fx.gd")
+var _sing_fx: Control = null
+var _queen_swiping: bool = false
+var _queen_hit_voice_cd: float = 0.0
+
 # Iter 88: bonus pickup spawn parameters. Pickups appear periodically
 # at a random lane x, hover with sine y-bob, scroll toward cowboy.
 # Collision with cowboy → BulletFireMode change for the rest of level.
@@ -685,6 +698,7 @@ func _ready() -> void:
 	_build_frost_bolts()     # iter404: FROSTBITE chain-lightning overlay
 	_build_rainbow_bolts()   # kimmy: RAINBOW prism-chain overlay
 	_build_manga_fx()        # level5: Raisin Kidd manga FX overlay
+	_build_sing_duel_fx()    # level6: Queen of the Night sing-duel overlay
 	_build_comet_streak()    # weapon fx: RIFLE rainbow-comet trail overlay
 	if info_label != null:
 		info_label.text = "iter97 RDY-4 3D built"
@@ -3670,6 +3684,8 @@ func _dispatch_level_event(ev: LevelEvent) -> void:
 					_spawn_candy_rustler()
 				elif _bk == "raisin":
 					_spawn_raisin_kidd()
+				elif _bk == "queen":
+					_spawn_queen()
 				else:
 					_spawn_pete()
 				# iter418: clear on-screen gates so the boss isn't hidden behind one
@@ -4180,6 +4196,119 @@ func _raisin_say(kind: String) -> void:
 		"warp": ["raisin_warp_", 3], "phase2": ["raisin_phase2_", 2],
 		"hit": ["raisin_hit_", 4], "dying": ["raisin_dying_", 2],
 		"finisher": ["raisin_finisher_", 2],
+	}
+	if not banks.has(kind):
+		return
+	var audio := get_node_or_null("/root/AudioBus")
+	if audio == null or not audio.has_method("play_character_line"):
+		return
+	var entry: Array = banks[kind]
+	audio.play_character_line("%s%d" % [entry[0], randi() % int(entry[1])])
+
+# Level6: Queen of the Night. A sing-duel boss — instead of dodging, the
+# player matches her sung phrases with a swipe in the response window. State
+# in QueenDuelState; the swipe overlay is _sing_fx. Per the state API, a
+# SUBMITTED swipe surfaces its outcome via submit_swipe()'s return dict (handled
+# in _input), while a TIMED-OUT phrase emits a high_note event from tick (here).
+func _spawn_queen() -> void:
+	_queen = _QUEEN_DUEL_STATE.new()
+	var boss := Node3D.new()
+	boss.position = Vector3(0.0, 2.6, OBSTACLE_SPAWN_Z + 4.0)
+	boss.set_meta("hp", _queen.hp)
+	boss.set_meta("hp_max", QueenDuelState.MAX_HP)
+	boss.set_meta("boss_kind", "queen")
+	boss_root.add_child(boss)
+	boss.add_child(_make_video_billboard(load(QUEEN_IDLE_STREAM), QUEEN_HEIGHT))
+	var plate := Label3D.new()
+	plate.text = "QUEEN OF THE NIGHT"
+	plate.font_size = 40
+	plate.outline_size = 9
+	plate.modulate = Color(0.9, 0.78, 0.35, 1)
+	plate.billboard = BaseMaterial3D.BILLBOARD_ENABLED
+	plate.no_depth_test = true
+	plate.position = Vector3(0, 0.6, 0.6)
+	boss.add_child(plate)
+	_install_pete_hud(boss, "QUEEN OF THE NIGHT")
+	_refresh_pete_hp(boss)
+	info_label.text = "BOSS — QUEEN OF THE NIGHT"
+	_queen_say("intro")
+	DebugLog.add("queen spawned, HP=%d" % _queen.hp)
+
+func _process_queen(boss: Node3D, delta: float) -> void:
+	if _queen == null or boss.get_meta("dying", false):
+		return
+	if boss.position.z < QUEEN_STAY_Z:
+		boss.position.z += RUSTLER_SPEED * delta
+	# posse chip damage (auto-fire)
+	for bullet in bullets_root.get_children():
+		if not (bullet is Node3D):
+			continue
+		var dx: float = bullet.position.x - boss.position.x
+		var dz: float = bullet.position.z - boss.position.z
+		if dx * dx + dz * dz < PETE_HIT_RADIUS_SQ:
+			_queen.hp = maxi(0, _queen.hp - 1)
+			bullet.queue_free()
+	var events: Array = _queen.tick(delta)
+	boss.set_meta("hp", _queen.hp)
+	_refresh_pete_hp(boss)
+	var anchor: Vector2 = get_viewport_rect().size * Vector2(0.5, 0.4)
+	for e in events:
+		match e:
+			"phrase_start":
+				if _sing_fx:
+					_sing_fx.show_contour(_contour_to_screen(_queen.current_contour()))
+				_queen_say("sing")
+			"response_open":
+				if _sing_fx:
+					_sing_fx.open_response()
+				_queen_swiping = true
+			"high_note":
+				# timed-out (unanswered) phrase: she belts a high note + drains
+				if _sing_fx:
+					_sing_fx.high_note_flash(anchor)
+				_queen_say("highnote")
+				_outlaw_drain_posse(boss.position, "")
+				_queen_swiping = false
+			"phase2":
+				_queen_say("phase2")
+			"defeat":
+				boss.set_meta("dying", true)
+				_queen_say("dying")
+				if _sing_fx:
+					_sing_fx.clear()
+				_show_win("Queen of the Night", boss, null)
+				return
+
+# Map a normalized phrase contour (state-space) into screen pixels in the
+# upper-center band where the FX draws it.
+func _contour_to_screen(contour: Array) -> Array:
+	var vp: Vector2 = get_viewport_rect().size
+	var x0: float = vp.x * 0.12
+	var w: float = vp.x * 0.76
+	var y0: float = vp.y * 0.30
+	var h: float = vp.y * 0.30
+	var mn := Vector2(INF, INF)
+	var mx := Vector2(-INF, -INF)
+	for p in contour:
+		mn = mn.min(p)
+		mx = mx.max(p)
+	var ext: Vector2 = (mx - mn)
+	if ext.x <= 0:
+		ext.x = 1.0
+	if ext.y <= 0:
+		ext.y = 1.0
+	var out: Array = []
+	for p in contour:
+		var nx: float = ((p as Vector2).x - mn.x) / ext.x
+		var ny: float = ((p as Vector2).y - mn.y) / ext.y
+		out.append(Vector2(x0 + nx * w, y0 + ny * h))
+	return out
+
+func _queen_say(kind: String) -> void:
+	var banks: Dictionary = {
+		"intro": ["queen_intro_", 2], "sing": ["queen_sing_", 3],
+		"highnote": ["queen_highnote_", 3], "phase2": ["queen_phase2_", 2],
+		"dying": ["queen_dying_", 2],
 	}
 	if not banks.has(kind):
 		return
@@ -5552,6 +5681,8 @@ func _trigger_quota_boss() -> void:
 		_spawn_candy_rustler()
 	elif _boss_kind() == "raisin":
 		_spawn_raisin_kidd()
+	elif _boss_kind() == "queen":
+		_spawn_queen()
 	else:
 		_spawn_pete()
 	for _g in gates_root.get_children():
@@ -6626,6 +6757,8 @@ func _process(delta: float) -> void:
 			_spawn_candy_rustler()
 		elif _boss_kind() == "raisin":
 			_spawn_raisin_kidd()
+		elif _boss_kind() == "queen":
+			_spawn_queen()
 		else:
 			_spawn_pete()
 		# iter414b: clear any gates so the boss isn't hidden behind one.
@@ -6637,7 +6770,7 @@ func _process(delta: float) -> void:
 	# check bullet hits.
 	if _pete_spawned and boss_root.get_child_count() > 0:
 		var pete: Node3D = boss_root.get_child(0)
-		if is_instance_valid(pete) and pete is Node3D and not (pete.get_meta("boss_kind", "pete") in ["rustler", "raisin"]):
+		if is_instance_valid(pete) and pete is Node3D and not (pete.get_meta("boss_kind", "pete") in ["rustler", "raisin", "queen"]):
 			# Iter 146: anim revert timer — if running, count down; on
 			# expiry switch Pete back to IDLE.
 			var revert_t: float = pete.get_meta("anim_revert_t", 0.0)
@@ -6743,6 +6876,8 @@ func _process(delta: float) -> void:
 			_process_rustler(rustler_boss, delta)
 		elif is_instance_valid(rustler_boss) and rustler_boss.get_meta("boss_kind", "pete") == "raisin":
 			_process_raisin_kidd(rustler_boss, delta)
+		elif is_instance_valid(rustler_boss) and rustler_boss.get_meta("boss_kind", "pete") == "queen":
+			_process_queen(rustler_boss, delta)
 	# Iter 115: GunState-driven auto-fire. Replaces the iter-66 fixed
 	# fire_timer. tick(delta) advances the cooldown + reload countdown;
 	# the while-can_fire loop drains as many shots as the cowboy is
@@ -7533,6 +7668,41 @@ func _input(event: InputEvent) -> void:
 	# Screen is 1080 wide; cowboy bounds are ±COWBOY_X_BOUND in world units.
 	# Linear approximation (the 3D camera adds some perspective, but at
 	# the cowboy's near-plane z=1.5 it's nearly orthographic across x).
+	# Level6: route swipe input into the sing-duel FX during an open response.
+	# A submitted swipe's result comes back via submit_swipe()'s return dict (we
+	# fire the out-sing / high-note FX + posse-drain here); a timed-out phrase is
+	# handled by tick() in _process_queen. (Mouse path is debug-only; touch is real.)
+	if _queen_swiping and _sing_fx != null:
+		if event is InputEventScreenDrag:
+			_sing_fx.feed_point((event as InputEventScreenDrag).position)
+		elif event is InputEventScreenTouch and not (event as InputEventScreenTouch).pressed:
+			var pts: Array = _sing_fx.end_response()
+			var res: Dictionary = _queen.submit_swipe(pts)
+			var anchor2: Vector2 = get_viewport_rect().size * Vector2(0.5, 0.4)
+			if bool(res.get("out_sing", false)):
+				if _sing_fx:
+					_sing_fx.out_sing_flash(anchor2)
+			else:
+				if _sing_fx:
+					_sing_fx.high_note_flash(anchor2)
+				_queen_say("highnote")
+				for i in range(int(res.get("posse_drain", 0))):
+					_outlaw_drain_posse(Vector3.ZERO, "")
+			_queen_swiping = false
+		elif event is InputEventMouseButton and not (event as InputEventMouseButton).pressed and (event as InputEventMouseButton).button_index == MOUSE_BUTTON_LEFT:
+			var pts2: Array = _sing_fx.end_response()
+			var res2: Dictionary = _queen.submit_swipe(pts2)
+			if bool(res2.get("out_sing", false)):
+				if _sing_fx:
+					_sing_fx.out_sing_flash(get_viewport_rect().size * Vector2(0.5, 0.4))
+			else:
+				if _sing_fx:
+					_sing_fx.high_note_flash(get_viewport_rect().size * Vector2(0.5, 0.4))
+				for i in range(int(res2.get("posse_drain", 0))):
+					_outlaw_drain_posse(Vector3.ZERO, "")
+			_queen_swiping = false
+	if event is InputEventMouseMotion and _queen_swiping and _sing_fx != null and ((event as InputEventMouseMotion).button_mask & MOUSE_BUTTON_MASK_LEFT) != 0:
+		_sing_fx.feed_point((event as InputEventMouseMotion).position)
 	var sx: float = -1.0
 	if event is InputEventScreenDrag:
 		sx = (event as InputEventScreenDrag).position.x
@@ -7772,6 +7942,15 @@ func _build_manga_fx() -> void:
 	_manga_fx.name = "MangaFx"
 	ui.add_child(_manga_fx)
 	ui.move_child(_manga_fx, 0)
+
+func _build_sing_duel_fx() -> void:
+	var ui: Node = get_node_or_null("UI")
+	if ui == null:
+		return
+	_sing_fx = SingDuelFxScript.new()
+	_sing_fx.name = "SingDuelFx"
+	ui.add_child(_sing_fx)
+	ui.move_child(_sing_fx, 0)
 
 # Up to `n` live enemies in front of `from`, nearest first — the chain targets.
 func _frost_chain_targets(from: Vector3, n: int) -> Array:
