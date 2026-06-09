@@ -21,6 +21,8 @@ const SPLASH_TRACK: AudioStream = preload("res://assets/audio/music/peppermint_r
 const LEVEL_TRACKS: Dictionary = {
 	1: preload("res://assets/audio/music/running_from_the_clock.ogg"),
 	2: preload("res://assets/audio/music/high_noon_at_the_glass_saloon.ogg"),
+	# Level 6: candy music-box bed under the starlit canyon + the Queen sing-duel.
+	6: preload("res://assets/audio/music/queen_of_the_night_canyon.ogg"),
 }
 
 var _player: AudioStreamPlayer = null
