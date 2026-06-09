@@ -85,7 +85,10 @@ func test_badlands_is_warm_toned():
 
 func test_canyon_theme_present_and_dark_cool():
 	var t: Dictionary = TerrainThemes.get_theme("canyon")
-	assert_ne(t, TerrainThemes.get_theme("frontier"), "canyon should be its own theme")
+	# compare a specific key (not the whole dict) — GUT's deep dict-diff chokes on
+	# a dict-vs-null value (canyon cliff is a dict, frontier cliff is null).
+	assert_ne(t["ground_albedo"], TerrainThemes.get_theme("frontier")["ground_albedo"],
+		"canyon has its own ground texture, not the frontier fallback")
 	for k in ["ground_albedo", "ground_normal", "ground_detail", "tint_low",
 			"tint_high", "fog_color", "fog_density", "scatter", "cliff"]:
 		assert_true(t.has(k), "canyon theme missing key %s" % k)
