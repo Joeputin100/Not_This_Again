@@ -36,12 +36,22 @@ adb logcat -G 4M
 adb logcat -c
 
 echo "Installing APK..."
+# Remove any pre-existing install first. The build job regenerates a fresh
+# debug keystore on every clean runner, but the emulator job restores a CACHED
+# AVD snapshot that may still hold the app installed under a PRIOR run's
+# keystore. 'adb install -r' keeps data but enforces a signing-cert match, so a
+# stale snapshot install fails with INSTALL_FAILED_UPDATE_INCOMPATIBLE
+# ('signatures do not match newer version') on every run. Uninstalling first
+# sidesteps the mismatch; a smoke test has no data worth preserving. The
+# package may legitimately be absent (fresh AVD) — ignore that error.
+adb uninstall "$PKG" >/dev/null 2>&1 || true
 # Retry once if first install fails due to adb hiccup (intermittent
 # 'device offline' between probe + install on slow runners).
 if ! adb install -r "$APK"; then
   echo "First install attempt failed, retrying after 10s..."
   sleep 10
   adb wait-for-device
+  adb uninstall "$PKG" >/dev/null 2>&1 || true
   adb install -r "$APK"
 fi
 
