@@ -4259,7 +4259,10 @@ func _process_queen(boss: Node3D, delta: float) -> void:
 			"phrase_start":
 				if _sing_fx:
 					_sing_fx.show_contour(_contour_to_screen(_queen.current_contour()))
-				_queen_say("sing")
+				# the sung phrase is a chip-tune whose pitch follows the contour
+				# (what you HEAR is what you TRACE); ElevenLabs VO can't perform
+				# a specific melody, so the voice is kept for spoken taunts only.
+				_play_phrase_melody(_queen._phrase_i)
 			"response_open":
 				if _sing_fx:
 					_sing_fx.open_response()
@@ -4330,6 +4333,7 @@ func _run_papageno_tutorial() -> void:
 		# (current_contour() reads _phrase_i, which we never tick-advance here)
 		tut._phrase_i = r
 		_sing_fx.show_contour(_contour_to_screen(tut.current_contour()))
+		_play_phrase_melody(r)  # hear the melody you're about to trace
 		await get_tree().create_timer(1.4).timeout
 		_sing_fx.open_response()
 		_queen_swiping = true
@@ -4352,6 +4356,13 @@ func _run_papageno_tutorial() -> void:
 	_queen_swiping = false
 	duo.queue_free()
 	info_label.text = ""
+
+# Chip-tune melody for phrase `i` (queen_phrase_<i%3>.mp3, gen_queen_chiptunes.py).
+# Pitch follows the contour the player must trace. Missing-safe via AudioBus.
+func _play_phrase_melody(i: int) -> void:
+	var audio := get_node_or_null("/root/AudioBus")
+	if audio != null and audio.has_method("play_character_line"):
+		audio.play_character_line("queen_phrase_%d" % (i % 3))
 
 func _queen_say(kind: String) -> void:
 	var banks: Dictionary = {
