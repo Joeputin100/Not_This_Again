@@ -1,4 +1,4 @@
-name: Smoke Test (Emulator + Firebase Test Lab)
+name: Smoke Test (Firebase Test Lab)
 
 # Iter 100: automated on-device smoke test. Runs in parallel with
 # android-debug.yml on every push. Catches script-attach / runtime
@@ -17,19 +17,25 @@ name: Smoke Test (Emulator + Firebase Test Lab)
 #                    level_3d.tscn 2s after main_menu boot. Converts
 #                    AAB → universal APK via bundletool. Uploads as
 #                    workflow artifact for the test jobs to consume.
-#   emulator       → reactivecircus/android-emulator-runner@v2 on
-#                    x86_64 API 33. Installs APK, launches activity,
-#                    waits 30s, dumps logcat, asserts 'level_3d.gd _init'.
 #   firebase-test  → gcloud firebase test android run --type=robo on a
 #                    virtual Pixel (FTL free tier: 10 virtual + 5
-#                    physical/day). Catches device-specific bugs the
-#                    emulator misses.
+#                    physical/day), then downloads the run's logcat from
+#                    our results bucket and asserts the Godot boot
+#                    breadcrumbs (test/ci/ftl_assert_breadcrumbs.sh).
+#
+# The former GH-hosted-emulator job is RETIRED (2026-06-09): that
+# emulator's software GPU cannot run Godot 4.6 by either path (Vulkan
+# presents fail with QueuePresentKHR error 5; the GLES3 fallback fails
+# shader compile and the app dies). FTL virtual devices render the game
+# fine, so the breadcrumb assertions live there now — same teeth, on
+# hardware representative of player phones.
 #
 # One-time setup outside CI:
 #   - Service account ${GCP_SERVICE_ACCOUNT} needs role
 #       roles/cloudtestservice.testAdmin   (run Firebase Test Lab tests)
-#   - For deeper logcat assertion from FTL (phase-2), SA also needs
-#     roles/storage.objectViewer on test-lab-${PROJECT_NUMBER}.appspot.com
+#   - SA has roles/storage.objectAdmin on the owned results bucket
+#     gs://ftl-results-static-webbing-461904-c4 (read+write: FTL writes
+#     results there, the breadcrumb step reads the logcat back)
 
 on:
   push:
@@ -37,7 +43,7 @@ on:
   workflow_dispatch:
     inputs:
       skip_ftl:
-        description: 'Skip Firebase Test Lab job (use only emulator)'
+        description: 'Skip the Firebase Test Lab job (build-only run)'
         type: boolean
         default: false
 
@@ -190,87 +196,6 @@ jobs:
           retention-days: 7
           if-no-files-found: error
 
-  emulator:
-    name: Emulator smoke test
-    runs-on: ubuntu-latest
-    needs: build
-    timeout-minutes: 25
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Download smoke-test APK
-        uses: actions/download-artifact@v4
-        with:
-          name: app-smoke-apk
-          path: ./
-
-      - name: Enable KVM
-        run: |
-          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' \
-            | sudo tee /etc/udev/rules.d/99-kvm4all.rules
-          sudo udevadm control --reload-rules
-          sudo udevadm trigger --name-match=kvm
-
-      - name: AVD cache
-        uses: actions/cache@v4
-        id: avd-cache
-        with:
-          path: |
-            ~/.android/avd/*
-            ~/.android/adb*
-          # Bump key when AVD config changes so old caches don't stick around
-          key: avd-api33-x86_64-google_apis-v3
-
-      - name: Create AVD + first-boot snapshot (cache miss only)
-        if: steps.avd-cache.outputs.cache-hit != 'true'
-        uses: reactivecircus/android-emulator-runner@v2
-        with:
-          api-level: 33
-          # google_apis (full image), NOT aosp_atd: the stripped-down ATD image
-          # starts the app but surfaces ZERO godot logcat lines (no breadcrumbs,
-          # no crash), which broke every smoke assertion. The full image is
-          # slower to boot but actually carries the game's log output.
-          #
-          # '-feature -Vulkan' (in emulator-options below): the emulator's
-          # software GPU advertises Vulkan but can't present frames — Godot's
-          # Forward Mobile renderer boots, then loops 'QueuePresentKHR failed
-          # with error: 5' and the main scene never loads. Hiding Vulkan makes
-          # Godot take the opengl3 fallback (project.godot
-          # rendering_device/fallback_to_opengl3=true), which the emulator's
-          # GLES translation handles fine. Real devices are unaffected.
-          target: google_apis
-          arch: x86_64
-          profile: pixel_5
-          ram-size: 4096M
-          heap-size: 1024M
-          force-avd-creation: false
-          emulator-options: -no-window -gpu swiftshader_indirect -feature -Vulkan -noaudio -no-boot-anim -camera-back none
-          disable-animations: true
-          script: echo "Generated AVD snapshot for caching"
-
-      - name: Run smoke test on emulator
-        uses: reactivecircus/android-emulator-runner@v2
-        with:
-          api-level: 33
-          target: google_apis  # full image — see comment on the AVD-creation step
-          arch: x86_64
-          profile: pixel_5
-          ram-size: 4096M
-          heap-size: 1024M
-          force-avd-creation: false
-          emulator-options: -no-snapshot-save -no-window -gpu swiftshader_indirect -feature -Vulkan -noaudio -no-boot-anim -camera-back none
-          disable-animations: true
-          script: bash test/ci/emulator_smoke.sh
-
-      - name: Upload emulator logcat on failure
-        if: failure()
-        uses: actions/upload-artifact@v4
-        with:
-          name: emulator-logcat
-          path: /tmp/logcat.txt
-          retention-days: 14
-
   firebase-test:
     name: Firebase Test Lab smoke
     runs-on: ubuntu-latest
@@ -280,6 +205,10 @@ jobs:
     env:
       BRANCH_NAME: ${{ github.ref_name }}
     steps:
+      - name: Checkout
+        # needed for test/ci/ftl_assert_breadcrumbs.sh
+        uses: actions/checkout@v4
+
       - name: Download smoke-test APK
         uses: actions/download-artifact@v4
         with:
@@ -322,15 +251,18 @@ jobs:
           #   gsutil iam ch \
           #     serviceAccount:${SA}:roles/storage.objectAdmin \
           #     gs://ftl-results-static-webbing-461904-c4
+          # --results-dir pinned to the GH run id so the breadcrumb-assertion
+          # step can find this run's logcat deterministically.
           gcloud firebase test android run \
             --type=robo \
             --app=app-smoke.apk \
             --device=model=MediumPhone.arm,version=33,locale=en,orientation=portrait \
-            --timeout=90s \
+            --timeout=120s \
             --no-record-video \
             --no-performance-metrics \
             --project="${GCP_PROJECT}" \
             --results-bucket="ftl-results-static-webbing-461904-c4" \
+            --results-dir="smoke-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}" \
             --results-history-name="${FTL_HISTORY}" 2>&1 | tee /tmp/ftl_output.txt
           FTL_EXIT=${PIPESTATUS[0]}
           echo ""
@@ -343,10 +275,18 @@ jobs:
             || echo "(no console URL parsed — see raw output above)"
           echo "PASS: FTL Robo run completed without crashes."
 
-      - name: Upload FTL output log
+      - name: Assert Godot boot breadcrumbs from FTL logcat
+        env:
+          RESULTS_BUCKET: ftl-results-static-webbing-461904-c4
+          RESULTS_DIR: smoke-${{ github.run_id }}-${{ github.run_attempt }}
+        run: bash test/ci/ftl_assert_breadcrumbs.sh
+
+      - name: Upload FTL output log + logcat
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: ftl-output
-          path: /tmp/ftl_output.txt
+          path: |
+            /tmp/ftl_output.txt
+            /tmp/logcat.txt
           retention-days: 14
