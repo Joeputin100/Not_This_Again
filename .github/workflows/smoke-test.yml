@@ -231,13 +231,21 @@ jobs:
           # starts the app but surfaces ZERO godot logcat lines (no breadcrumbs,
           # no crash), which broke every smoke assertion. The full image is
           # slower to boot but actually carries the game's log output.
+          #
+          # '-feature -Vulkan' (in emulator-options below): the emulator's
+          # software GPU advertises Vulkan but can't present frames — Godot's
+          # Forward Mobile renderer boots, then loops 'QueuePresentKHR failed
+          # with error: 5' and the main scene never loads. Hiding Vulkan makes
+          # Godot take the opengl3 fallback (project.godot
+          # rendering_device/fallback_to_opengl3=true), which the emulator's
+          # GLES translation handles fine. Real devices are unaffected.
           target: google_apis
           arch: x86_64
           profile: pixel_5
           ram-size: 4096M
           heap-size: 1024M
           force-avd-creation: false
-          emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none
+          emulator-options: -no-window -gpu swiftshader_indirect -feature -Vulkan -noaudio -no-boot-anim -camera-back none
           disable-animations: true
           script: echo "Generated AVD snapshot for caching"
 
@@ -251,7 +259,7 @@ jobs:
           ram-size: 4096M
           heap-size: 1024M
           force-avd-creation: false
-          emulator-options: -no-snapshot-save -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none
+          emulator-options: -no-snapshot-save -no-window -gpu swiftshader_indirect -feature -Vulkan -noaudio -no-boot-anim -camera-back none
           disable-animations: true
           script: bash test/ci/emulator_smoke.sh
 

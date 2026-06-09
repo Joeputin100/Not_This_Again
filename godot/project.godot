@@ -59,4 +59,5 @@ window/per_pixel_transparency/allowed=false
 
 renderer/rendering_method="mobile"
 renderer/rendering_method.mobile="mobile"
+rendering_device/fallback_to_opengl3=true
 textures/vram_compression/import_etc2_astc=true
