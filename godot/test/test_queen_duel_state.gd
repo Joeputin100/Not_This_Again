@@ -17,8 +17,10 @@ func test_translated_and_scaled_copy_still_scores_high():
 	assert_gt(QueenDuelState.score_trace(shape, moved), 0.85)
 
 func test_different_shape_scores_low():
-	var a: Array = [Vector2(0,0), Vector2(1,1), Vector2(2,0), Vector2(3,1)]
-	var b: Array = [Vector2(0,0), Vector2(1,0), Vector2(2,0), Vector2(3,0)]
+	# main diagonal vs anti-diagonal: both fill the unit box but go opposite ways,
+	# so after normalization they are clearly different (~0.09).
+	var a: Array = [Vector2(0,0), Vector2(1,1), Vector2(2,2), Vector2(3,3)]
+	var b: Array = [Vector2(0,3), Vector2(1,2), Vector2(2,1), Vector2(3,0)]
 	assert_lt(QueenDuelState.score_trace(a, b), 0.6)
 
 func test_reversed_trace_scores_lower_than_forward():
