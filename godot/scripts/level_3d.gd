@@ -3936,6 +3936,8 @@ func _boss_kind() -> String:
 		return "rustler"
 	if lvl == 5:
 		return "raisin"
+	if lvl == 6:
+		return "queen"
 	return "pete"
 
 # Spawn The Candy Rustler. Mirrors _spawn_pete's framing (a Node3D in
