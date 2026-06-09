@@ -499,6 +499,8 @@ const SingDuelFxScript = preload("res://scripts/sing_duel_fx.gd")
 var _sing_fx: Control = null
 var _queen_swiping: bool = false
 var _queen_hit_voice_cd: float = 0.0
+# Level-6 Papageno/Papagena swipe-duel tutorial: one-shot guard.
+var _papageno_done: bool = false
 
 # Iter 88: bonus pickup spawn parameters. Pickups appear periodically
 # at a random lane x, hover with sine y-bob, scroll toward cowboy.
@@ -4304,6 +4306,49 @@ func _contour_to_screen(contour: Array) -> Array:
 		out.append(Vector2(x0 + nx * w, y0 + ny * h))
 	return out
 
+# Papageno/Papagena comic tutorial: a no-penalty taste of the sing-duel using
+# QueenDuelState(tutorial=true) — gentle arcs, happy reactions, never punishes.
+# Fixed-timing (we drive the rounds by timer, never tick the state machine), so
+# it's robust and self-contained. Reuses the existing _queen_swiping + _input
+# swipe-capture path that feeds points into _sing_fx. Cleans up fully on exit:
+# clears the overlay, frees the duet billboard, resets _queen_swiping, and
+# restores info_label.
+func _run_papageno_tutorial() -> void:
+	if _sing_fx == null:
+		return
+	# spawn the duet billboard up front (a singing Papageno/Papagena pair)
+	var duo := Node3D.new()
+	duo.position = Vector3(0.0, 2.4, OBSTACLE_SPAWN_Z + 6.0)
+	duo.add_child(_make_video_billboard(load("res://assets/videos/papageno/duet.ogv"), 3.4))
+	boss_root.add_child(duo)
+	if get_node_or_null("/root/AudioBus") and AudioBus.has_method("play_character_line"):
+		AudioBus.play_character_line("papageno_intro_0")
+	info_label.text = "PA-PA-PA!  swipe the tune!"
+	var tut := _QUEEN_DUEL_STATE.new(true)
+	for r in range(3):
+		# cycle through the three phrases so each round shows a fresh contour
+		# (current_contour() reads _phrase_i, which we never tick-advance here)
+		tut._phrase_i = r
+		_sing_fx.show_contour(_contour_to_screen(tut.current_contour()))
+		await get_tree().create_timer(1.4).timeout
+		_sing_fx.open_response()
+		_queen_swiping = true
+		# _input feeds points into _sing_fx during this swipe window
+		await get_tree().create_timer(2.2).timeout
+		var pts: Array = _sing_fx.end_response()
+		_queen_swiping = false
+		tut.submit_swipe(pts)   # tutorial = never penalizes regardless of score
+		# always cheer — purely cosmetic teaching
+		_sing_fx.out_sing_flash(get_viewport_rect().size * Vector2(0.5, 0.4))
+		if get_node_or_null("/root/AudioBus") and AudioBus.has_method("play_character_line"):
+			AudioBus.play_character_line("papageno_cheer_0")
+		await get_tree().create_timer(0.7).timeout
+	# clean up: overlay, billboard, swipe gate, HUD label
+	_sing_fx.clear()
+	_queen_swiping = false
+	duo.queue_free()
+	info_label.text = ""
+
 func _queen_say(kind: String) -> void:
 	var banks: Dictionary = {
 		"intro": ["queen_intro_", 2], "sing": ["queen_sing_", 3],
@@ -6275,6 +6320,14 @@ func _process(delta: float) -> void:
 		_show_fail()
 		return
 	_level_elapsed += delta
+	# Level-6 Papageno tutorial: one-shot, partway through the canyon run, BEFORE
+	# the boss. No-penalty taste of the swipe-the-phrase mechanic. Guards keep it
+	# from firing twice (_papageno_done) or during the boss (not _pete_spawned).
+	if not _papageno_done and not _pete_spawned \
+			and get_node_or_null("/root/GameState") != null and GameState.current_level == 6 \
+			and _level_elapsed >= 12.0:
+		_papageno_done = true
+		_run_papageno_tutorial()
 	# iter417: wind weather nudges the cowboy's target sideways (player can fight
 	# it by dragging, which resets _target_x to the finger position).
 	# iter434: ice-slip — on a frozen puddle the cowboy keeps his entry momentum
