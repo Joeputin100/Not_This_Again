@@ -97,6 +97,37 @@
     "raisin_dialog_finisher": [
       "Heh heh heh... Five-Point... Exploding... GUMDROP!",
       "Sleep now, little candies. The Kidd has won."
+    ],
+    "queen_of_night_name": "QUEEN OF THE NIGHT",
+    "queen_dialog_intro": [
+      "So... the little posse dares my starlit stage. Sing for me, sugar-children — or be silenced forever.",
+      "Hell's own vengeance boils in this candied heart. Match my voice, note for note, or shatter."
+    ],
+    "queen_dialog_sing": [
+      "Follow this, if your throats are sweet enough!",
+      "Trace my fury — and do not fall behind!",
+      "Now... sing it BACK to me!"
+    ],
+    "queen_dialog_highnote": [
+      "Flat! Pathetic! Feel my high F!",
+      "Off the beat — and off with your sugar!",
+      "You crack... while I soar!"
+    ],
+    "queen_dialog_phase2": [
+      "Enough! Now you face the TRUE aria of the night!",
+      "My vengeance has scarcely begun — louder! FASTER!"
+    ],
+    "queen_dialog_dying": [
+      "Impossible... out-sung... by a chorus of... candy...",
+      "My final note... fades... to sugar..."
+    ]
+  },
+  "papageno": {
+    "papageno_dialog_intro": [
+      "Pa-pa-pa! Hallo, little posse! Sing along with old Papageno — just trace what I tweet, ja?"
+    ],
+    "papageno_dialog_cheer": [
+      "Pa-pa-pa-PERFECT! Papagena would be so proud! Ho ho ho!"
     ]
   },
   "granny": {
