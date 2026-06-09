@@ -82,3 +82,13 @@ func test_badlands_is_warm_toned():
 	var t: Dictionary = TerrainThemes.get_theme("badlands")
 	var hi: Color = t["tint_high"]
 	assert_gt(hi.r, hi.b, "badlands ridge tint should be warm (red > blue)")
+
+func test_canyon_theme_present_and_dark_cool():
+	var t: Dictionary = TerrainThemes.get_theme("canyon")
+	assert_ne(t, TerrainThemes.get_theme("frontier"), "canyon should be its own theme")
+	for k in ["ground_albedo", "ground_normal", "ground_detail", "tint_low",
+			"tint_high", "fog_color", "fog_density", "scatter", "cliff"]:
+		assert_true(t.has(k), "canyon theme missing key %s" % k)
+	var hi: Color = t["tint_high"]
+	assert_lt(hi.r, hi.b, "canyon ridge tint should be cool (blue > red) for a night look")
+	assert_not_null(t["cliff"], "canyon has a cliff side")

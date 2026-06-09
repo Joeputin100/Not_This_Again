@@ -91,6 +91,23 @@ const TERRAIN_THEMES: Dictionary = {
 			{"slug": "scrub", "density": 0.4, "scale": [0.5, 0.9]},
 		],
 	},
+	"canyon": {
+		"ground_albedo": "res://assets/textures/ground_canyon.png",
+		"ground_normal": "res://assets/textures/ground_canyon_n.png",
+		"ground_detail": "res://assets/textures/ground_detail.png",
+		"ground_uv_tile": 24.0, "macro_strength": 2.2, "hill_scale": 1.6,
+		"backdrop": "res://assets/sprites/props/backdrop_canyon.png",
+		"tint_low": Color(0.10, 0.09, 0.18), "tint_high": Color(0.26, 0.28, 0.48),
+		"fog_color": Color(0.20, 0.22, 0.40), "fog_density": 0.030,
+		"trail": {"albedo": "res://assets/textures/trail_canyon.png", "half_width": 2.6},
+		"boardwalk": null,
+		"cliff": {"side": "left", "depth": 30.0},
+		"scatter": [
+			{"slug": "rock_large", "density": 0.5, "scale": [0.8, 1.6], "side": "right"},
+			{"slug": "cactus_saguaro", "density": 0.3, "scale": [0.9, 1.5], "side": "right"},
+			{"slug": "rock_small", "density": 0.6, "scale": [0.5, 1.0]},
+		],
+	},
 }
 
 # Hill profile = sum of sine octaves whose periods all divide HILL_PERIOD, so it
