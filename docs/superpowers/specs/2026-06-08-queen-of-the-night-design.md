@@ -89,7 +89,7 @@ The posse **auto-fires** at the Queen for **chip damage** throughout (keeps the 
 
 ## 7. Her look (concept art)
 
-A towering **candy opera diva**. Direction options being concepted (NB Pro): a **licorice night-sky gown studded with candy-star constellations + a spiked starburst tiara** (lead), a translucent **sugar-glass/rock-candy** variant, and a **dark-chocolate-and-gold baroque** variant. Glittering, severe, a touch villainous but candy-cute. Owner picks the look; animations via Veo claymation green-screen billboard (the boss pattern); VO via ElevenLabs.
+A towering **candy opera diva**. **LOOK LOCKED (2026-06-08): the dark-chocolate & gold baroque diva** (`queen_concept_3_chocolatgold.png`) — a deep-cocoa gown with gold-leaf filigree, a gilded crown, opulent and imperious, mid-belt of her vengeance aria. Severe, regal, a touch villainous but candy-cute. (The licorice-starlace and sugar-glass variants are kept in `docs/superpowers/assets/queen_night_2026-06-08/` as alternates.) Animations via Veo claymation green-screen billboard (the boss pattern); VO via ElevenLabs (operatic).
 
 ---
 
