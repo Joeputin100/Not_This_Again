@@ -386,6 +386,8 @@ const OUTLAW_KINDS: Dictionary = {
 	"triffid":       {"hp": 14, "height": 3.0},
 	"fireball_monk": {"hp": 18, "height": 2.7},
 	"star_monk":     {"hp": 9,  "height": 2.5},
+	"flit_finch":    {"hp": 8,  "height": 2.2},
+	"peck_jay":      {"hp": 11, "height": 2.4},
 }
 # candy_corn + gummi common; fried_dough + triffid rarer.
 const FARM_OUTLAW_WEIGHTS: Array = [
@@ -401,6 +403,16 @@ const MONK_OUTLAW_VIDEOS: Dictionary = {
 const BADLANDS_OUTLAW_WEIGHTS: Array = [
 	["fireball_monk", 45], ["star_monk", 55],
 ]
+# Level-6 candy songbirds (no guns). flit_finch = warm, erratic light harasser;
+# peck_jay = cool, swoops to peck on a cooldown. Tuned on device (Task 10).
+const BIRD_OUTLAW_VIDEOS: Dictionary = {
+	"flit_finch": "res://assets/videos/canyon_birds/flit_finch.ogv",
+	"peck_jay":   "res://assets/videos/canyon_birds/peck_jay.ogv",
+}
+const CANYON_OUTLAW_WEIGHTS: Array = [
+	["flit_finch", 55], ["peck_jay", 45],
+]
+const PECK_JAY_SWOOP_COOLDOWN: float = 2.2   # reserved for later AI tuning (do not remove)
 const FIREBALL_MONK_HOLD_Z: float = 7.0     # heavy lobber holds at range
 const STAR_MONK_HOLD_Z: float = 5.0         # harasser closes a bit more
 # candy_corn KITER: holds this many units in front of the cowboy (stops closing).
@@ -5572,6 +5584,7 @@ func _pick_outlaw_kind() -> String:
 	match _level_def.terrain:
 		"farm": roster = FARM_OUTLAW_WEIGHTS
 		"badlands": roster = BADLANDS_OUTLAW_WEIGHTS
+		"canyon": roster = CANYON_OUTLAW_WEIGHTS
 		_: return "vagrant"
 	var total: int = 0
 	for entry in roster:
@@ -5622,6 +5635,8 @@ func _spawn_outlaw(kind: String = "") -> void:
 		billboard = _make_video_billboard(load(FARM_OUTLAW_VIDEOS[kind]), OUTLAW_KINDS[kind]["height"])
 	elif MONK_OUTLAW_VIDEOS.has(kind):
 		billboard = _make_video_billboard(load(MONK_OUTLAW_VIDEOS[kind]), OUTLAW_KINDS[kind]["height"])
+	elif BIRD_OUTLAW_VIDEOS.has(kind):
+		billboard = _make_video_billboard(load(BIRD_OUTLAW_VIDEOS[kind]), OUTLAW_KINDS[kind]["height"])
 	else:
 		billboard = _make_video_billboard(VAGRANT_IDLE_STREAM, 2.5)
 	outlaw.add_child(billboard)
