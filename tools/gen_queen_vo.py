@@ -12,17 +12,16 @@ Renders one MP3 per en.json line; file slugs match level_3d.gd exactly
   queen_dying_<n>.mp3     (2)   boss.queen_dialog_dying     (she loses)
   papageno_intro_<n>.mp3  (1)   papageno.papageno_dialog_intro
   papageno_cheer_<n>.mp3  (1)   papageno.papageno_dialog_cheer
+  papagena_finale_<n>.mp3 (1)   papageno.papagena_dialog_finale
 
 SOURCE OF TRUTH — verbatim text is `godot/assets/text/en.json` under
-`boss.queen_dialog_*` and `papageno.papageno_dialog_*`. en.json is never
-modified here — only the API payload is tagged with eleven_v3 delivery tags.
+`boss.queen_dialog_*` and `papageno.*_dialog_*`. en.json is never modified
+here — only the API payload is tagged with eleven_v3 delivery tags.
 
-VOICES (PLACEHOLDERS — owner to confirm/swap before release):
-  Queen    = pFZP5JQG7iQjIQuC4Bku  "Lily - Velvety Actress" (dramatic female).
-             Override with --voice <id> once the owner adds an operatic
-             Queen-of-the-Night clone (every other boss got a hand-picked voice;
-             this one was not provided when the overnight build ran).
-  Papageno = fmR785nA5jqTzoTNg3Jk  "Bob - Silly Millionaire Narrator" (comic male).
+VOICES — owner-picked (2026-06-09):
+  Queen    = Zi7dUK1wmV84QNPgB6Hc   (--voice still overrides for experiments)
+  Papageno = gBDv2oGht23KfZZMSUEi
+  Papagena = hRclHnAGI1PGQgXUYKsd
 
 PERFORMANCE — the Queen is a baroque coloratura villainess belting *Der Hoelle
 Rache*: imperious, operatic, vengeful, candy-cute. Papageno is the giddy comic
@@ -53,8 +52,9 @@ ROOT = Path(__file__).resolve().parents[1]
 EN_JSON = ROOT / "godot" / "assets" / "text" / "en.json"
 OUT_DIR = ROOT / "godot" / "assets" / "audio" / "characters"
 
-QUEEN_VOICE = "pFZP5JQG7iQjIQuC4Bku"     # PLACEHOLDER: Lily - Velvety Actress
-PAPAGENO_VOICE = "fmR785nA5jqTzoTNg3Jk"  # PLACEHOLDER: Bob - Silly Millionaire
+QUEEN_VOICE = "Zi7dUK1wmV84QNPgB6Hc"     # owner-picked Queen of the Night
+PAPAGENO_VOICE = "gBDv2oGht23KfZZMSUEi"  # owner-picked Papageno
+PAPAGENA_VOICE = "hRclHnAGI1PGQgXUYKsd"  # owner-picked Papagena
 MODEL = "eleven_v3"                        # required for audio tags
 OUTPUT_FMT = "mp3_44100_128"
 
@@ -69,6 +69,7 @@ def banks(queen_voice: str):
         ("boss", "queen_dialog_dying", "queen_dying_", queen_voice),
         ("papageno", "papageno_dialog_intro", "papageno_intro_", PAPAGENO_VOICE),
         ("papageno", "papageno_dialog_cheer", "papageno_cheer_", PAPAGENO_VOICE),
+        ("papageno", "papagena_dialog_finale", "papagena_finale_", PAPAGENA_VOICE),
     ]
 
 # Hand-tagged performance per en.json line. Text after the tags is the
@@ -111,6 +112,10 @@ PERFORMANCE = {
         "[laughs] just trace what I tweet, ja?",
     "Pa-pa-pa-PERFECT! Papagena would be so proud! Ho ho ho!":
         "[excited] Pa-pa-pa-PERFECT! Papagena would be so proud! [laughs] Ho ho ho!",
+    # --- Papagena finale ---
+    "Pa-pa-pa-Papageno! Such sweet little singers — now go show that gloomy old Queen!":
+        "[cheerfully] Pa-pa-pa-Papageno! [laughs] Such sweet little singers — "
+        "[excited] now go show that gloomy old Queen!",
 }
 
 

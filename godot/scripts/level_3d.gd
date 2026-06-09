@@ -4343,6 +4343,10 @@ func _run_papageno_tutorial() -> void:
 		if get_node_or_null("/root/AudioBus") and AudioBus.has_method("play_character_line"):
 			AudioBus.play_character_line("papageno_cheer_0")
 		await get_tree().create_timer(0.7).timeout
+	# Papagena's joyous send-off closes the duet (her own voice; missing-safe)
+	if get_node_or_null("/root/AudioBus") and AudioBus.has_method("play_character_line"):
+		AudioBus.play_character_line("papagena_finale_0")
+	await get_tree().create_timer(1.2).timeout
 	# clean up: overlay, billboard, swipe gate, HUD label
 	_sing_fx.clear()
 	_queen_swiping = false
