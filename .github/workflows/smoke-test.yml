@@ -92,6 +92,19 @@ jobs:
           echo "Stamped build_info.gd (SMOKE_TEST=true):"
           cat godot/scripts/build_info.gd
 
+      - name: Force gl_compatibility renderer (smoke APK only)
+        # FTL virtual devices (and GH emulators) have software GPUs whose
+        # Vulkan can't present frames (QueuePresentKHR error 5 on llvmpipe),
+        # so the Forward Mobile renderer stalls before the first scene loads.
+        # Mesa's software OpenGL is solid, and the smoke test asserts boot
+        # breadcrumbs, not visuals — so the SMOKE build alone is switched to
+        # gl_compatibility. Player builds (android-debug/release.yml) keep
+        # Forward Mobile/Vulkan untouched.
+        run: |
+          sed -i 's|renderer/rendering_method.mobile="mobile"|renderer/rendering_method.mobile="gl_compatibility"|' \
+            godot/project.godot
+          grep "rendering_method" godot/project.godot
+
       - name: Install Godot Android build template into project
         run: |
           mkdir -p /tmp/godot-templates
