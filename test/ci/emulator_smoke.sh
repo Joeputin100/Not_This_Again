@@ -13,7 +13,9 @@ set -euo pipefail
 
 PKG=app.notthisagain.run
 APK=app-smoke.apk
-WAIT_SECS=45  # main_menu boot + 2s auto-redirect timer + level_3d _ready
+WAIT_SECS=90  # main_menu boot + 2s auto-redirect timer + level_3d _ready.
+              # 90 (was 45): the google_apis full image boots + software-renders
+              # slower than the old aosp_atd one; give the breadcrumbs headroom.
 
 # Defensive boot-completion wait. Some GH-hosted runners are slow enough
 # that emulator-runner's internal 'wait for boot' returns before Android
