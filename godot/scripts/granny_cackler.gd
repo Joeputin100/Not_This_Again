@@ -10,8 +10,8 @@ const FRAMES: Array[String] = [
 	"res://assets/sprites/props/granny_cackle_2.png",
 	"res://assets/sprites/props/granny_cackle_3.png",
 ]
-const MIN_GAP: float = 5.0
-const MAX_GAP: float = 12.0
+const MIN_GAP: float = 9.0
+const MAX_GAP: float = 15.0
 const FRAME_T: float = 0.12
 
 @export var sprite_path: NodePath
