@@ -98,6 +98,26 @@
       "Heh heh heh... Five-Point... Exploding... GUMDROP!",
       "Sleep now, little candies. The Kidd has won."
     ],
+    "jawbreaker_name": "THE JAWBREAKER",
+    "jawbreaker_dialog_intro": [
+      "Well blow me down, more sugar-tramps trompin' through MY pass — an' in THIS weather?! Snow's gettin' in me good candy-shell agh-gag-gag, freezin' me layers solid, I oughtta clobber the lot o' ya just to warm up me knuckles!"
+    ],
+    "jawbreaker_dialog_taunts": [
+      "Brrr-agh, can't feel me own jaw — hold STILL so's I can warm up on ya, ya little jelly-beans!",
+      "Snow down me shell, frost in me layers, blibber-blabber — this pass ain't big enough for the both of us an' the WEATHER!"
+    ],
+    "jawbreaker_dialog_when_hit": [
+      "Ooh me cracked corner! Ya chipped me good candy — an' it's TOO COLD to be chippin' a feller, blow me down!"
+    ],
+    "jawbreaker_dialog_charge": [
+      "Hrrrm-gg, I'm froze stiff an' I'm sharin' it — here comes the COLD, ya warm little tramps, BRACE YERSELVES!"
+    ],
+    "jawbreaker_dialog_blast": [
+      "BLOW ME DOWN an' blow YOU down too!"
+    ],
+    "jawbreaker_dialog_dying": [
+      "Awgh… me layers… all… thawin' apart… shoulda stayed in me wrapper… g'night, ya frostbit varmints…"
+    ],
     "queen_of_night_name": "QUEEN OF THE NIGHT",
     "queen_dialog_intro": [
       "So... the little posse dares my starlit stage. Sing for me, sugar-children — or be silenced forever.",
