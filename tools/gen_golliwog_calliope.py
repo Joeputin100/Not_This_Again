@@ -1,12 +1,15 @@
 #!/usr/bin/env python3
-"""Golliwog's Cakewalk (Debussy, 1908 — public domain) as a CALLIOPE carnival
-arrangement for the Level-4 mountain pass.
+"""Golliwogg's Cake Walk (Debussy, Children's Corner VI, 1908 — public domain)
+as a CALLIOPE carnival arrangement for the Level-4 mountain pass.
 
-CLEAN-ROOM NOTE DATA: every downloadable MIDI of this piece carries a
-non-commercial or share-alike license, so this file is OUR OWN transcription/
-arrangement written from the public-domain score — we own the arrangement
-outright. Main strain faithful; inner voicings simplified into a carnival
-oom-pah (tuba bass + reed-organ chords) under the calliope lead.
+CLEAN-ROOM NOTE DATA: transcribed by eye + notehead measurement from the
+IMSLP #252526 scan of the 1908 Durand first edition (pages 26-30), which is
+public domain. Every downloadable MIDI of this piece carries a non-commercial
+or share-alike license, so this file is OUR OWN transcription/arrangement —
+we own it outright. The melody follows the engraving (Allegro giusto, E-flat
+major, 2/4 — including the famous accented C-flats of the opening cascade and
+the low-register cakewalk theme); inner voicings are simplified into a
+carnival oom-pah (tuba bass + reed-organ chords) under the calliope lead.
 
 Render chain: note data -> MIDI (mido) -> fluidsynth + FluidR3_GM.sf2 (MIT
 license) -> wav -> ogg. GM patches: 82 Calliope Lead, 20 Reed Organ, 58 Tuba.
@@ -40,146 +43,199 @@ def p(name: str) -> int:
     return 12 * (int(rest) + 1) + NOTE_BASE[letter] + acc
 
 # ---- chords for the oom-pah engine ------------------------------------------
+# "NC" = tacet bar (no oom-pah).
 CHORDS = {
-    "Eb":  ("Eb2", ["Eb3", "G3", "Bb3"]),
-    "Ab":  ("Ab2", ["Ab3", "C4", "Eb4"]),
-    "Bb7": ("Bb2", ["Ab3", "Bb3", "D4", "F4"]),
-    "Cm":  ("C3",  ["Eb3", "G3", "C4"]),
-    "F7":  ("F2",  ["Eb3", "F3", "A3", "C4"]),
-    "Gb":  ("Gb2", ["Gb3", "Bb3", "Db4"]),
-    "Cb":  ("Cb3", ["Cb4", "Eb4", "Gb4"]),
-    "Db7": ("Db3", ["Cb4", "Db4", "F4", "Ab4"]),
+    "Eb":   ("Eb2", ["Eb3", "G3", "Bb3"]),
+    "Eb5":  ("Eb2", ["Eb3", "Bb3"]),          # the open-fifth vamp (as engraved)
+    "Eb7":  ("Eb2", ["Eb3", "G3", "Db4"]),    # the bluesy flat-7 colour
+    "Ab":   ("Ab2", ["Ab3", "C4", "Eb4"]),
+    "Bb7":  ("Bb2", ["Ab3", "Bb3", "D4", "F4"]),
+    "Cm":   ("C3",  ["Eb3", "G3", "C4"]),
+    "F7":   ("F2",  ["Eb3", "F3", "A3", "C4"]),
+    "Gb":   ("Gb2", ["Gb3", "Bb3", "Db4"]),
+    "Gb5":  ("Gb2", ["Gb3", "Db4"]),          # middle-section pedal fifth
+    "Cb":   ("Cb3", ["Cb4", "Eb4", "Gb4"]),
+    "Db7":  ("Db3", ["Cb4", "Db4", "F4", "Ab4"]),
 }
 
 # ---- the piece ---------------------------------------------------------------
 # Melody entries: (pitch_name or None=rest, start_16th, dur_16ths) per SECTION,
 # with a per-section bar count and chord chart (one symbol per bar, 2/4 = 8
-# sixteenths per bar).
+# sixteenths per bar). Several entries may overlap in time (dyads/stabs).
 
-# A strain (16 bars) — the famous syncopated theme. Grid: bar*8 + offset.
-def a_strain():
-    m = []
-    def snap(bar, notes):
-        """the cakewalk snap: 16th,16th,8th(syncope) starting on the bar."""
-        b = bar * 8
-        m.append((notes[0], b + 0, 1))
-        m.append((notes[1], b + 1, 1))
-        m.append((notes[2], b + 2, 2))
-        if len(notes) > 3:
-            m.append((notes[3], b + 4, 1))
-            m.append((notes[4], b + 5, 1))
-            m.append((notes[5], b + 6, 2))
-    # phrase 1 (bars 0-3): the signature call
-    snap(0, ["Eb4", "F4", "G4", "G4", "F4", "G4"])
-    snap(1, ["Bb4", "G4", "Eb4"])
-    m.append(("F4", 1 * 8 + 4, 2)); m.append(("G4", 1 * 8 + 6, 2))
-    snap(2, ["Eb4", "F4", "G4", "G4", "F4", "G4"])
-    m.append(("Bb4", 3 * 8 + 0, 2)); m.append(("Ab4", 3 * 8 + 2, 2))
-    m.append(("G4", 3 * 8 + 4, 2)); m.append(("F4", 3 * 8 + 6, 2))
-    # phrase 2 (bars 4-7): answer, stepping down
-    snap(4, ["Ab4", "Bb4", "C5", "C5", "Bb4", "C5"])
-    snap(5, ["Eb5", "C5", "Ab4"])
-    m.append(("Bb4", 5 * 8 + 4, 2)); m.append(("C5", 5 * 8 + 6, 2))
-    m.append(("Bb4", 6 * 8 + 0, 2)); m.append(("Ab4", 6 * 8 + 2, 2))
-    m.append(("G4", 6 * 8 + 4, 2)); m.append(("F4", 6 * 8 + 6, 2))
-    m.append(("Eb4", 7 * 8 + 0, 4))
-    # phrase 3-4 (bars 8-15): repeat with the stomp ending
-    snap(8, ["Eb4", "F4", "G4", "G4", "F4", "G4"])
-    snap(9, ["Bb4", "G4", "Eb4"])
-    m.append(("F4", 9 * 8 + 4, 2)); m.append(("G4", 9 * 8 + 6, 2))
-    snap(10, ["Eb4", "F4", "G4", "G4", "F4", "G4"])
-    m.append(("Bb4", 11 * 8 + 0, 2)); m.append(("Ab4", 11 * 8 + 2, 2))
-    m.append(("G4", 11 * 8 + 4, 2)); m.append(("F4", 11 * 8 + 6, 2))
-    snap(12, ["Ab4", "Bb4", "C5", "C5", "Bb4", "C5"])
-    snap(13, ["Eb5", "C5", "Ab4"])
-    m.append(("Bb4", 13 * 8 + 4, 2)); m.append(("G4", 13 * 8 + 6, 2))
-    # the stomp: big off-beat chords
-    m.append(("Eb5", 14 * 8 + 2, 2)); m.append(("Eb5", 14 * 8 + 6, 2))
-    m.append(("Eb4", 15 * 8 + 0, 6))
-    chords = ["Eb", "Eb", "Eb", "Bb7", "Ab", "Ab", "Bb7", "Eb",
-              "Eb", "Eb", "Eb", "Bb7", "Ab", "F7", "Bb7", "Eb"]
-    return m, chords, 16
+def snap(m, bar, n1, n2, n3):
+    """The cakewalk snap: 16th, 16th, 8th starting on the bar."""
+    b = bar * 8
+    m.append((n1, b + 0, 1)); m.append((n2, b + 1, 1)); m.append((n3, b + 2, 2))
 
-# B strain (12 bars) — the chattering second idea.
-def b_strain():
-    m = []
-    seq = ["G4", "Ab4", "G4", "F4", "Eb4", "F4", "G4", "Ab4"]
-    for i, n in enumerate(seq):
-        m.append((n, i, 1))
-    m.append(("Bb4", 8 + 0, 2)); m.append(("G4", 8 + 2, 2)); m.append(("Eb4", 8 + 4, 4))
-    seq2 = ["Ab4", "Bb4", "Ab4", "G4", "F4", "G4", "Ab4", "Bb4"]
-    for i, n in enumerate(seq2):
-        m.append((n, 2 * 8 + i, 1))
-    m.append(("C5", 3 * 8 + 0, 2)); m.append(("Ab4", 3 * 8 + 2, 2)); m.append(("F4", 3 * 8 + 4, 4))
-    # sequence up + cakewalk snap close (bars 4-11)
-    for bar, root in [(4, "Bb4"), (5, "C5")]:
-        b = bar * 8
-        m.append((root, b + 0, 1)); m.append((root, b + 1, 1))
-        m.append((root, b + 2, 2)); m.append((root, b + 6, 2))
-    m.append(("Eb5", 6 * 8 + 0, 1)); m.append(("D5", 6 * 8 + 1, 1))
-    m.append(("C5", 6 * 8 + 2, 1)); m.append(("Bb4", 6 * 8 + 3, 1))
-    m.append(("Ab4", 6 * 8 + 4, 1)); m.append(("G4", 6 * 8 + 5, 1))
-    m.append(("F4", 6 * 8 + 6, 2))
-    m.append(("Eb4", 7 * 8 + 0, 4))
-    for bar in (8, 9, 10):
-        b = bar * 8
-        m.append(("G4", b + 0, 1)); m.append(("Ab4", b + 1, 1)); m.append(("G4", b + 2, 2))
-        m.append(("Eb4", b + 4, 1)); m.append(("F4", b + 5, 1)); m.append(("G4", b + 6, 2))
-    m.append(("Bb4", 11 * 8 + 0, 2)); m.append(("Eb4", 11 * 8 + 4, 4))
-    chords = ["Eb", "Eb", "F7", "F7", "Bb7", "Bb7", "Bb7", "Eb",
-              "Eb", "Cm", "Bb7", "Eb"]
-    return m, chords, 12
-
-# Middle section (12 bars) — the slow "with great emotion" parody, simplified:
-# a yearning chromatic line over soft Gb-side chords, answered by the
-# mocking little snaps.
-def middle():
-    m = []
-    line = [("Gb4", 0, 6), ("F4", 6, 2), ("Ab4", 8, 6), ("Gb4", 14, 2),
-            ("Bb4", 16, 8), ("Cb5", 24, 4), ("Bb4", 28, 4)]
-    m += line
-    # the giggle (mocking snap) bars 4-5
-    for bar in (4, 5):
-        b = bar * 8
-        m.append(("Db5", b + 0, 1)); m.append(("Cb5", b + 1, 1)); m.append(("Bb4", b + 2, 2))
-    # second phrase, sinking
-    m.append(("Gb4", 6 * 8, 6)); m.append(("F4", 6 * 8 + 6, 2))
-    m.append(("Eb4", 7 * 8, 8))
-    m.append(("Db4", 8 * 8, 6)); m.append(("Eb4", 8 * 8 + 6, 2))
-    m.append(("Gb4", 9 * 8, 8))
-    for bar in (10, 11):
-        b = bar * 8
-        m.append(("Bb4", b + 0, 1)); m.append(("Ab4", b + 1, 1)); m.append(("Gb4", b + 2, 2))
-    chords = ["Gb", "Gb", "Cb", "Gb", "Db7", "Db7", "Gb", "Cb",
-              "Gb", "Gb", "Db7", "Gb"]
-    return m, chords, 12
-
-# Coda (6 bars): two big snaps + the cheeky last word.
-def coda():
-    m = []
-    for bar in (0, 1):
-        b = bar * 8
-        m.append(("Eb4", b + 0, 1)); m.append(("F4", b + 1, 1)); m.append(("G4", b + 2, 2))
-        m.append(("Bb4", b + 4, 1)); m.append(("G4", b + 5, 1)); m.append(("Eb4", b + 6, 2))
-    m.append(("Eb5", 2 * 8 + 2, 2))
-    m.append(("Eb4", 3 * 8 + 2, 2))
-    m.append(("Bb3", 4 * 8 + 0, 2)); m.append(("Eb4", 4 * 8 + 4, 8))
-    chords = ["Eb", "Eb", "Eb", "Eb", "Bb7", "Eb"]
-    return m, chords, 6
-
+# Intro (Durand mm.1-5): the f octave cascade — Bb-Ab-Bb,F-Bb / then the
+# Ab-F-Eb..Cb figure falling through three octaves, sff stab, one silent bar.
 def intro():
-    # the bare strutting vamp
+    m = []
+    # m1: Bb5(>) Ab5 Bb5 (snap), F5 Bb5 (8ths)
+    snap(m, 0, "Bb5", "Ab5", "Bb5")
+    m.append(("F5", 4, 2)); m.append(("Bb5", 6, 2))
+    # m2: Ab5 F5 Eb5 (snap), Cb5 (accented quarter — the famous C-flat)
+    snap(m, 1, "Ab5", "F5", "Eb5")
+    m.append(("Cb5", 8 + 4, 4))
+    # m3: same an octave down, Cb4 marcato
+    snap(m, 2, "Ab4", "F4", "Eb4")
+    m.append(("Cb4", 16 + 4, 4))
+    # m4: 16th-rest, Ab3 F3 Eb3 16ths; Cb3(>) 8th + sff Eb stab on the off-8th
+    b = 3 * 8
+    m.append(("Ab3", b + 1, 1)); m.append(("F3", b + 2, 1)); m.append(("Eb3", b + 3, 1))
+    m.append(("Cb3", b + 4, 2))
+    for n in ("Eb3", "Bb3", "Eb4"):          # the sff crash chord
+        m.append((n, b + 6, 2))
+    # m5: silence (grand pause before the strut)
+    chords = ["NC", "NC", "NC", "NC", "NC"]
+    return m, chords, 5
+
+# Vamp (mm.6-9): the strutting open-fifth oom-pah; RH stabs on the off-8ths,
+# with the 16th-16th kick closing bars 1 and 3 (as engraved, f< on the kick).
+def vamp():
     m = []
     for bar in range(4):
         b = bar * 8
-        m.append(("Bb3", b + 0, 1)); m.append(("Bb3", b + 1, 1)); m.append(("Bb3", b + 2, 2))
-        m.append(("Bb3", b + 4, 2)); m.append(("Bb3", b + 6, 2))
-    chords = ["Eb", "Eb", "Bb7", "Bb7"]
+        stab = [("Bb3", 1), ("Eb4", 1)]      # RH dyad Eb4/Bb3
+        for n, _ in stab:
+            m.append((n, b + 2, 2))
+        if bar in (0, 2):                    # ...pah pa-pah (16,16)
+            for n, _ in stab:
+                m.append((n, b + 6, 1)); m.append((n, b + 7, 1))
+        else:
+            for n, _ in stab:
+                m.append((n, b + 6, 2))
+    chords = ["Eb5", "Eb5", "Eb5", "Eb5"]
     return m, chords, 4
+
+# A strain (mm.10-25, "très net et très sec"): the cakewalk theme proper.
+def a_strain():
+    m = []
+    # phrase 1 (mid register) — m10: Bb4 Ab4 Bb4 (snap), F4 Bb4 (stacc 8ths)
+    snap(m, 0, "Bb4", "Ab4", "Bb4")
+    m.append(("F4", 4, 2)); m.append(("Bb4", 6, 2))
+    # m11: Ab4 F4 Eb4 (snap), C4 (8th)
+    snap(m, 1, "Ab4", "F4", "Eb4")
+    m.append(("C4", 8 + 4, 2))
+    # m12: C4 half (the cheeky sixth-degree cadence, marcato)
+    m.append(("C4", 2 * 8, 8))
+    # phrase 2 (low register, with the C-flat sting) — m13/m14
+    for bar in (3, 4):
+        snap(m, bar, "Bb3", "Ab3", "Bb3")
+        m.append(("Cb4", bar * 8 + 4, 2)); m.append(("Ab3", bar * 8 + 6, 2))
+    # m15: descending run Bb3 G3 F3 Eb3 (16ths), D3 quarter
+    b = 5 * 8
+    for i, n in enumerate(["Bb3", "G3", "F3", "Eb3"]):
+        m.append((n, b + i, 1))
+    m.append(("D3", b + 4, 4))
+    # m16: bass walk C3 G2 C3 D3 (8ths) back up to the theme
+    b = 6 * 8
+    for i, n in enumerate(["C3", "G2", "C3", "D3"]):
+        m.append((n, b + i * 2, 2))
+    # m17/m18: theme statement again (mid register)
+    snap(m, 7, "Bb4", "Ab4", "Bb4")
+    m.append(("F4", 7 * 8 + 4, 2)); m.append(("Bb4", 7 * 8 + 6, 2))
+    snap(m, 8, "Ab4", "F4", "Eb4")
+    m.append(("C4", 8 * 8 + 4, 2)); m.append(("Eb4", 8 * 8 + 6, 2))
+    # m19: Bb3 Bb3 Cb4 Bb3 (16ths) + the banged Eb/Bb chord answer
+    b = 9 * 8
+    for i, n in enumerate(["Bb3", "Bb3", "Cb4", "Bb3"]):
+        m.append((n, b + i, 1))
+    for n in ("Eb4", "Bb4"):
+        m.append((n, b + 4, 4))
+    # m20: held D4 (marcato half)
+    m.append(("D4", 10 * 8, 8))
+    # m21: rising kick D4 Eb4 F4 Eb4 (16ths), G4 F4 (8ths)
+    b = 11 * 8
+    for i, n in enumerate(["D4", "Eb4", "F4", "Eb4"]):
+        m.append((n, b + i, 1))
+    m.append(("G4", b + 4, 2)); m.append(("F4", b + 6, 2))
+    # m22: F4 G4 F4 G4 (16ths), then the stomp dyad G4/D5
+    b = 12 * 8
+    for i, n in enumerate(["F4", "G4", "F4", "G4"]):
+        m.append((n, b + i, 1))
+    for n in ("G4", "D5"):
+        m.append((n, b + 4, 2))
+    for n in ("Bb4", "Eb5"):
+        m.append((n, b + 6, 2))
+    # m23: the ff banged chord (>>^), then off
+    b = 13 * 8
+    for n in ("Bb4", "Eb5", "G5"):
+        m.append((n, b, 4))
+    # m24/m25: p wind-down stabs (tenuto off-beat chords over the vamp)
+    for bar in (14, 15):
+        b = bar * 8
+        for n in ("Bb3", "Eb4"):
+            m.append((n, b + 2, 2)); m.append((n, b + 6, 2))
+    chords = ["Eb", "Eb7", "Eb", "Eb", "Eb", "Eb", "Cm",
+              "Eb", "Eb7", "Eb", "Bb7", "Ab", "Bb7", "Eb", "Eb5", "Eb5"]
+    return m, chords, 16
+
+# Middle (p.27 "Un peu moins vite" -> p.29, G-flat side): the swaying wah-wah
+# grace chords, then the "p avec une grande émotion" Tristan-parody phrase
+# (Cédez), harmony simplified to block chords.
+def middle():
+    m = []
+    # m1-4: the wah vamp — grace 16th into an off-beat dyad stab
+    for bar in range(4):
+        b = bar * 8
+        m.append(("F4", b + 1, 1))                       # grace lean
+        m.append(("Gb4", b + 2, 2)); m.append(("Bb3", b + 2, 2))
+        if bar % 2 == 1:
+            m.append(("Gb4", b + 6, 2)); m.append(("Bb3", b + 6, 2))
+    # m5-7: the yearning phrase: Ab3 pickup, long F4, chromatic F-E-Eb fall
+    m.append(("Ab3", 4 * 8, 2)); m.append(("F4", 4 * 8 + 2, 6))
+    m.append(("E4", 5 * 8, 2)); m.append(("Eb4", 5 * 8 + 2, 6))
+    m.append(("Db4", 6 * 8, 8))
+    # m8: wah answer (the mocking giggle)
+    m.append(("F4", 7 * 8 + 1, 1))
+    m.append(("Gb4", 7 * 8 + 2, 2)); m.append(("Bb3", 7 * 8 + 2, 2))
+    # m9-11: phrase again, sinking further
+    m.append(("Ab3", 8 * 8, 2)); m.append(("F4", 8 * 8 + 2, 6))
+    m.append(("E4", 9 * 8, 2)); m.append(("Eb4", 9 * 8 + 2, 2)); m.append(("Db4", 9 * 8 + 4, 4))
+    m.append(("Gb3", 10 * 8, 8))
+    # m12: wah out
+    m.append(("F4", 11 * 8 + 1, 1))
+    m.append(("Gb4", 11 * 8 + 2, 2)); m.append(("Bb3", 11 * 8 + 2, 2))
+    chords = ["Gb5", "Gb5", "Gb5", "Gb5", "Gb", "Cb", "Db7", "Gb5",
+              "Gb", "Cb", "Db7", "Gb5"]
+    return m, chords, 12
+
+# Coda (p.30, last system): the intro cascade returns f, crashes ff, the vamp
+# tiptoes back p, and two banged chords have the last word.
+def coda():
+    m = []
+    # m1: Ab4 F4 Eb4 (snap), Cb4 quarter (the cascade, mid register)
+    snap(m, 0, "Ab4", "F4", "Eb4")
+    m.append(("Cb4", 4, 4))
+    # m2: 16th-rest + Ab3 F3 Eb3, Cb3 8th + ff crash chord
+    b = 8
+    m.append(("Ab3", b + 1, 1)); m.append(("F3", b + 2, 1)); m.append(("Eb3", b + 3, 1))
+    m.append(("Cb3", b + 4, 2))
+    for n in ("Eb3", "Bb3", "Eb4"):
+        m.append((n, b + 6, 2))
+    # m3: p vamp echo stabs
+    b = 16
+    for n in ("Bb3", "Eb4"):
+        m.append((n, b + 2, 2)); m.append((n, b + 6, 2))
+    # m4: silence (wait for it...)
+    # m5: p vamp echo again
+    b = 32
+    for n in ("Bb3", "Eb4"):
+        m.append((n, b + 2, 2)); m.append((n, b + 6, 2))
+    # m6: the last word — two ff Eb bangs
+    b = 40
+    for n in ("Eb3", "Bb3", "Eb4", "G4"):
+        m.append((n, b, 2))
+    for n in ("Eb3", "Bb3", "Eb4", "G4"):
+        m.append((n, b + 4, 4))
+    chords = ["NC", "NC", "Eb5", "NC", "Eb5", "Eb"]
+    return m, chords, 6
 
 # ---- assembly ----------------------------------------------------------------
 def main() -> None:
-    sections = [intro(), a_strain(), b_strain(), a_strain(), middle(), a_strain(), coda()]
+    sections = [intro(), vamp(), a_strain(), middle(), a_strain(), coda()]
     mid = mido.MidiFile(ticks_per_beat=TPB)
     tempo = mido.bpm2tempo(BPM)
 
@@ -190,13 +246,12 @@ def main() -> None:
     organ.append(mido.Message("program_change", channel=1, program=20, time=0))  # Reed Organ
     tuba = mido.MidiTrack(); mid.tracks.append(tuba)
     tuba.append(mido.Message("program_change", channel=2, program=58, time=0))   # Tuba
-
     lead_ev: list = []
     organ_ev: list = []
     tuba_ev: list = []
     bar0 = 0
     for melody, chords, nbars in sections:
-        soft = chords[0] in ("Gb", "Cb", "Db7")   # the middle section plays gentler
+        soft = any(c.startswith("Gb") for c in chords)   # middle section plays gentler
         vel_m = 78 if soft else 96
         for (note, start, dur) in melody:
             if note is None:
@@ -205,6 +260,8 @@ def main() -> None:
             lead_ev.append((t0, "on", p(note), vel_m))
             lead_ev.append((t0 + dur * SIXT - 8, "off", p(note), 0))
         for i, sym in enumerate(chords):
+            if sym == "NC":
+                continue
             bass, chord = CHORDS[sym]
             b = (bar0 + i) * 8 * SIXT
             vb = 64 if soft else 88
