@@ -21,8 +21,10 @@ const SPLASH_TRACK: AudioStream = preload("res://assets/audio/music/peppermint_r
 const LEVEL_TRACKS: Dictionary = {
 	1: preload("res://assets/audio/music/running_from_the_clock.ogg"),
 	2: preload("res://assets/audio/music/high_noon_at_the_glass_saloon.ogg"),
-	# Level 4: calliope cakewalk (Golliwog-spirit) for the mountain pass.
-	4: preload("res://assets/audio/music/cakewalk_at_the_summit.ogg"),
+	# Level 4: OUR clean-room calliope arrangement of Golliwog's Cakewalk
+	# (Debussy 1908, public domain; note data is our own transcription —
+	# tools/gen_golliwog_calliope.py). cakewalk_at_the_summit.ogg kept as alt.
+	4: preload("res://assets/audio/music/golliwogs_cakewalk_calliope.ogg"),
 	# Level 5: the owner's Lyria guitar waltz for the Raisin Kidd's vineyard.
 	5: preload("res://assets/audio/music/waltz_of_the_wooden_puppet.ogg"),
 	# Level 6: candy music-box bed under the starlit canyon + the Queen sing-duel.
