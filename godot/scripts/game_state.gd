@@ -47,6 +47,10 @@ const CHICKEN_CHASE_COOLDOWN_S: int = 24 * 3600
 var chicken_chase_last_unix: int = 0
 var pending_posse_bonus: int = 0
 
+# Sing Mode (Level-6 duel): one-time "best with headphones" hint — true once
+# shown, persisted so it never nags again.
+var sing_hint_shown: bool = false
+
 var hearts: int = MAX_HEARTS:
 	set(value):
 		var clamped := clampi(value, 0, MAX_HEARTS)
@@ -197,6 +201,7 @@ func _save_to_disk() -> void:
 	cfg.set_value("meta", "level_best", level_best)
 	cfg.set_value("minigame", "chicken_chase_last_unix", chicken_chase_last_unix)
 	cfg.set_value("minigame", "pending_posse_bonus", pending_posse_bonus)
+	cfg.set_value("settings", "sing_hint_shown", sing_hint_shown)
 	var _err: int = cfg.save(_save_path())
 
 func _load_from_disk() -> void:
@@ -215,6 +220,7 @@ func _load_from_disk() -> void:
 	level_best = cfg.get_value("meta", "level_best", {})
 	chicken_chase_last_unix = int(cfg.get_value("minigame", "chicken_chase_last_unix", 0))
 	pending_posse_bonus = int(cfg.get_value("minigame", "pending_posse_bonus", 0))
+	sing_hint_shown = bool(cfg.get_value("settings", "sing_hint_shown", false))
 	# Apply any regen that happened while the app was closed.
 	apply_regen()
 
