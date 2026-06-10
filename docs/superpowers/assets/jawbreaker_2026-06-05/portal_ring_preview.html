@@ -8,9 +8,11 @@ canvas{border-radius:12px;background:#2a2433;max-width:92vw}
 </style></head><body>
 <h1>&#10052; CHARGE TELEGRAPH — portal ground ring</h1>
 <div class="note">The exact shader now in the game (GLSL port). The ring grows across the 1.8s charge window and pulses faster near release, then loops. Shown here at the gameplay camera angle (~52° tilt) with the boss standing centered on it — matching how it reads in-game.</div>
-<div style="position:relative;width:560px;height:560px;margin:0 auto;max-width:92vw">
+<div style="position:relative;width:560px;height:560px;margin:0 auto;max-width:92vw;
+ background:radial-gradient(70% 38% at 50% 76%, #f4f6fb 0%, #dfe6f2 45%, #b9c6dd 70%, transparent 71%),
+ linear-gradient(#39507a 0%, #6d84ad 55%, #9fb2cf 56%, #c9d4e8 100%);border-radius:12px;overflow:hidden">
  <div style="position:absolute;inset:0;display:flex;align-items:flex-end;justify-content:center;perspective:900px">
-  <canvas id="cv" width="560" height="560" style="transform:rotateX(52deg) translateY(40px);transform-origin:50% 80%"></canvas>
+  <canvas id="cv" width="560" height="560" style="transform:rotateX(52deg) translateY(40px);transform-origin:50% 80%;background:transparent"></canvas>
  </div>
  <canvas id="boss" width="280" height="430" style="position:absolute;left:50%;bottom:96px;transform:translateX(-50%);pointer-events:none"></canvas>
 </div>
@@ -30,7 +32,7 @@ canvas{border-radius:12px;background:#2a2433;max-width:92vw}
 })();
 </script>
 <script>
-const gl=document.getElementById('cv').getContext('webgl');
+const gl=document.getElementById('cv').getContext('webgl',{alpha:true,premultipliedAlpha:false});
 const vs=`attribute vec2 a;varying vec2 v;void main(){v=(a+1.)*.5;gl_Position=vec4(a,0.,1.);}`;
 const fs=`precision highp float;varying vec2 v;uniform float T;uniform float P;
 float hash(vec2 p){return fract(sin(dot(p,vec2(127.1,311.7)))*43758.5453);}
@@ -53,9 +55,7 @@ void main(){
  float hole=smoothstep(.10,.22,r);
  float a=clamp((rim+inter*w)*hole,0.,1.);
  a*=.65+.35*sin(t*(6.+8.*P));
- vec3 ground=vec3(.16,.14,.20); // stand-in snow-shadow ground
- vec3 fin=mix(ground,col*(1.2+P),a*(.55+.45*P));
- gl_FragColor=vec4(fin,1.);}`;
+ gl_FragColor=vec4(col*(1.2+P),a*(.55+.45*P));}`;
 function sh(t,s){const o=gl.createShader(t);gl.shaderSource(o,s);gl.compileShader(o);
  if(!gl.getShaderParameter(o,gl.COMPILE_STATUS))console.error(gl.getShaderInfoLog(o));return o;}
 const pr=gl.createProgram();gl.attachShader(pr,sh(gl.VERTEX_SHADER,vs));gl.attachShader(pr,sh(gl.FRAGMENT_SHADER,fs));
@@ -69,6 +69,8 @@ let start=performance.now();
  const t=(performance.now()-start)/1000;
  const cyc=t%3.0;                       // 1.8s charge + 1.2s rest, looped
  const prog=Math.min(cyc/1.8,1.0);
+ gl.enable(gl.BLEND);gl.blendFunc(gl.SRC_ALPHA,gl.ONE_MINUS_SRC_ALPHA);
+ gl.clearColor(0,0,0,0);gl.clear(gl.COLOR_BUFFER_BIT);
  gl.uniform1f(uT,t);gl.uniform1f(uP,cyc<1.8?prog:0.0);
  gl.drawArrays(gl.TRIANGLE_STRIP,0,4);requestAnimationFrame(frame);})();
 </script></body></html>
