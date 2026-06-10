@@ -252,6 +252,10 @@ var _ice_slip_vx: float = 0.0
 var _prev_cowboy_x: float = 0.0
 var _cowboy_ice_cube: Node3D = null
 var _ice_puddles: Array = []   # iter434: cached frozen puddles (slip triggers)
+# Posse-slip read: the crowd is a flipbook MultiMesh (no per-member nodes), so
+# while the posse slides a CLUSTER of ice cubes hovers over its footprint —
+# spread behind the cowboy, count scaling with posse size.
+var _posse_ice_cubes: Array = []
 const FrostBoltsScript = preload("res://scripts/frost_bolts.gd")
 var _frost_bolts: Node2D = null   # iter404: FROSTBITE chain-lightning overlay
 const RainbowBoltsScript = preload("res://scripts/rainbow_bolts.gd")
@@ -6803,12 +6807,14 @@ func _process(delta: float) -> void:
 		_cowboy_on_ice = true
 		_ice_slip_vx = cowboy_3d.position.x - _prev_cowboy_x
 		_cowboy_ice_cube = _spawn_ice_cube(cowboy_3d)
+		_spawn_posse_ice_cubes()
 	elif not _on_ice and _cowboy_on_ice:
 		_cowboy_on_ice = false
 		_target_x = cowboy_3d.position.x
 		if _cowboy_ice_cube != null and is_instance_valid(_cowboy_ice_cube):
 			_cowboy_ice_cube.queue_free()
 		_cowboy_ice_cube = null
+		_free_posse_ice_cubes()
 	_prev_cowboy_x = cowboy_3d.position.x
 	if _weather_cowboy_drift != 0.0 and not _cowboy_on_ice:
 		_target_x = clampf(_target_x + _weather_cowboy_drift * delta,
@@ -7989,6 +7995,27 @@ func _over_ice(wx: float, wz: float) -> bool:
 		if absf(wx - ((c as Node3D).position.x + ox)) < r and absf(wz - ((c as Node3D).position.z + oz)) < r:
 			return true
 	return false
+
+# Posse-slip cubes: a cluster over the crowd footprint (parented to the cowboy,
+# so they slide with the whole sliding posse). Count scales with posse size.
+func _spawn_posse_ice_cubes() -> void:
+	_free_posse_ice_cubes()
+	if cowboy_3d == null or _posse_count_3d < 2:
+		return
+	var n: int = clampi(_posse_count_3d / 8, 2, 8)
+	for i in range(n):
+		var cube := _spawn_ice_cube(cowboy_3d)
+		# spread behind the cowboy where the crowd marches
+		cube.position = Vector3(_rng.randf_range(-2.6, 2.6), 1.2 + _rng.randf_range(0.0, 0.5),
+			_rng.randf_range(0.8, 4.2))
+		cube.scale = Vector3.ONE * 0.8
+		_posse_ice_cubes.append(cube)
+
+func _free_posse_ice_cubes() -> void:
+	for c in _posse_ice_cubes:
+		if is_instance_valid(c):
+			c.queue_free()
+	_posse_ice_cubes.clear()
 
 # iter434: a small translucent spinning ice cube floating over a slipping entity.
 func _spawn_ice_cube(parent: Node3D) -> Node3D:
