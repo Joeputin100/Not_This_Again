@@ -10,6 +10,13 @@ h1{color:#bfe3ff;letter-spacing:2px}
 <h1>&#10052; CHARGE TELEGRAPH &mdash; portal ground ring</h1>
 <div class="note">Ring ellipse center and boss feet are the SAME point (as in-game, where both are the boss's ground coordinate). Ring grows over the 1.8s charge, pulses faster near release, loops.</div>
 <canvas id="scene" width="560" height="640"></canvas>
+<div style="max-width:560px;margin:10px auto;text-align:left;font-size:14px;color:#cfe0f5">
+ <label>Boss vertical offset: <input type="range" id="sl_dy" min="-200" max="200" value="0" style="width:60%"> <span id="v_dy">0</span>px</label><br>
+ <label>Boss horizontal offset: <input type="range" id="sl_dx" min="-150" max="150" value="0" style="width:60%"> <span id="v_dx">0</span>px</label><br>
+ <label>Ring squash: <input type="range" id="sl_sq" min="20" max="80" value="30" style="width:60%"> <span id="v_sq">0.30</span></label><br>
+ <label>Ring size: <input type="range" id="sl_rw" min="200" max="560" value="560" style="width:60%"> <span id="v_rw">560</span>px</label>
+ <div id="report" style="margin-top:8px;color:#ffd76e;font-family:monospace">report: dy=0 dx=0 squash=0.30 ring=560 (baked)</div>
+</div>
 <script>
 // --- offscreen WebGL ring (exact game shader logic) ---
 const ringCv=document.createElement('canvas'); ringCv.width=512; ringCv.height=512;
@@ -58,9 +65,17 @@ bossImg.onload=()=>{bossCv.width=bossImg.width;bossCv.height=bossImg.height;
 
 // --- composite: ONE coordinate (cx,cy) = ellipse center = boss feet ---
 const scene=document.getElementById('scene'),sx=scene.getContext('2d');
-const cx=280, cy=430;           // the shared ground point
-const RING_W=460;               // ellipse width (blast diameter)
-const SQUASH=0.42;              // camera foreshortening (~52 deg tilt look)
+let cx=280, cy=430;             // the shared ground point
+let RING_W=560;                 // ellipse width (blast diameter) — owner-tuned
+let SQUASH=0.30;                // camera foreshortening — owner-tuned
+let DY=0, DX=0;
+function hook(id,vid,fn){const el=document.getElementById(id);
+ el.addEventListener('input',()=>{fn(parseFloat(el.value));
+  document.getElementById(vid).textContent=el.value;
+  document.getElementById('report').textContent=
+   'report: dy='+DY+' dx='+DX+' squash='+SQUASH.toFixed(2)+' ring='+RING_W;});}
+hook('sl_dy','v_dy',v=>DY=v); hook('sl_dx','v_dx',v=>DX=v);
+hook('sl_sq','v_sq',v=>SQUASH=v/100); hook('sl_rw','v_rw',v=>RING_W=v);
 let start=performance.now();
 (function frame(){
  const t=(performance.now()-start)/1000;
@@ -80,7 +95,7 @@ let start=performance.now();
  // boss with FEET at (cx,cy); image has ~6% green margin under the feet
  if(bossReady){
   const bw=230, bh=bw*bossImg.height/bossImg.width;
-  sx.drawImage(bossCv,cx-bw/2,cy-bh*0.94,bw,bh);
+  sx.drawImage(bossCv,cx-bw/2+DX,cy-bh*0.770+DY,bw,bh);  // feet at 77% of sprite (owner dy=70 baked)
  }
  requestAnimationFrame(frame);})();
 </script></body></html>

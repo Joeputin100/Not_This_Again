@@ -539,7 +539,9 @@ var _posse_frozen_t: float = 0.0
 # Charge-telegraph ground ring (portal_ring.gdshader in a SubViewport,
 # sampled by a flat ground Sprite3D — the mobile-safe canvas-shader path).
 const PORTAL_RING_SHADER := preload("res://assets/shaders/portal_ring.gdshader")
-const CHARGE_RING_DIAMETER: float = 12.0   # world units, marks the blast area
+# Owner-tuned (preview sliders, 2026-06-10): ring ≈ 2.4× the boss's width.
+# Boss billboard ≈ 3.07 world wide (height 5.5, 9:16 frame) → ~7.5 world.
+const CHARGE_RING_DIAMETER: float = 7.5
 var _charge_ring_sv: SubViewport = null
 var _charge_ring_node: Node3D = null
 var _charge_ring_mat: ShaderMaterial = null
