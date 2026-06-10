@@ -90,9 +90,10 @@ func _rebuild(animate: bool) -> void:
 		node.pivot_offset = Vector2(sz * 0.5, sz * 0.5)
 		node.mouse_filter = Control.MOUSE_FILTER_IGNORE  # purely decorative; never eat taps meant for the orb beneath
 		if lit.has(i):
+			var seq: int = lit.find(i)
 			if breathe_enabled:
-				_breathe(node, float(lit.find(i)) * 0.25)
-			if animate: _pop_in(node, float(lit.find(i)) * 0.18)
+				_breathe(node, float(seq) * 0.25)
+			if animate: _fly_in(node, seq, box)
 		else:
 			node.modulate = Color(1, 1, 1, 0.28)   # ghost slot
 		add_child(node)
@@ -103,6 +104,27 @@ func _breathe(node: Control, delay: float) -> void:
 	t.tween_interval(delay)
 	t.tween_property(node, "scale", Vector2(1.06, 1.06), 0.95).set_trans(Tween.TRANS_SINE)
 	t.tween_property(node, "scale", Vector2.ONE, 0.95).set_trans(Tween.TRANS_SINE)
+
+# Owner notes 2026-06-10: stars FLY IN one at a time — from bottom-left, then
+# bottom-centre, then bottom-right — starting at 200% scale and shrinking as
+# they fall onto the dish. (Replaces the old in-place pop for the modal.)
+func _fly_in(node: Control, seq: int, box: Vector2) -> void:
+	var dest: Vector2 = node.position
+	# fly-in origins: bottom-LEFT, bottom-CENTRE, bottom-RIGHT (in sequence order)
+	var origin_x: float = [-box.x * 0.4, box.x * 0.5, box.x * 1.4][mini(seq, 2)]
+	node.position = Vector2(origin_x, box.y * 2.2)   # off the dish, low
+	node.scale = Vector2(2.0, 2.0)
+	node.modulate.a = 0.0
+	var t := node.create_tween()
+	t.tween_interval(0.35 + float(seq) * 0.45)   # one at a time
+	t.tween_property(node, "modulate:a", 1.0, 0.08)
+	t.parallel().tween_property(node, "position", dest, 0.55) \
+		.set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
+	t.parallel().tween_property(node, "scale", Vector2.ONE, 0.55) \
+		.set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
+	t.tween_callback(func() -> void:
+		if has_node("/root/AudioBus") and AudioBus.has_method("play_sfx"):
+			AudioBus.play_sfx("bonus_pickup"))
 
 func _pop_in(node: Control, delay: float) -> void:
 	node.scale = Vector2(0.2, 0.2)
