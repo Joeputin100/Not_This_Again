@@ -29,7 +29,8 @@ const SH_DISPLAY := preload("res://assets/shaders/fluid_fog_display.gdshader")
 # 0.35 base, ±0.2 slow swell (period ~565 world units), +0.35·boss_frac,
 # clamped to [0, 0.9] (never a wall — wispy by spec).
 static func density(distance: float, boss_frac: float) -> float:
-	var v: float = 0.35 + 0.2 * sin(distance / 90.0) + 0.35 * clampf(boss_frac, 0.0, 1.0)
+	# base 0.45 (owner look-dev report: 0.54 reads right at mid-swell)
+	var v: float = 0.45 + 0.2 * sin(distance / 90.0) + 0.35 * clampf(boss_frac, 0.0, 1.0)
 	return clampf(v, 0.0, 0.9)
 
 # Pack splat candidates into fixed-size uniform arrays. Highest `prio` wins
@@ -43,18 +44,21 @@ static func pack_splats(cands: Array, max_n: int) -> Dictionary:
 	var vel: Array = []
 	var radius: Array = []
 	var dye: Array = []
+	var flavor: Array = []
 	for i in range(max_n):
 		if i < n:
 			pos.append(sorted_c[i]["uv"])
 			vel.append(sorted_c[i]["vel"])
 			radius.append(float(sorted_c[i]["radius"]))
 			dye.append(float(sorted_c[i]["dye"]))
+			flavor.append(float(sorted_c[i].get("flavor", 0.0)))
 		else:
 			pos.append(Vector2.ZERO)
 			vel.append(Vector2.ZERO)
 			radius.append(0.0)
 			dye.append(0.0)
-	return {"count": n, "pos": pos, "vel": vel, "radius": radius, "dye": dye}
+			flavor.append(0.0)
+	return {"count": n, "pos": pos, "vel": vel, "radius": radius, "dye": dye, "flavor": flavor}
 
 # ---- runtime ----------------------------------------------------------------
 
@@ -85,8 +89,9 @@ var _mat_dye: Array = []
 var _mat_div: ShaderMaterial = null
 var _mat_display: ShaderMaterial = null
 
-func add_splat_candidate(uv: Vector2, vel: Vector2, radius: float, dye_amt: float, prio: float) -> void:
-	_splat_buf.append({"uv": uv, "vel": vel, "radius": radius, "dye": dye_amt, "prio": prio})
+func add_splat_candidate(uv: Vector2, vel: Vector2, radius: float, dye_amt: float, prio: float, flavor: float = 0.0) -> void:
+	_splat_buf.append({"uv": uv, "vel": vel, "radius": radius, "dye": dye_amt,
+		"prio": prio, "flavor": flavor})
 
 func _make_pass(shader: Shader) -> Array:
 	var sv := SubViewport.new()
@@ -188,3 +193,4 @@ func _push_splats(mat: ShaderMaterial, packed: Dictionary) -> void:
 	mat.set_shader_parameter("splat_vel", PackedVector2Array(packed["vel"]))
 	mat.set_shader_parameter("splat_radius", PackedFloat32Array(packed["radius"]))
 	mat.set_shader_parameter("splat_dye", PackedFloat32Array(packed["dye"]))
+	mat.set_shader_parameter("splat_flavor", PackedFloat32Array(packed["flavor"]))

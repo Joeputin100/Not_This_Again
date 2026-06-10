@@ -40,13 +40,14 @@ func test_pack_splats_caps_and_prioritizes():
 
 func test_pack_splats_passthrough_fields():
 	var cands: Array = [{"uv": Vector2(0.25, 0.75), "vel": Vector2(0.1, -0.2),
-		"radius": 0.08, "dye": 0.9, "prio": 1.0}]
+		"radius": 0.08, "dye": 0.9, "prio": 1.0, "flavor": 0.85}]
 	var packed: Dictionary = FluidFog.pack_splats(cands, 16)
 	assert_eq(packed["count"], 1)
 	assert_eq(packed["pos"][0], Vector2(0.25, 0.75))
 	assert_eq(packed["vel"][0], Vector2(0.1, -0.2))
 	assert_almost_eq(float(packed["radius"][0]), 0.08, 0.0001)
 	assert_almost_eq(float(packed["dye"][0]), 0.9, 0.0001)
+	assert_almost_eq(float(packed["flavor"][0]), 0.85, 0.0001)
 
 func test_pack_splats_empty_ok():
 	var packed: Dictionary = FluidFog.pack_splats([], 16)

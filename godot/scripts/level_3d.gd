@@ -4445,16 +4445,25 @@ func _update_fluid_fog(delta: float) -> void:
 	var boss_frac: float = 1.0 if _level_state == LevelState.BOSS else \
 		clampf(float(_outlaws_spawned) / maxf(float(_level_def.outlaw_quota), 1.0), 0.0, 0.6)
 	_fluid_fog.set("fog_density", FluidFogScript.density(_level_distance, boss_frac))
-	# ambient scroll: the world streams past, so the fog drifts down-screen
+	# ambient scroll: the world streams past, so the fog drifts down-screen.
+	# Its SHADE slowly cycles cool<->warm (the owner-approved marbling).
 	_fluid_fog.call("add_splat_candidate", Vector2(0.5, 0.1),
-		Vector2(0.0, 0.05), 0.9, 0.10 * delta * 60.0 * 0.016, 0.5)
+		Vector2(0.0, 0.05), 0.9, 0.15 * delta * 60.0 * 0.016, 0.5,
+		0.5 + 0.5 * sin(_level_elapsed * 0.35))
+	# two roving swirl-seeders: invisible currents carrying contrasting pinks
+	_fluid_fog.call("add_splat_candidate",
+		Vector2(0.5 + 0.35 * sin(_level_elapsed * 0.23), 0.3 + 0.25 * sin(_level_elapsed * 0.31 + 1.7)),
+		Vector2(0.15 * cos(_level_elapsed * 0.23), 0.0), 0.10, 0.07, 1.0, 0.0)
+	_fluid_fog.call("add_splat_candidate",
+		Vector2(0.5 + 0.35 * sin(_level_elapsed * 0.19 + 3.1), 0.3 + 0.25 * sin(_level_elapsed * 0.27 + 4.0)),
+		Vector2(-0.15 * cos(_level_elapsed * 0.19), 0.0), 0.10, 0.07, 1.0, 1.0)
 	# the posse's bow wave (lateral push from steering)
 	if cowboy_3d != null:
 		var cuv: Vector2 = _fog_uv(cowboy_3d.position)
 		if cuv.x >= 0.0:
 			var vx: float = (cowboy_3d.position.x - _prev_cowboy_x) * 2.0
 			_fluid_fog.call("add_splat_candidate", cuv,
-				Vector2(clampf(vx, -0.6, 0.6), 0.08), 0.10, 0.05, 5.0)
+				Vector2(clampf(vx, -0.6, 0.6), 0.08), 0.10, 0.075, 5.0, 0.0)
 	# outlaws wading through
 	var fed: int = 0
 	for o in outlaws_root.get_children():
@@ -4462,7 +4471,7 @@ func _update_fluid_fog(delta: float) -> void:
 			break
 		var ouv: Vector2 = _fog_uv((o as Node3D).position)
 		if ouv.x >= 0.0:
-			_fluid_fog.call("add_splat_candidate", ouv, Vector2(0.0, 0.10), 0.07, 0.04, 3.0)
+			_fluid_fog.call("add_splat_candidate", ouv, Vector2(0.0, 0.10), 0.07, 0.06, 3.0, 0.85)
 			fed += 1
 	# bullets punch thin fast tunnels (force only, no dye)
 	var bfed: int = 0
@@ -4482,7 +4491,7 @@ func _fog_blast(world: Vector3) -> void:
 	var uv: Vector2 = _fog_uv(world)
 	if uv.x < 0.0:
 		uv = Vector2(0.5, 0.3)
-	_fluid_fog.call("add_splat_candidate", uv, Vector2.ZERO, 0.45, 0.8, 10.0)
+	_fluid_fog.call("add_splat_candidate", uv, Vector2.ZERO, 0.45, 0.8, 10.0, 1.0)
 	for dir in [Vector2(1, 0), Vector2(-1, 0), Vector2(0, 1), Vector2(0, -1)]:
 		_fluid_fog.call("add_splat_candidate", uv + dir * 0.12,
 			dir * 0.9, 0.15, 0.0, 9.0)
