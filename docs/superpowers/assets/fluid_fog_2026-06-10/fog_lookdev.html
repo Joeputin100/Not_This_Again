@@ -1,0 +1,143 @@
+<!DOCTYPE html><html><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Cotton-candy fog — look-dev</title><style>
+body{margin:0;background:#1a2238;color:#ffe9f3;font-family:Georgia,serif;text-align:center;padding:14px}
+h1{color:#ffb8d9;letter-spacing:2px;font-size:22px}
+.note{color:#c9a9c4;font-size:13px;max-width:620px;margin:6px auto}
+#wrap{position:relative;width:540px;height:760px;max-width:94vw;margin:0 auto;border-radius:12px;overflow:hidden;
+ background:linear-gradient(#5a7099 0%,#8898b8 40%,#cdd6e8 55%,#e8edf6 100%)}
+#fluid{position:absolute;left:0;bottom:0;width:100%;height:48%}
+.ent{position:absolute;font-size:34px;transform:translate(-50%,-100%);text-shadow:0 2px 6px #0006}
+label{display:block;font-size:14px;color:#e8c9de;margin-top:8px}
+input[type=range]{width:300px}
+#report{color:#ffd76e;font-family:monospace;margin-top:6px}
+</style></head><body>
+<h1>🍬 COTTON-CANDY FOG — look-dev</h1>
+<div class="note">The demo's exact fluid solver in our Level-4 framing: pink ground-fog band, posse bow-wave, outlaws wading down, bullets punching tunnels. Tune; send me the report line.</div>
+<div id="wrap">
+ <div class="ent" id="cowboy" style="left:50%;bottom:14%">🤠</div>
+ <div class="ent" id="o1" style="left:30%;bottom:34%">🍭</div>
+ <div class="ent" id="o2" style="left:66%;bottom:40%">🍬</div>
+ <canvas id="fluid" width="540" height="365"></canvas>
+</div>
+<label>Density <input type="range" id="sl_density" min="10" max="90" value="50"> <span id="v_density">0.50</span></label>
+<label>Dye per step <input type="range" id="sl_dye" min="2" max="30" value="10"> <span id="v_dye">0.10</span></label>
+<label>Alpha cap <input type="range" id="sl_cap" min="20" max="90" value="55"> <span id="v_cap">0.55</span></label>
+<div id="report">report: density=0.50 dye=0.10 cap=0.55</div>
+<script>
+const cv=document.getElementById('fluid');
+const gl=cv.getContext('webgl2',{alpha:true,premultipliedAlpha:false});
+const SW=192,SH=108;
+const qVS=`#version 300 es
+in vec2 a;out vec2 v;void main(){v=(a+1.)*.5;gl_Position=vec4(a,0,1);}`;
+function FS(body){return `#version 300 es
+precision highp float;in vec2 v;out vec4 o;`+body;}
+const advect=FS(`uniform sampler2D uv_;uniform sampler2D us;uniform float dt,diss;uniform vec2 tx;
+void main(){vec2 vel=texture(uv_,v).xy;vec2 p=clamp(v-vel*dt,tx,1.-tx);o=diss*texture(us,p);}`);
+const diverg=FS(`uniform sampler2D uv_;uniform vec2 tx;
+void main(){float L=texture(uv_,v-vec2(tx.x,0)).x,R=texture(uv_,v+vec2(tx.x,0)).x,
+T=texture(uv_,v+vec2(0,tx.y)).y,B=texture(uv_,v-vec2(0,tx.y)).y;o=vec4((R-L+T-B)*.5,0,0,1);}`);
+const press=FS(`uniform sampler2D up;uniform sampler2D ud;uniform vec2 tx;
+void main(){float L=texture(up,v-vec2(tx.x,0)).x,R=texture(up,v+vec2(tx.x,0)).x,
+T=texture(up,v+vec2(0,tx.y)).x,B=texture(up,v-vec2(0,tx.y)).x,d=texture(ud,v).x;
+o=vec4((L+R+T+B-d)*.25,0,0,1);}`);
+const grad=FS(`uniform sampler2D up;uniform sampler2D uv_;uniform vec2 tx;
+void main(){float L=texture(up,v-vec2(tx.x,0)).x,R=texture(up,v+vec2(tx.x,0)).x,
+T=texture(up,v+vec2(0,tx.y)).x,B=texture(up,v-vec2(0,tx.y)).x;
+vec2 vel=texture(uv_,v).xy-vec2(R-L,T-B)*.5;o=vec4(vel,0,1);}`);
+const splat=FS(`uniform sampler2D ub;uniform vec2 pt;uniform vec3 col;uniform float rad;
+void main(){vec2 d=v-pt;d.x*=1.78;float s=exp(-dot(d,d)/rad);o=texture(ub,v)+vec4(col*s,0);}`);
+const disp=FS(`uniform sampler2D ud;uniform float density,cap;
+void main(){float dye=texture(ud,v).r;float band=smoothstep(0.,.35,v.y);
+vec3 pale=vec3(1.,.86,.93),deep=vec3(.95,.55,.78);
+vec3 c=mix(pale,deep,clamp(dye*1.4,0.,1.));
+float a=clamp(dye*band*density,0.,1.)*cap;o=vec4(c,a);}`);
+function mk(fs){const p=gl.createProgram();
+function sh(t,s){const o=gl.createShader(t);gl.shaderSource(o,s);gl.compileShader(o);
+if(!gl.getShaderParameter(o,gl.COMPILE_STATUS))console.error(gl.getShaderInfoLog(o));return o;}
+gl.attachShader(p,sh(gl.VERTEX_SHADER,qVS));gl.attachShader(p,sh(gl.FRAGMENT_SHADER,fs));
+gl.linkProgram(p);return p;}
+const pAdv=mk(advect),pDiv=mk(diverg),pPrs=mk(press),pGrd=mk(grad),pSpl=mk(splat),pDsp=mk(disp);
+const buf=gl.createBuffer();gl.bindBuffer(gl.ARRAY_BUFFER,buf);
+gl.bufferData(gl.ARRAY_BUFFER,new Float32Array([-1,-1,1,-1,-1,1,1,1]),gl.STATIC_DRAW);
+function bindQ(p){const l=gl.getAttribLocation(p,'a');gl.bindBuffer(gl.ARRAY_BUFFER,buf);
+gl.enableVertexAttribArray(l);gl.vertexAttribPointer(l,2,gl.FLOAT,false,0,0);}
+gl.getExtension('EXT_color_buffer_float');
+function fbo(w,h){const t=gl.createTexture();gl.bindTexture(gl.TEXTURE_2D,t);
+gl.texImage2D(gl.TEXTURE_2D,0,gl.RGBA16F,w,h,0,gl.RGBA,gl.HALF_FLOAT,null);
+gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_MIN_FILTER,gl.LINEAR);
+gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_MAG_FILTER,gl.LINEAR);
+gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_WRAP_S,gl.CLAMP_TO_EDGE);
+gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_WRAP_T,gl.CLAMP_TO_EDGE);
+const f=gl.createFramebuffer();gl.bindFramebuffer(gl.FRAMEBUFFER,f);
+gl.framebufferTexture2D(gl.FRAMEBUFFER,gl.COLOR_ATTACHMENT0,gl.TEXTURE_2D,t,0);
+return{t,f};}
+function dbl(){return{r:fbo(SW,SH),w:fbo(SW,SH),swap(){const t=this.r;this.r=this.w;this.w=t;}};}
+const vel=dbl(),dye=dbl(),prs=dbl(),div=fbo(SW,SH);
+const tx=[1/SW,1/SH];
+function setT(p,n,u,t){gl.activeTexture(gl.TEXTURE0+u);gl.bindTexture(gl.TEXTURE_2D,t);
+gl.uniform1i(gl.getUniformLocation(p,n),u);}
+function to(f,w,h){gl.bindFramebuffer(gl.FRAMEBUFFER,f);gl.viewport(0,0,w,h);
+gl.drawArrays(gl.TRIANGLE_STRIP,0,4);}
+function doSplat(x,y,vx,vy,dyeAmt,rad){
+ gl.useProgram(pSpl);bindQ(pSpl);
+ setT(pSpl,'ub',0,vel.r.t);
+ gl.uniform2f(gl.getUniformLocation(pSpl,'pt'),x,y);
+ gl.uniform3f(gl.getUniformLocation(pSpl,'col'),vx,vy,0);
+ gl.uniform1f(gl.getUniformLocation(pSpl,'rad'),rad);
+ to(vel.w.f,SW,SH);vel.swap();
+ if(dyeAmt>0){setT(pSpl,'ub',0,dye.r.t);
+  gl.uniform3f(gl.getUniformLocation(pSpl,'col'),dyeAmt,0,0);
+  to(dye.w.f,SW,SH);dye.swap();}}
+let DENSITY=.5,DYE=.10,CAP=.55;
+function hook(id,vid,fn){const e=document.getElementById(id);
+ e.addEventListener('input',()=>{fn(parseFloat(e.value)/100);
+ document.getElementById(vid).textContent=(parseFloat(e.value)/100).toFixed(2);
+ document.getElementById('report').textContent=
+ 'report: density='+DENSITY.toFixed(2)+' dye='+DYE.toFixed(2)+' cap='+CAP.toFixed(2);});}
+hook('sl_density','v_density',v=>DENSITY=v);hook('sl_dye','v_dye',v=>DYE=v);hook('sl_cap','v_cap',v=>CAP=v);
+let t0=performance.now(),cwx=.5,cdir=1;
+function frame(){
+ const t=(performance.now()-t0)/1000,dt=.016;
+ // fake cast: cowboy strafes; outlaws drift down; bullets fire up
+ cwx+=cdir*.0016;if(cwx>.7||cwx<.3)cdir*=-1;
+ document.getElementById('cowboy').style.left=(cwx*100)+'%';
+ const o1y=(.95-((t*.07)%1)), o2y=(.95-((t*.09+.5)%1));
+ document.getElementById('o1').style.bottom=(14+o1y*34)+'%';
+ document.getElementById('o2').style.bottom=(14+o2y*34)+'%';
+ // ambient drift + cast splats (cowboy near band bottom y~.15)
+ doSplat(.5,.06,0,.05,DYE*.6,.06);
+ doSplat(cwx,.18,cdir*.25,.06,DYE*.4,.012);
+ doSplat(.3,1-o1y,0,-.10,DYE*.3,.008);
+ doSplat(.66,1-o2y,0,-.10,DYE*.3,.008);
+ if(Math.floor(t*4)%3==0)doSplat(cwx,.5,0,.55,0,.0035); // bullet tunnel (upward in sim = away)
+ // sim
+ gl.useProgram(pAdv);bindQ(pAdv);
+ setT(pAdv,'uv_',0,vel.r.t);setT(pAdv,'us',1,vel.r.t);
+ gl.uniform1f(gl.getUniformLocation(pAdv,'dt'),dt);
+ gl.uniform1f(gl.getUniformLocation(pAdv,'diss'),.992);
+ gl.uniform2f(gl.getUniformLocation(pAdv,'tx'),tx[0],tx[1]);
+ to(vel.w.f,SW,SH);vel.swap();
+ gl.useProgram(pDiv);bindQ(pDiv);setT(pDiv,'uv_',0,vel.r.t);
+ gl.uniform2f(gl.getUniformLocation(pDiv,'tx'),tx[0],tx[1]);to(div.f,SW,SH);
+ gl.useProgram(pPrs);bindQ(pPrs);
+ for(let i=0;i<10;i++){setT(pPrs,'up',0,prs.r.t);setT(pPrs,'ud',1,div.t);
+  gl.uniform2f(gl.getUniformLocation(pPrs,'tx'),tx[0],tx[1]);to(prs.w.f,SW,SH);prs.swap();}
+ gl.useProgram(pGrd);bindQ(pGrd);setT(pGrd,'up',0,prs.r.t);setT(pGrd,'uv_',1,vel.r.t);
+ gl.uniform2f(gl.getUniformLocation(pGrd,'tx'),tx[0],tx[1]);to(vel.w.f,SW,SH);vel.swap();
+ gl.useProgram(pAdv);bindQ(pAdv);setT(pAdv,'uv_',0,vel.r.t);setT(pAdv,'us',1,dye.r.t);
+ gl.uniform1f(gl.getUniformLocation(pAdv,'dt'),dt);
+ gl.uniform1f(gl.getUniformLocation(pAdv,'diss'),.985);
+ gl.uniform2f(gl.getUniformLocation(pAdv,'tx'),tx[0],tx[1]);
+ to(dye.w.f,SW,SH);dye.swap();
+ // display
+ gl.useProgram(pDsp);bindQ(pDsp);setT(pDsp,'ud',0,dye.r.t);
+ gl.uniform1f(gl.getUniformLocation(pDsp,'density'),DENSITY);
+ gl.uniform1f(gl.getUniformLocation(pDsp,'cap'),CAP);
+ gl.bindFramebuffer(gl.FRAMEBUFFER,null);gl.viewport(0,0,cv.width,cv.height);
+ gl.enable(gl.BLEND);gl.blendFunc(gl.SRC_ALPHA,gl.ONE_MINUS_SRC_ALPHA);
+ gl.clearColor(0,0,0,0);gl.clear(gl.COLOR_BUFFER_BIT);
+ gl.drawArrays(gl.TRIANGLE_STRIP,0,4);gl.disable(gl.BLEND);
+ requestAnimationFrame(frame);}
+frame();
+</script></body></html>
