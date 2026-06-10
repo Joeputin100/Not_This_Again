@@ -3986,6 +3986,8 @@ func _boss_kind() -> String:
 		lvl = GameState.current_level
 	if lvl == 2:
 		return "rustler"
+	if lvl == 4:
+		return "jawbreaker"
 	if lvl == 5:
 		return "raisin"
 	if lvl == 6:

@@ -8,7 +8,7 @@ script = ExtResource("1_hrksf")
 distance = 75.0
 kind = 5
 params = {
-"boss": "pete"
+"boss": "jawbreaker"
 }
 
 [resource]
