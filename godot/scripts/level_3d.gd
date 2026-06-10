@@ -536,6 +536,14 @@ var _jawbreaker_taunt_timer: float = 6.0
 var _jawbreaker_hit_voice_cd: float = 0.0
 # Posse snow-frozen: auto-fire is gated while > 0 (set by the blast payload).
 var _posse_frozen_t: float = 0.0
+# Charge-telegraph ground ring (portal_ring.gdshader in a SubViewport,
+# sampled by a flat ground Sprite3D — the mobile-safe canvas-shader path).
+const PORTAL_RING_SHADER := preload("res://assets/shaders/portal_ring.gdshader")
+const CHARGE_RING_DIAMETER: float = 12.0   # world units, marks the blast area
+var _charge_ring_sv: SubViewport = null
+var _charge_ring_node: Node3D = null
+var _charge_ring_mat: ShaderMaterial = null
+var _charge_ring_t: float = 0.0
 
 # Sing Mode (mic input): "" until the pre-fight modal is answered, then
 # "swipe" or "sing". The duel is frozen while "". Spec:
@@ -4442,6 +4450,11 @@ func _process_jawbreaker(boss: Node3D, delta: float) -> void:
 	if _jawbreaker_taunt_timer <= 0.0 and not _jawbreaker.charging:
 		_jawbreaker_taunt_timer = JAWBREAKER_TAUNT_INTERVAL
 		_jawbreaker_say("taunt")
+	# Grow the portal ground-ring across the charge window.
+	if _jawbreaker.charging and _charge_ring_mat != null:
+		_charge_ring_t += delta
+		_charge_ring_mat.set_shader_parameter("progress",
+			clampf(_charge_ring_t / JawbreakerState.CHARGE_T, 0.0, 1.0))
 	# Blast cycle (charge telegraph -> release), from the pure state.
 	for e in _jawbreaker.tick(delta):
 		match e:
@@ -4449,9 +4462,11 @@ func _process_jawbreaker(boss: Node3D, delta: float) -> void:
 				_set_jawbreaker_anim(boss, JAWBREAKER_CHARGE_STREAM)
 				_jawbreaker_say("charge")
 				info_label.text = "❄ HE'S CHARGING UP — POUR IT ON! ❄"
+				_spawn_charge_ring(boss)
 			"blast":
 				_set_jawbreaker_anim(boss, JAWBREAKER_BLAST_STREAM)
 				_jawbreaker_say("blast")
+				_free_charge_ring()
 				_spawn_impact_blast(boss.position)
 				var payload: Dictionary = _jawbreaker.blast_payload(_posse_count_3d)
 				_posse_frozen_t = float(payload["freeze"])
@@ -4502,9 +4517,50 @@ func _process_jawbreaker(boss: Node3D, delta: float) -> void:
 				_jawbreaker_say("taunt")
 			if events.has("defeat"):
 				boss.set_meta("dying", true)
+				_free_charge_ring()
 				_jawbreaker_say("dying")
 				_show_win("The Jawbreaker", boss, null)
 				return
+
+# Spawn the swirling portal ground-ring under the boss for the charge
+# telegraph. Grows with charge progress; freed on blast / death / exit.
+func _spawn_charge_ring(boss: Node3D) -> void:
+	_free_charge_ring()
+	_charge_ring_t = 0.0
+	var sv := SubViewport.new()
+	sv.size = Vector2i(512, 512)
+	sv.transparent_bg = true
+	sv.disable_3d = true
+	sv.render_target_update_mode = 4   # UPDATE_ALWAYS
+	add_child(sv)
+	var rect := ColorRect.new()
+	rect.size = Vector2(512, 512)
+	var mat := ShaderMaterial.new()
+	mat.shader = PORTAL_RING_SHADER
+	rect.material = mat
+	sv.add_child(rect)
+	var wrap := Node3D.new()
+	var sprite := Sprite3D.new()
+	sprite.texture = sv.get_texture()
+	sprite.pixel_size = CHARGE_RING_DIAMETER / 512.0
+	sprite.rotation_degrees.x = -90.0   # lie flat on the ground
+	sprite.no_depth_test = true
+	sprite.render_priority = 1
+	wrap.add_child(sprite)
+	wrap.position = Vector3(boss.position.x, 0.06, boss.position.z)
+	add_child(wrap)
+	_charge_ring_sv = sv
+	_charge_ring_node = wrap
+	_charge_ring_mat = mat
+
+func _free_charge_ring() -> void:
+	if _charge_ring_node != null and is_instance_valid(_charge_ring_node):
+		_charge_ring_node.queue_free()
+	if _charge_ring_sv != null and is_instance_valid(_charge_ring_sv):
+		_charge_ring_sv.queue_free()
+	_charge_ring_node = null
+	_charge_ring_sv = null
+	_charge_ring_mat = null
 
 func _jawbreaker_say(kind: String) -> void:
 	var banks: Dictionary = {
@@ -4906,6 +4962,7 @@ func _show_fail() -> void:
 		return
 	_failed = true
 	_close_sing_window()   # Sing Mode: never leave the mic on / audio ducked
+	_free_charge_ring()    # Jawbreaker: no telegraph over the fail modal
 	if get_node_or_null("/root/AudioBus") and AudioBus.has_method("play_sfx"):
 		AudioBus.play_sfx("fail_sting")   # iter413
 	# Iter 87: kill any lingering gunshot pool samples so the sound
