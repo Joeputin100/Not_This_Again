@@ -40,6 +40,7 @@ MusicPlayer="*res://scripts/music_player.gd"
 [audio]
 
 driver/output_latency=15
+driver/enable_input=true
 
 [display]
 
