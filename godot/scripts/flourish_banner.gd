@@ -215,7 +215,8 @@ func _make_embossed_row(text: String, base_size: int, tint: Color) -> Control:
 	row.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	var row_h: float = float(fitted) * 1.45
 	row.custom_minimum_size = Vector2(0, row_h)
-	row.size = Vector2(get_viewport_rect().size.x, row_h)
+	# anchored controls reject direct size sets — height comes from the offset
+	row.offset_bottom = row_h
 	var layers: Array = [
 		[Vector2(3, 4), Color(0.32, 0.18, 0.04, 0.9), null],
 		[Vector2(-2, -2), Color(1.0, 0.97, 0.88, 0.85), null],
