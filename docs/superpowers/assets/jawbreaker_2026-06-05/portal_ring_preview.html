@@ -14,8 +14,8 @@ h1{color:#bfe3ff;letter-spacing:2px}
  <label>Boss vertical offset: <input type="range" id="sl_dy" min="-200" max="200" value="0" style="width:60%"> <span id="v_dy">0</span>px</label><br>
  <label>Boss horizontal offset: <input type="range" id="sl_dx" min="-150" max="150" value="0" style="width:60%"> <span id="v_dx">0</span>px</label><br>
  <label>Ring squash: <input type="range" id="sl_sq" min="20" max="80" value="30" style="width:60%"> <span id="v_sq">0.30</span></label><br>
- <label>Ring size: <input type="range" id="sl_rw" min="200" max="560" value="560" style="width:60%"> <span id="v_rw">560</span>px</label>
- <div id="report" style="margin-top:8px;color:#ffd76e;font-family:monospace">report: dy=0 dx=0 squash=0.30 ring=560 (baked)</div>
+ <label>Ring size: <input type="range" id="sl_rw" min="200" max="2000" value="1100" style="width:60%"> <span id="v_rw">1100</span>px</label>
+ <div id="report" style="margin-top:8px;color:#ffd76e;font-family:monospace">report: dy=0 dx=0 squash=0.30 ring=1100 (true AoE)</div>
 </div>
 <script>
 // --- offscreen WebGL ring (exact game shader logic) ---
@@ -66,7 +66,7 @@ bossImg.onload=()=>{bossCv.width=bossImg.width;bossCv.height=bossImg.height;
 // --- composite: ONE coordinate (cx,cy) = ellipse center = boss feet ---
 const scene=document.getElementById('scene'),sx=scene.getContext('2d');
 let cx=280, cy=430;             // the shared ground point
-let RING_W=560;                 // ellipse width (blast diameter) — owner-tuned
+let RING_W=1100;                // ellipse width — TRUE AoE (~7.8x boss width)
 let SQUASH=0.30;                // camera foreshortening — owner-tuned
 let DY=0, DX=0;
 function hook(id,vid,fn){const el=document.getElementById(id);
@@ -94,7 +94,7 @@ let start=performance.now();
  sx.drawImage(ringCv,cx-RING_W/2,cy-rh/2,RING_W,rh);
  // boss with FEET at (cx,cy); image has ~6% green margin under the feet
  if(bossReady){
-  const bw=230, bh=bw*bossImg.height/bossImg.width;
+  const bw=140, bh=bw*bossImg.height/bossImg.width;
   sx.drawImage(bossCv,cx-bw/2+DX,cy-bh*0.770+DY,bw,bh);  // feet at 77% of sprite (owner dy=70 baked)
  }
  requestAnimationFrame(frame);})();

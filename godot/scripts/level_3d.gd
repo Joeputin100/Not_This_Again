@@ -539,9 +539,10 @@ var _posse_frozen_t: float = 0.0
 # Charge-telegraph ground ring (portal_ring.gdshader in a SubViewport,
 # sampled by a flat ground Sprite3D — the mobile-safe canvas-shader path).
 const PORTAL_RING_SHADER := preload("res://assets/shaders/portal_ring.gdshader")
-# Owner-tuned (preview sliders, 2026-06-10): ring ≈ 2.4× the boss's width.
-# Boss billboard ≈ 3.07 world wide (height 5.5, 9:16 frame) → ~7.5 world.
-const CHARGE_RING_DIAMETER: float = 7.5
+# TRUE AoE (owner, 2026-06-10): the blast hits the whole posse, so the ring
+# must ENCLOSE it — the boss holds ~7 units ahead of the cowboy; radius 12
+# reaches past the back ranks. (Earlier 7.5 was a boss-scale decal, too small.)
+const CHARGE_RING_DIAMETER: float = 24.0
 var _charge_ring_sv: SubViewport = null
 var _charge_ring_node: Node3D = null
 var _charge_ring_mat: ShaderMaterial = null
