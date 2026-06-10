@@ -528,7 +528,9 @@ const JAWBREAKER_BLAST_STREAM := "res://assets/videos/jawbreaker/blast.ogv"
 const JAWBREAKER_STAY_Z: float = -7.0
 const JAWBREAKER_SPEED: float = 7.0      # heavy boulder: half the Rustler's stride
 const JAWBREAKER_MELEE_DPS: float = 2.5
-const JAWBREAKER_HEIGHT: float = 5.5
+# 9.5 (was 5.5): clips re-rendered from a PADDED seed (figure ~58% of frame so
+# arm-flings + snow bursts stay inside the green) — bigger quad, same visible boss.
+const JAWBREAKER_HEIGHT: float = 9.5
 const JAWBREAKER_TAUNT_INTERVAL: float = 9.0
 var _jawbreaker: JawbreakerState = null
 var _jawbreaker_melee_accum: float = 0.0
