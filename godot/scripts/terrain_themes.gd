@@ -74,14 +74,15 @@ const TERRAIN_THEMES: Dictionary = {
 			{"slug": "rock_large", "density": 0.4, "scale": [0.6, 1.2], "side": "right"},
 		],
 	},
-	"badlands": {
+	"vineyard": {   # L5 (was "vineyard"): Raisin Kidd's vine country. Textures still the
+		# badlands set until props task #77 delivers vineyard art.
 		"ground_albedo": "res://assets/textures/ground_badlands.png",
 		"ground_normal": "res://assets/textures/ground_badlands_n.png",
 		"ground_detail": "res://assets/textures/ground_detail.png",
 		"ground_uv_tile": 24.0, "macro_strength": 2.6,
 		"backdrop": "res://assets/sprites/props/backdrop_badlands.png",
-		"tint_low": Color(0.46, 0.26, 0.18), "tint_high": Color(0.86, 0.52, 0.32),
-		"fog_color": Color(0.96, 0.74, 0.52), "fog_density": 0.020,
+		"tint_low": Color(0.36, 0.30, 0.14), "tint_high": Color(0.84, 0.68, 0.36),
+		"fog_color": Color(0.95, 0.82, 0.55), "fog_density": 0.020,
 		"trail": {"albedo": "res://assets/textures/trail_badlands.png", "half_width": 2.6},
 		"boardwalk": null, "cliff": null,
 		"scatter": [

@@ -14,7 +14,7 @@ params = {
 [resource]
 script = ExtResource("1_def")
 difficulty = 5
-terrain = "badlands"
+terrain = "vineyard"
 display_name = "BADLANDS VINEYARD VENGEANCE"
 weather_type = "HEAT"
 seed = 5

@@ -407,7 +407,8 @@ const MONK_OUTLAW_VIDEOS: Dictionary = {
 	"fireball_monk": "res://assets/videos/candy_monk/hadouken.ogv",
 	"star_monk":     "res://assets/videos/candy_monk/candy_star_blue.ogv",
 }
-const BADLANDS_OUTLAW_WEIGHTS: Array = [
+# L5 vineyard (was badlands): the raisin MONKS tend the Kidd's vine country.
+const VINEYARD_OUTLAW_WEIGHTS: Array = [
 	["fireball_monk", 45], ["star_monk", 55],
 ]
 # Level-6 candy songbirds (no guns). flit_finch = warm, erratic light harasser;
@@ -6326,7 +6327,7 @@ func _pick_outlaw_kind() -> String:
 	var roster: Array
 	match _level_def.terrain:
 		"farm": roster = FARM_OUTLAW_WEIGHTS
-		"badlands": roster = BADLANDS_OUTLAW_WEIGHTS
+		"vineyard": roster = VINEYARD_OUTLAW_WEIGHTS
 		"canyon": roster = CANYON_OUTLAW_WEIGHTS
 		"mountain": roster = MOUNTAIN_OUTLAW_WEIGHTS
 		_: return "vagrant"

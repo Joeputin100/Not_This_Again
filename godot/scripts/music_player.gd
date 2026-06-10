@@ -23,6 +23,8 @@ const LEVEL_TRACKS: Dictionary = {
 	2: preload("res://assets/audio/music/high_noon_at_the_glass_saloon.ogg"),
 	# Level 4: calliope cakewalk (Golliwog-spirit) for the mountain pass.
 	4: preload("res://assets/audio/music/cakewalk_at_the_summit.ogg"),
+	# Level 5: the owner's Lyria guitar waltz for the Raisin Kidd's vineyard.
+	5: preload("res://assets/audio/music/waltz_of_the_wooden_puppet.ogg"),
 	# Level 6: candy music-box bed under the starlit canyon + the Queen sing-duel.
 	6: preload("res://assets/audio/music/queen_of_the_night_canyon.ogg"),
 }

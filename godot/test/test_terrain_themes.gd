@@ -69,19 +69,19 @@ func test_scatter_positions_deterministic_and_in_bounds():
 		assert_true(p.y >= -10.0 and p.y <= -4.0, "z in band")
 		assert_true(abs(p.x) >= 1.5 and abs(p.x) <= 6.0, "x in shoulder band")
 
-func test_badlands_theme_has_required_keys_and_scatter():
-	var t: Dictionary = TerrainThemes.get_theme("badlands")
+func test_vineyard_theme_has_required_keys_and_scatter():
+	var t: Dictionary = TerrainThemes.get_theme("vineyard")
 	# Must NOT fall back to frontier (i.e. it is actually defined).
-	assert_ne(t, TerrainThemes.get_theme("frontier"), "badlands should be its own theme")
+	assert_ne(t, TerrainThemes.get_theme("frontier"), "vineyard should be its own theme")
 	for k in ["ground_albedo", "ground_normal", "ground_detail", "tint_low",
 			"tint_high", "fog_color", "fog_density", "scatter"]:
-		assert_true(t.has(k), "badlands theme missing key %s" % k)
-	assert_gt((t["scatter"] as Array).size(), 0, "badlands needs scatter props")
+		assert_true(t.has(k), "vineyard theme missing key %s" % k)
+	assert_gt((t["scatter"] as Array).size(), 0, "vineyard needs scatter props")
 
-func test_badlands_is_warm_toned():
-	var t: Dictionary = TerrainThemes.get_theme("badlands")
+func test_vineyard_is_warm_toned():
+	var t: Dictionary = TerrainThemes.get_theme("vineyard")
 	var hi: Color = t["tint_high"]
-	assert_gt(hi.r, hi.b, "badlands ridge tint should be warm (red > blue)")
+	assert_gt(hi.r, hi.b, "vineyard ridge tint should be warm (red > blue)")
 
 func test_canyon_theme_present_and_dark_cool():
 	var t: Dictionary = TerrainThemes.get_theme("canyon")
