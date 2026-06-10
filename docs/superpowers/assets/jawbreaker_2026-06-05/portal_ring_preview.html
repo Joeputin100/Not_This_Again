@@ -102,7 +102,7 @@ let start=performance.now();
  drawBossFrame(inBlast);
  if(bossCv.width>4){
   const bw=240, bh=bw*bossCv.height/bossCv.width;  // padded frame: figure ~58%
-  sx.drawImage(bossCv,cx-bw/2+DX,cy-bh*0.91+DY,bw,bh);  // padded seed: feet ~91%
+  sx.drawImage(bossCv,cx-bw/2+DX,cy-bh*0.782+DY,bw,bh);  // owner dy=55 baked (feet ~78%)
  }
  requestAnimationFrame(frame);})();
 </script></body></html>
