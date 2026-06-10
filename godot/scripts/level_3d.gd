@@ -4544,8 +4544,8 @@ func _spawn_charge_ring(boss: Node3D) -> void:
 	sprite.texture = sv.get_texture()
 	sprite.pixel_size = CHARGE_RING_DIAMETER / 512.0
 	sprite.rotation_degrees.x = -90.0   # lie flat on the ground
-	sprite.no_depth_test = true
-	sprite.render_priority = 1
+	sprite.no_depth_test = true         # never z-fight the snow plane
+	sprite.render_priority = -1         # ...but draw UNDER the boss/posse billboards
 	wrap.add_child(sprite)
 	wrap.position = Vector3(boss.position.x, 0.06, boss.position.z)
 	add_child(wrap)
