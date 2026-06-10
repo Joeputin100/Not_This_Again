@@ -518,6 +518,25 @@ var _queen_swiping: bool = false
 var _queen_hit_voice_cd: float = 0.0
 # Level-6 Papageno/Papagena swipe-duel tutorial: one-shot guard.
 var _papageno_done: bool = false
+# Level4: The Jawbreaker (Boulder-Brute). Pure blast/phase/shed logic in
+# jawbreaker_state.gd; this file drives billboard, VO, melee drain, and the
+# phase-based AOE snow-blast (freeze + losses) from its events.
+const _JAWBREAKER_STATE := preload("res://scripts/jawbreaker_state.gd")
+const JAWBREAKER_IDLE_STREAM := "res://assets/videos/jawbreaker/idle.ogv"
+const JAWBREAKER_CHARGE_STREAM := "res://assets/videos/jawbreaker/charge.ogv"
+const JAWBREAKER_BLAST_STREAM := "res://assets/videos/jawbreaker/blast.ogv"
+const JAWBREAKER_STAY_Z: float = -7.0
+const JAWBREAKER_SPEED: float = 7.0      # heavy boulder: half the Rustler's stride
+const JAWBREAKER_MELEE_DPS: float = 2.5
+const JAWBREAKER_HEIGHT: float = 5.5
+const JAWBREAKER_TAUNT_INTERVAL: float = 9.0
+var _jawbreaker: JawbreakerState = null
+var _jawbreaker_melee_accum: float = 0.0
+var _jawbreaker_taunt_timer: float = 6.0
+var _jawbreaker_hit_voice_cd: float = 0.0
+# Posse snow-frozen: auto-fire is gated while > 0 (set by the blast payload).
+var _posse_frozen_t: float = 0.0
+
 # Sing Mode (mic input): "" until the pre-fight modal is answered, then
 # "swipe" or "sing". The duel is frozen while "". Spec:
 # docs/superpowers/specs/2026-06-10-sing-mode-mic-input-design.md
@@ -851,6 +870,11 @@ func _ready() -> void:
 			_papageno_done = true   # we trigger it ourselves, once
 			call_deferred("_run_papageno_tutorial")
 			DebugLog.add("level_3d: papageno duet preview")
+		elif DebugPreview.pending_jawbreaker:
+			# Jump straight to the L4 boss — no mountain run-up.
+			DebugPreview.pending_jawbreaker = false
+			call_deferred("_spawn_jawbreaker")
+			DebugLog.add("level_3d: jawbreaker preview")
 	# Iter 79: initial HUD render.
 	_refresh_hud()
 	# Iter 77: win-modal Retry button.
@@ -3727,6 +3751,8 @@ func _dispatch_level_event(ev: LevelEvent) -> void:
 					_spawn_raisin_kidd()
 				elif _bk == "queen":
 					_spawn_queen()
+				elif _bk == "jawbreaker":
+					_spawn_jawbreaker()
 				else:
 					_spawn_pete()
 				# iter418: clear on-screen gates so the boss isn't hidden behind one
@@ -4350,6 +4376,149 @@ func _process_queen(boss: Node3D, delta: float) -> void:
 					_sing_fx.clear()
 				_show_win("Queen of the Night", boss, null)
 				return
+
+# ---- Level 4: The Jawbreaker (Boulder-Brute) -------------------------------
+# Spec: docs/superpowers/specs/2026-06-05-jawbreaker-boss-design.md
+
+func _spawn_jawbreaker() -> void:
+	_jawbreaker = _JAWBREAKER_STATE.new()
+	_jawbreaker_melee_accum = 0.0
+	_jawbreaker_taunt_timer = 6.0
+	var boss := Node3D.new()
+	boss.position = Vector3(0.0, 2.4, OBSTACLE_SPAWN_Z + 4.0)
+	boss.set_meta("hp", _jawbreaker.hp)
+	boss.set_meta("hp_max", JawbreakerState.MAX_HP)
+	boss.set_meta("boss_kind", "jawbreaker")
+	boss_root.add_child(boss)
+	var billboard := _make_video_billboard(load(JAWBREAKER_IDLE_STREAM), JAWBREAKER_HEIGHT)
+	boss.add_child(billboard)
+	if billboard.get_child_count() > 0:
+		boss.set_meta("video_sprite", billboard.get_child(0))
+	var plate := Label3D.new()
+	plate.text = "THE JAWBREAKER"
+	plate.font_size = 42
+	plate.outline_size = 9
+	plate.modulate = Color(0.62, 0.84, 1.0, 1)
+	plate.billboard = BaseMaterial3D.BILLBOARD_ENABLED
+	plate.no_depth_test = true
+	plate.position = Vector3(0, 0.6, 0.6)
+	boss.add_child(plate)
+	_install_pete_hud(boss, "THE JAWBREAKER")
+	_refresh_pete_hp(boss)
+	info_label.text = "BOSS — THE JAWBREAKER"
+	_jawbreaker_say("intro")
+	DebugLog.add("jawbreaker spawned, HP=%d" % _jawbreaker.hp)
+
+# Swap the boss billboard between idle/charge/blast clips (shared-viewport
+# texture swap, the _set_pete_anim pattern). Missing clips fail soft.
+func _set_jawbreaker_anim(boss: Node3D, path: String) -> void:
+	var sprite: Sprite3D = boss.get_meta("video_sprite", null) as Sprite3D
+	if sprite == null or not ResourceLoader.exists(path):
+		return
+	var sv: SubViewport = _get_or_create_shared_video_viewport(load(path))
+	sprite.texture = sv.get_texture()
+
+func _process_jawbreaker(boss: Node3D, delta: float) -> void:
+	if _jawbreaker == null or boss.get_meta("dying", false):
+		return
+	_jawbreaker_hit_voice_cd = maxf(0.0, _jawbreaker_hit_voice_cd - delta)
+	# Heavy stride in; plant at the duel distance. He does NOT move while
+	# charging (planted boulder reinforces the telegraph read).
+	if boss.position.z < JAWBREAKER_STAY_Z and not _jawbreaker.charging:
+		boss.position.z += JAWBREAKER_SPEED * delta
+	else:
+		# Engaged — melee contact drain (Rustler pattern, specials soak first).
+		_jawbreaker_melee_accum += delta * JAWBREAKER_MELEE_DPS
+		while _jawbreaker_melee_accum >= 1.0:
+			_jawbreaker_melee_accum -= 1.0
+			var sf: Dictionary = _nearest_special_follower(boss.position, 99.0)
+			if not sf.is_empty():
+				_damage_special_follower(sf, 1)
+			else:
+				_posse_count_3d = maxi(0, _posse_count_3d - 1)
+				_sync_followers_to_count(_posse_count_3d)
+				_refresh_hud()
+	_jawbreaker_taunt_timer -= delta
+	if _jawbreaker_taunt_timer <= 0.0 and not _jawbreaker.charging:
+		_jawbreaker_taunt_timer = JAWBREAKER_TAUNT_INTERVAL
+		_jawbreaker_say("taunt")
+	# Blast cycle (charge telegraph -> release), from the pure state.
+	for e in _jawbreaker.tick(delta):
+		match e:
+			"charge_start":
+				_set_jawbreaker_anim(boss, JAWBREAKER_CHARGE_STREAM)
+				_jawbreaker_say("charge")
+				info_label.text = "❄ HE'S CHARGING UP — POUR IT ON! ❄"
+			"blast":
+				_set_jawbreaker_anim(boss, JAWBREAKER_BLAST_STREAM)
+				_jawbreaker_say("blast")
+				_spawn_impact_blast(boss.position)
+				var payload: Dictionary = _jawbreaker.blast_payload(_posse_count_3d)
+				_posse_frozen_t = float(payload["freeze"])
+				for i in range(int(payload["loss"])):
+					var sf2: Dictionary = _nearest_special_follower(boss.position, 99.0)
+					if not sf2.is_empty():
+						_damage_special_follower(sf2, 1)
+					else:
+						_posse_count_3d = maxi(0, _posse_count_3d - 1)
+				_sync_followers_to_count(_posse_count_3d)
+				_refresh_hud()
+				_spawn_popup_3d(cowboy_3d.position + Vector3(0, 2.0, 0),
+					"FROZEN!", Color(0.7, 0.9, 1.0, 1), 84)
+				info_label.text = "BOSS — THE JAWBREAKER"
+				# back to idle shortly after the burst clip plays
+				get_tree().create_timer(1.2).timeout.connect(
+					func() -> void:
+						if is_instance_valid(boss) and not boss.get_meta("dying", false):
+							_set_jawbreaker_anim(boss, JAWBREAKER_IDLE_STREAM))
+	# Bullet hits (every overlapping bullet counts — the iter 147 rule).
+	for bullet in bullets_root.get_children():
+		if not (bullet is Node3D):
+			continue
+		var dx: float = bullet.position.x - boss.position.x
+		var dz: float = bullet.position.z - boss.position.z
+		if dx * dx + dz * dz < PETE_HIT_RADIUS_SQ:
+			var events: Array = _jawbreaker.apply_damage(1)
+			boss.set_meta("hp", _jawbreaker.hp)
+			_spawn_popup_3d(boss.position + Vector3(0, 1.5, 0),
+				"-1", Color(0.62, 0.84, 1.0, 1), 72)
+			bullet.queue_free()
+			_hits += 1
+			_refresh_hud()
+			_refresh_pete_hp(boss)
+			if events.has("shed"):
+				# shell cracks off: cold flash on the billboard
+				var sp: Sprite3D = boss.get_meta("video_sprite", null) as Sprite3D
+				if sp != null:
+					sp.modulate = Color(1.6, 1.9, 2.4, 1)
+					get_tree().create_timer(0.18).timeout.connect(
+						func() -> void:
+							if is_instance_valid(sp):
+								sp.modulate = Color(1, 1, 1, 1))
+				if _jawbreaker_hit_voice_cd <= 0.0:
+					_jawbreaker_hit_voice_cd = 4.0
+					_jawbreaker_say("hit")
+			if events.has("phase2"):
+				_jawbreaker_say("taunt")
+			if events.has("defeat"):
+				boss.set_meta("dying", true)
+				_jawbreaker_say("dying")
+				_show_win("The Jawbreaker", boss, null)
+				return
+
+func _jawbreaker_say(kind: String) -> void:
+	var banks: Dictionary = {
+		"intro": ["jawbreaker_intro_", 1], "taunt": ["jawbreaker_taunt_", 2],
+		"hit": ["jawbreaker_hit_", 1], "charge": ["jawbreaker_charge_", 1],
+		"blast": ["jawbreaker_blast_", 1], "dying": ["jawbreaker_dying_", 1],
+	}
+	if not banks.has(kind):
+		return
+	var entry: Array = banks[kind]
+	var audio := get_node_or_null("/root/AudioBus")
+	if audio == null or not audio.has_method("play_character_line"):
+		return
+	audio.play_character_line("%s%d" % [entry[0], randi() % int(entry[1])])
 
 # ---- Sing Mode (mic input) ------------------------------------------------
 # Spec: docs/superpowers/specs/2026-06-10-sing-mode-mic-input-design.md
@@ -7057,6 +7226,8 @@ func _process(delta: float) -> void:
 			_spawn_raisin_kidd()
 		elif _boss_kind() == "queen":
 			_spawn_queen()
+		elif _boss_kind() == "jawbreaker":
+			_spawn_jawbreaker()
 		else:
 			_spawn_pete()
 		# iter414b: clear any gates so the boss isn't hidden behind one.
@@ -7068,7 +7239,7 @@ func _process(delta: float) -> void:
 	# check bullet hits.
 	if _pete_spawned and boss_root.get_child_count() > 0:
 		var pete: Node3D = boss_root.get_child(0)
-		if is_instance_valid(pete) and pete is Node3D and not (pete.get_meta("boss_kind", "pete") in ["rustler", "raisin", "queen"]):
+		if is_instance_valid(pete) and pete is Node3D and not (pete.get_meta("boss_kind", "pete") in ["rustler", "raisin", "queen", "jawbreaker"]):
 			# Iter 146: anim revert timer — if running, count down; on
 			# expiry switch Pete back to IDLE.
 			var revert_t: float = pete.get_meta("anim_revert_t", 0.0)
@@ -7176,13 +7347,18 @@ func _process(delta: float) -> void:
 			_process_raisin_kidd(rustler_boss, delta)
 		elif is_instance_valid(rustler_boss) and rustler_boss.get_meta("boss_kind", "pete") == "queen":
 			_process_queen(rustler_boss, delta)
+		elif is_instance_valid(rustler_boss) and rustler_boss.get_meta("boss_kind", "pete") == "jawbreaker":
+			_process_jawbreaker(rustler_boss, delta)
 	# Iter 115: GunState-driven auto-fire. Replaces the iter-66 fixed
 	# fire_timer. tick(delta) advances the cooldown + reload countdown;
 	# the while-can_fire loop drains as many shots as the cowboy is
 	# entitled to this frame (usually 0-1 depending on cooldown). Each
 	# fire() consumes one ammo; ammo=0 → reload kicks in automatically.
 	# Iter 118: gate firing on PLAYING + BOSS. Countdown blocks firing.
-	if _gun_state != null and _level_state != LevelState.COUNTDOWN:
+	# Jawbreaker snow-blast freeze: the posse can't fire while frozen.
+	if _posse_frozen_t > 0.0:
+		_posse_frozen_t = maxf(0.0, _posse_frozen_t - delta)
+	if _gun_state != null and _level_state != LevelState.COUNTDOWN and _posse_frozen_t <= 0.0:
 		_gun_state.tick(delta)
 		# iter413: reload click on the empty->reloading transition.
 		var reloading_now: bool = _gun_state.is_reloading()

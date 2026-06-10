@@ -190,6 +190,11 @@ func _build_sections() -> void:
 	papa_btn.pressed.connect(_on_preview_papageno_duet)
 	content.add_child(papa_btn)
 
+	_add_section_header("LEVEL 4 — JAWBREAKER")
+	var jaw_btn := _make_button("JAWBREAKER (L4 BOSS)")
+	jaw_btn.pressed.connect(_on_preview_jawbreaker)
+	content.add_child(jaw_btn)
+
 	_add_section_header("TEST RANGE")
 	var range_btn := _make_button("OPEN CACTUS FIELD (weapon + posse test)")
 	range_btn.pressed.connect(_on_open_test_range)
@@ -316,6 +321,12 @@ func _on_preview_papageno_duet() -> void:
 	AudioBus.play_tap()
 	GameState.current_level = 6
 	DebugPreview.pending_papageno_duet = true
+	get_tree().change_scene_to_file("res://scenes/level_3d.tscn")
+
+func _on_preview_jawbreaker() -> void:
+	AudioBus.play_tap()
+	GameState.current_level = 4   # mountain terrain + snow + jawbreaker assets
+	DebugPreview.pending_jawbreaker = true
 	get_tree().change_scene_to_file("res://scenes/level_3d.tscn")
 
 func _on_open_test_range() -> void:

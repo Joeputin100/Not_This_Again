@@ -49,6 +49,8 @@ var pending_kimmy: bool = false
 # included) or the Papageno tutorial duet, skipping the canyon run-up.
 var pending_queen_duel: bool = false
 var pending_papageno_duet: bool = false
+# Level-4 Jawbreaker boss: jump straight to the fight.
+var pending_jawbreaker: bool = false
 
 # Called by level.gd after consuming a pending field so back-to-back
 # debug launches don't leak state across scenes.
@@ -64,6 +66,7 @@ func clear() -> void:
 	pending_kimmy = false
 	pending_queen_duel = false
 	pending_papageno_duet = false
+	pending_jawbreaker = false
 
 # True if any preview is pending. Level.gd can short-circuit normal
 # gate/boss spawning when this is true (so the rush plays in an
@@ -72,4 +75,4 @@ func has_pending() -> bool:
 	return pending_rush != "" or pending_sugar_rush or \
 		pending_weapon != "" or pending_posse_unlock != "" or \
 		pending_test_range or pending_captive_hero != "" or pending_kimmy or \
-		pending_queen_duel or pending_papageno_duet
+		pending_queen_duel or pending_papageno_duet or pending_jawbreaker
