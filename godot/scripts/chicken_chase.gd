@@ -31,7 +31,13 @@ var _timer_label: Label = null
 var _results: Control = null
 var _results_headline: Label = null
 
+const CHASE_MUSIC := preload("res://assets/audio/music/gladiators_tack_piano.ogg")
+
 func _ready() -> void:
+	# tack-piano "Entry of the Gladiators" — circus chaos for the chicken chase
+	# (clean-room transcription, tools/gen_gladiators_tackpiano.py)
+	if get_node_or_null("/root/MusicPlayer") != null and MusicPlayer.has_method("play"):
+		MusicPlayer.play(CHASE_MUSIC)
 	_run = ChickenChaseRun.new()
 	if get_node_or_null("/root/GameState"):
 		GameState.chicken_chase_spend()
@@ -263,6 +269,9 @@ func _end_run() -> void:
 		_results.visible = true
 
 func _on_continue_pressed() -> void:
+	# hand the music back to the selector's shared track
+	if get_node_or_null("/root/MusicPlayer") != null and MusicPlayer.has_method("play_splash"):
+		MusicPlayer.play_splash()
 	get_tree().change_scene_to_file("res://scenes/level_select.tscn")
 
 # ── cutout helper (mirrors level_3d's breathing-prop approach) ──
