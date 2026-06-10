@@ -13,6 +13,61 @@ var _member_clip := {}     # member_id -> clip_name
 var _member_xform := {}    # member_id -> Transform3D
 var _next_id := 0
 
+# ---- Idle MILLING (deferred from iter 268) -------------------------------
+# When the world halts (boss engage, cart encounter, debug viewer idle) a
+# perfectly still crowd reads as a screenshot. With `milling` on, each member
+# does small random walks: drift ~0.3 m/s for ~a second, pause 2-4s, repeat —
+# clamped to the formation bounds so nobody wanders out of frame.
+const MILL_SPEED := 0.3
+var milling: bool = false:
+	set(v):
+		if v == milling:
+			return
+		milling = v
+		if not v:
+			_mill.clear()   # next halt starts fresh from formation positions
+var mill_half_w: float = 4.0   # x bound (formation half-width)
+var mill_depth: float = 6.0    # z bound (formation depth)
+var _mill := {}                # member_id -> {"vel": Vector2, "t": float}
+var _mill_rng := RandomNumberGenerator.new()
+
+# One pure milling step (STATIC + deterministic via the passed rng: GUT-tested
+# headless on CI). pos is the member's (x,z); returns updated {pos, vel, t}.
+static func mill_step(pos: Vector2, vel: Vector2, t: float, delta: float,
+		half_w: float, depth: float, rng: RandomNumberGenerator) -> Dictionary:
+	t -= delta
+	if t <= 0.0:
+		if vel == Vector2.ZERO:
+			# was paused -> pick a small wander direction for ~a second
+			var ang: float = rng.randf() * TAU
+			vel = Vector2(cos(ang), sin(ang)) * MILL_SPEED
+			t = rng.randf_range(0.8, 1.6)
+		else:
+			# was walking -> stop and stand for a while
+			vel = Vector2.ZERO
+			t = rng.randf_range(2.0, 4.0)
+	pos += vel * delta
+	pos.x = clampf(pos.x, -half_w, half_w)
+	pos.y = clampf(pos.y, 0.3, depth)
+	return {"pos": pos, "vel": vel, "t": t}
+
+func _process(delta: float) -> void:
+	if not milling or _member_xform.is_empty():
+		return
+	for id in _member_xform:
+		var st: Dictionary = _mill.get(id,
+			{"vel": Vector2.ZERO, "t": _mill_rng.randf_range(0.0, 3.0)})
+		var xf: Transform3D = _member_xform[id]
+		var r: Dictionary = mill_step(Vector2(xf.origin.x, xf.origin.z),
+			st["vel"], st["t"], delta, mill_half_w, mill_depth, _mill_rng)
+		xf.origin.x = (r["pos"] as Vector2).x
+		xf.origin.z = (r["pos"] as Vector2).y
+		_member_xform[id] = xf
+		_mill[id] = {"vel": r["vel"], "t": r["t"]}
+	for clip in _meshes:
+		_rebuild(clip)
+# ---- end milling -----------------------------------------------------------
+
 # Blob-shadow params — a single MultiMesh of dark ovals laid flat under
 # each crowd member, offset in the light's anti-direction. Doesn't depend
 # on the Mobile renderer's shadow-map support; works as plain alpha-blend

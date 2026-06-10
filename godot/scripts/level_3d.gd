@@ -1200,6 +1200,13 @@ func _update_posse_crowd(delta: float) -> void:
 	var want: int = mini(maxi(0, _posse_count_3d - 1), CROWD_RENDER_CAP)
 	if want != _crowd_built_count or absf(_cam_pitch - _crowd_built_pitch) > 2.0:
 		_build_posse_formation(want)
+	# Idle MILLING: while the world is halted (boss engage / cart encounter) the
+	# crowd does small random walks instead of freezing into a screenshot.
+	var halted: bool = (_level_state == LevelState.BOSS) or _cart_encounter
+	if _posse_crowd.get("milling") != halted:
+		_posse_crowd.set("mill_half_w", _crowd_frame_halfwidth())
+		_posse_crowd.set("mill_depth", POSSE_CROWD_DEPTH)
+		_posse_crowd.set("milling", halted)
 
 # Iter 111: spawn a single roadside scenery item. Weighted pick from
 # 5 categories so the world feels lived-in but not chaotic. Each item

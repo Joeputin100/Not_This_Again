@@ -695,6 +695,9 @@ func _apply_direction_to_crowd() -> void:
 	# clip they spawned with — so you see the full animation set again.
 	if _crowd == null:
 		return
+	# Idle MILLING (the iter-268 ask): released d-pad -> members drift in
+	# small random walks instead of freezing at their spawn spots.
+	_crowd.set("milling", _direction == "idle")
 	var dir_map: Dictionary = DIRECTIONS.get(_character, {})
 	for id in _ids:
 		var clip: String
