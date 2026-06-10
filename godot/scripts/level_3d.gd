@@ -542,6 +542,12 @@ var _jawbreaker_taunt_timer: float = 6.0
 var _jawbreaker_hit_voice_cd: float = 0.0
 # Posse snow-frozen: auto-fire is gated while > 0 (set by the blast payload).
 var _posse_frozen_t: float = 0.0
+# Cotton-candy fluid fog (Level 4 / mountain): real fluid-sim ground-fog band.
+# Visual only; whole-run breathing density; wispy. fluid_fog.gd owns the sim.
+const FluidFogScript = preload("res://scripts/fluid_fog.gd")
+const FOG_BAND_TOP := 0.52        # screen-UV where the band begins (display shader)
+var _fluid_fog: Node = null
+
 # Charge-telegraph ground ring (portal_ring.gdshader in a SubViewport,
 # sampled by a flat ground Sprite3D — the mobile-safe canvas-shader path).
 const PORTAL_RING_SHADER := preload("res://assets/shaders/portal_ring.gdshader")
@@ -4401,6 +4407,86 @@ func _process_queen(boss: Node3D, delta: float) -> void:
 				_show_win("Queen of the Night", boss, null)
 				return
 
+# ---- Cotton-candy fluid fog (Level 4 / mountain terrain) -------------------
+# Spec: docs/superpowers/specs/2026-06-10-cotton-candy-fluid-fog-design.md
+
+func _build_fluid_fog() -> void:
+	if _fluid_fog != null:
+		return
+	_fluid_fog = FluidFogScript.new()
+	_fluid_fog.name = "FluidFog"
+	add_child(_fluid_fog)
+	_fluid_fog.set("enabled", true)
+	# display band UNDER the HUD widgets but over the 3D view
+	var disp: Control = _fluid_fog.call("display_node")
+	if disp != null and info_label != null:
+		var ui: Node = info_label.get_parent()
+		ui.add_child(disp)
+		ui.move_child(disp, 0)
+
+# Project a world position into fog-band sim UV; returns Vector2(-1,-1) when
+# off-band/behind camera.
+func _fog_uv(world: Vector3) -> Vector2:
+	if camera == null or camera.is_position_behind(world):
+		return Vector2(-1, -1)
+	var vp: Vector2 = camera.get_viewport().get_visible_rect().size
+	var px: Vector2 = camera.unproject_position(world)
+	var uv := Vector2(px.x / maxf(vp.x, 1.0), px.y / maxf(vp.y, 1.0))
+	if uv.y < FOG_BAND_TOP or uv.x < -0.1 or uv.x > 1.1:
+		return Vector2(-1, -1)
+	return Vector2(uv.x, (uv.y - FOG_BAND_TOP) / (1.0 - FOG_BAND_TOP))
+
+func _update_fluid_fog(delta: float) -> void:
+	if _level_def == null or _level_def.terrain != "mountain":
+		return
+	if _fluid_fog == null:
+		_build_fluid_fog()
+	# breathing density + boss thickening
+	var boss_frac: float = 1.0 if _level_state == LevelState.BOSS else \
+		clampf(float(_outlaws_spawned) / maxf(float(_level_def.outlaw_quota), 1.0), 0.0, 0.6)
+	_fluid_fog.set("fog_density", FluidFogScript.density(_level_distance, boss_frac))
+	# ambient scroll: the world streams past, so the fog drifts down-screen
+	_fluid_fog.call("add_splat_candidate", Vector2(0.5, 0.1),
+		Vector2(0.0, 0.05), 0.9, 0.10 * delta * 60.0 * 0.016, 0.5)
+	# the posse's bow wave (lateral push from steering)
+	if cowboy_3d != null:
+		var cuv: Vector2 = _fog_uv(cowboy_3d.position)
+		if cuv.x >= 0.0:
+			var vx: float = (cowboy_3d.position.x - _prev_cowboy_x) * 2.0
+			_fluid_fog.call("add_splat_candidate", cuv,
+				Vector2(clampf(vx, -0.6, 0.6), 0.08), 0.10, 0.05, 5.0)
+	# outlaws wading through
+	var fed: int = 0
+	for o in outlaws_root.get_children():
+		if fed >= 6 or not (o is Node3D):
+			break
+		var ouv: Vector2 = _fog_uv((o as Node3D).position)
+		if ouv.x >= 0.0:
+			_fluid_fog.call("add_splat_candidate", ouv, Vector2(0.0, 0.10), 0.07, 0.04, 3.0)
+			fed += 1
+	# bullets punch thin fast tunnels (force only, no dye)
+	var bfed: int = 0
+	for b in bullets_root.get_children():
+		if bfed >= 6 or not (b is Node3D):
+			break
+		var buv: Vector2 = _fog_uv((b as Node3D).position)
+		if buv.x >= 0.0:
+			_fluid_fog.call("add_splat_candidate", buv, Vector2(0.0, -0.5), 0.035, 0.0, 4.0)
+			bfed += 1
+
+# The Jawbreaker's blizzard slams the fog outward: one huge dye dump + four
+# radial pushes around the blast point.
+func _fog_blast(world: Vector3) -> void:
+	if _fluid_fog == null:
+		return
+	var uv: Vector2 = _fog_uv(world)
+	if uv.x < 0.0:
+		uv = Vector2(0.5, 0.3)
+	_fluid_fog.call("add_splat_candidate", uv, Vector2.ZERO, 0.45, 0.8, 10.0)
+	for dir in [Vector2(1, 0), Vector2(-1, 0), Vector2(0, 1), Vector2(0, -1)]:
+		_fluid_fog.call("add_splat_candidate", uv + dir * 0.12,
+			dir * 0.9, 0.15, 0.0, 9.0)
+
 # ---- Level 4: The Jawbreaker (Boulder-Brute) -------------------------------
 # Spec: docs/superpowers/specs/2026-06-05-jawbreaker-boss-design.md
 
@@ -4484,6 +4570,7 @@ func _process_jawbreaker(boss: Node3D, delta: float) -> void:
 				_jawbreaker_say("blast")
 				_free_charge_ring()
 				_spawn_impact_blast(boss.position)
+				_fog_blast(boss.position)   # slam the cotton-candy fog outward
 				var payload: Dictionary = _jawbreaker.blast_payload(_posse_count_3d)
 				_posse_frozen_t = float(payload["freeze"])
 				for i in range(int(payload["loss"])):
@@ -6836,6 +6923,7 @@ func _process(delta: float) -> void:
 	_bob_time += delta
 	cowboy_3d.position.y = 0.45 + sin(_bob_time * BOB_FREQUENCY) * BOB_AMPLITUDE
 	_update_posse_crowd(delta)   # iter401: posse mob follows + reframes
+	_update_fluid_fog(delta)     # L4 cotton-candy fog: feed splats + density
 	_check_authored_holes(delta)
 	_check_cliff_fall(delta)
 	for i in range(_followers.size()):
