@@ -388,6 +388,9 @@ const OUTLAW_KINDS: Dictionary = {
 	"star_monk":     {"hp": 9,  "height": 2.5},
 	"flit_finch":    {"hp": 8,  "height": 2.2},
 	"peck_jay":      {"hp": 11, "height": 2.4},
+	"stacked_totem":   {"hp": 10, "height": 3.1},
+	"yeti_brute":      {"hp": 14, "height": 2.9},
+	"snowball_roller": {"hp": 12, "height": 2.4},
 }
 # candy_corn + gummi common; fried_dough + triffid rarer.
 const FARM_OUTLAW_WEIGHTS: Array = [
@@ -412,6 +415,20 @@ const BIRD_OUTLAW_VIDEOS: Dictionary = {
 const CANYON_OUTLAW_WEIGHTS: Array = [
 	["flit_finch", 55], ["peck_jay", 45],
 ]
+# Level-4 mountain cast (the rejected Jawbreaker silhouettes, per spec §11.2):
+# stacked_totem = ranged potshot harasser (holds range, candy-cane pistols);
+# yeti_brute = rusher, long-arm clobber; snowball_roller = bouncing roller.
+const MOUNTAIN_OUTLAW_VIDEOS: Dictionary = {
+	"stacked_totem":   "res://assets/videos/mountain_outlaws/stacked_totem.ogv",
+	"yeti_brute":      "res://assets/videos/mountain_outlaws/yeti_brute.ogv",
+	"snowball_roller": "res://assets/videos/mountain_outlaws/snowball_roller.ogv",
+}
+const MOUNTAIN_OUTLAW_WEIGHTS: Array = [
+	["stacked_totem", 40], ["yeti_brute", 35], ["snowball_roller", 25],
+]
+const TOTEM_HOLD_Z: float = 7.0          # potshot harasser holds at range
+const YETI_SPEED_MUL: float = 1.45       # rusher: closes fast
+const SNOWBALL_SPEED_MUL: float = 1.2    # roller: rolls in at a clip
 const PECK_JAY_SWOOP_COOLDOWN: float = 2.2   # reserved for later AI tuning (do not remove)
 const FIREBALL_MONK_HOLD_Z: float = 7.0     # heavy lobber holds at range
 const STAR_MONK_HOLD_Z: float = 5.0         # harasser closes a bit more
@@ -5973,6 +5990,7 @@ func _pick_outlaw_kind() -> String:
 		"farm": roster = FARM_OUTLAW_WEIGHTS
 		"badlands": roster = BADLANDS_OUTLAW_WEIGHTS
 		"canyon": roster = CANYON_OUTLAW_WEIGHTS
+		"mountain": roster = MOUNTAIN_OUTLAW_WEIGHTS
 		_: return "vagrant"
 	var total: int = 0
 	for entry in roster:
@@ -6017,6 +6035,9 @@ func _spawn_outlaw(kind: String = "") -> void:
 	# gummi BOUNCY: random hop phase so the swarm hops out of sync.
 	if kind == "gummi_bear":
 		outlaw.set_meta("hop_phase", _rng.randf() * GUMMI_HOP_PERIOD)
+	if kind == "snowball_roller":
+		# the gummi hop curve reads as a bowling bounce on the snowball
+		outlaw.set_meta("hop_phase", _rng.randf() * GUMMI_HOP_PERIOD)
 	_outlaws_spawned += 1
 	var billboard: Node3D
 	if FARM_OUTLAW_VIDEOS.has(kind):
@@ -6025,6 +6046,8 @@ func _spawn_outlaw(kind: String = "") -> void:
 		billboard = _make_video_billboard(load(MONK_OUTLAW_VIDEOS[kind]), OUTLAW_KINDS[kind]["height"])
 	elif BIRD_OUTLAW_VIDEOS.has(kind):
 		billboard = _make_video_billboard(load(BIRD_OUTLAW_VIDEOS[kind]), OUTLAW_KINDS[kind]["height"])
+	elif MOUNTAIN_OUTLAW_VIDEOS.has(kind):
+		billboard = _make_video_billboard(load(MOUNTAIN_OUTLAW_VIDEOS[kind]), OUTLAW_KINDS[kind]["height"])
 	else:
 		billboard = _make_video_billboard(VAGRANT_IDLE_STREAM, 2.5)
 	outlaw.add_child(billboard)
@@ -6772,6 +6795,16 @@ func _process(delta: float) -> void:
 			# KITER: hold ~6 units in front of the cowboy, stop closing.
 			if outlaw.position.z >= cowboy_3d.position.z - CANDY_CORN_HOLD_Z:
 				z_speed = 0.0
+		elif _kind == "stacked_totem":
+			# RANGED HARASSER: holds at pistol range like the kiter.
+			if outlaw.position.z >= cowboy_3d.position.z - TOTEM_HOLD_Z:
+				z_speed = 0.0
+		elif _kind == "yeti_brute":
+			z_speed = OUTLAW_SPEED * YETI_SPEED_MUL  # RUSHER: long-arm clobber
+		elif _kind == "snowball_roller":
+			z_speed = OUTLAW_SPEED * SNOWBALL_SPEED_MUL
+			if outlaw.position.z > cowboy_3d.position.z - 2.0:
+				z_speed *= 0.20
 		elif outlaw.position.z > cowboy_3d.position.z - 2.0:
 			z_speed = OUTLAW_SPEED * 0.20
 		# triffid ROOTED: never advances on the posse — it scrolls in with
