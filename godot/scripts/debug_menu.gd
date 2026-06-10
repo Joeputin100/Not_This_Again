@@ -181,6 +181,15 @@ func _build_sections() -> void:
 	kimmy_btn.pressed.connect(_on_preview_kimmy)
 	content.add_child(kimmy_btn)
 
+	# Level-6 sing minigames: jump straight in for swipe/mic testing.
+	_add_section_header("LEVEL 6 — SING DUEL")
+	var queen_btn := _make_button("QUEEN SING-DUEL (L6 BOSS)")
+	queen_btn.pressed.connect(_on_preview_queen_duel)
+	content.add_child(queen_btn)
+	var papa_btn := _make_button("PAPAGENO DUET (L6 TUTORIAL)")
+	papa_btn.pressed.connect(_on_preview_papageno_duet)
+	content.add_child(papa_btn)
+
 	_add_section_header("TEST RANGE")
 	var range_btn := _make_button("OPEN CACTUS FIELD (weapon + posse test)")
 	range_btn.pressed.connect(_on_open_test_range)
@@ -295,6 +304,18 @@ func _on_preview_kimmy() -> void:
 	DebugLog.add("KIMMY BUTTON pressed")
 	AudioBus.play_tap()
 	DebugPreview.pending_kimmy = true
+	get_tree().change_scene_to_file("res://scenes/level_3d.tscn")
+
+func _on_preview_queen_duel() -> void:
+	AudioBus.play_tap()
+	GameState.current_level = 6   # canyon terrain + L6 music + queen assets
+	DebugPreview.pending_queen_duel = true
+	get_tree().change_scene_to_file("res://scenes/level_3d.tscn")
+
+func _on_preview_papageno_duet() -> void:
+	AudioBus.play_tap()
+	GameState.current_level = 6
+	DebugPreview.pending_papageno_duet = true
 	get_tree().change_scene_to_file("res://scenes/level_3d.tscn")
 
 func _on_open_test_range() -> void:

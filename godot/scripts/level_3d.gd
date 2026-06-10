@@ -501,6 +501,16 @@ var _queen_swiping: bool = false
 var _queen_hit_voice_cd: float = 0.0
 # Level-6 Papageno/Papagena swipe-duel tutorial: one-shot guard.
 var _papageno_done: bool = false
+# Sing Mode (mic input): "" until the pre-fight modal is answered, then
+# "swipe" or "sing". The duel is frozen while "". Spec:
+# docs/superpowers/specs/2026-06-10-sing-mode-mic-input-design.md
+var _queen_mode: String = ""
+var _queen_modal: Control = null
+var _mic: Node = null                 # mic_capture.gd, lazily added
+var _sing_window_t: float = -1.0      # >=0 while a sing response window is open
+var _sing_empty_take: bool = false    # last window heard nothing usable
+var _sing_mercy_used: bool = false    # one free empty take per fight
+var _duck_active: bool = false        # Master bus dimmed while listening
 
 # Iter 88: bonus pickup spawn parameters. Pickups appear periodically
 # at a random lane x, hover with sine y-bob, scroll toward cowboy.
@@ -812,6 +822,18 @@ func _ready() -> void:
 			_update_weapon_label()
 			call_deferred("_spawn_kimmy_cage")
 			DebugLog.add("level_3d: kimmy preview")
+		elif DebugPreview.pending_queen_duel:
+			# Sing Mode testing: spawn the Queen (mode modal included)
+			# immediately — no canyon run-up. Debug menu set current_level=6.
+			DebugPreview.pending_queen_duel = false
+			_papageno_done = true   # don't let the timed tutorial interrupt
+			call_deferred("_spawn_queen")
+			DebugLog.add("level_3d: queen sing-duel preview")
+		elif DebugPreview.pending_papageno_duet:
+			DebugPreview.pending_papageno_duet = false
+			_papageno_done = true   # we trigger it ourselves, once
+			call_deferred("_run_papageno_tutorial")
+			DebugLog.add("level_3d: papageno duet preview")
 	# Iter 79: initial HUD render.
 	_refresh_hud()
 	# Iter 77: win-modal Retry button.
@@ -4232,15 +4254,27 @@ func _spawn_queen() -> void:
 	boss.add_child(plate)
 	_install_pete_hud(boss, "QUEEN OF THE NIGHT")
 	_refresh_pete_hp(boss)
-	info_label.text = "BOSS — QUEEN OF THE NIGHT"
-	_queen_say("intro")
+	# Sing Mode: the duel waits frozen behind a pre-fight choice modal
+	# (swipe vs sing). _start_queen_duel() plays the intro once picked.
+	_queen_mode = ""
+	_sing_mercy_used = false
+	_show_queen_mode_modal()
 	DebugLog.add("queen spawned, HP=%d" % _queen.hp)
 
 func _process_queen(boss: Node3D, delta: float) -> void:
 	if _queen == null or boss.get_meta("dying", false):
 		return
+	if _queen_mode == "":
+		return   # frozen behind the swipe/sing choice modal
 	if boss.position.z < QUEEN_STAY_Z:
 		boss.position.z += RUSTLER_SPEED * delta
+	# Sing Mode: drive the open listening window (live trail + auto-submit
+	# shortly before the state's own timeout would fire high_note).
+	if _queen_mode == "sing" and _sing_window_t >= 0.0:
+		_sing_window_t += delta
+		_feed_sing_trail()
+		if _sing_window_t >= QueenDuelState.RESPONSE_T - 0.25:
+			_finish_sing_take(boss)
 	# posse chip damage (auto-fire)
 	for bullet in bullets_root.get_children():
 		if not (bullet is Node3D):
@@ -4266,23 +4300,183 @@ func _process_queen(boss: Node3D, delta: float) -> void:
 			"response_open":
 				if _sing_fx:
 					_sing_fx.open_response()
-				_queen_swiping = true
+				if _queen_mode == "sing":
+					_sing_window_t = 0.0
+					if _mic != null:
+						_mic.start()
+					_duck_audio(true)   # hush the canyon for the player's aria
+				else:
+					_queen_swiping = true
 			"high_note":
-				# timed-out (unanswered) phrase: she belts a high note + drains
-				if _sing_fx:
-					_sing_fx.high_note_flash(anchor)
-				_queen_say("highnote")
-				_outlaw_drain_posse(boss.position, "")
+				# timed-out (unanswered) phrase: she belts a high note + drains.
+				# Sing-mode mercy: ONE empty take per fight gets a nudge, no drain.
+				_close_sing_window()
+				if _queen_mode == "sing" and _sing_empty_take and not _sing_mercy_used:
+					_sing_mercy_used = true
+					_sing_empty_take = false
+					info_label.text = "Sing out, sugar — she can't hear you!"
+				else:
+					if _sing_fx:
+						_sing_fx.high_note_flash(anchor)
+					_queen_say("highnote")
+					_outlaw_drain_posse(boss.position, "")
 				_queen_swiping = false
 			"phase2":
 				_queen_say("phase2")
 			"defeat":
 				boss.set_meta("dying", true)
+				_close_sing_window()
 				_queen_say("dying")
 				if _sing_fx:
 					_sing_fx.clear()
 				_show_win("Queen of the Night", boss, null)
 				return
+
+# ---- Sing Mode (mic input) ------------------------------------------------
+# Spec: docs/superpowers/specs/2026-06-10-sing-mode-mic-input-design.md
+
+# Pre-fight choice modal: "How will you answer her?" SWIPE (default) / SING.
+func _show_queen_mode_modal() -> void:
+	var modal := Control.new()
+	modal.set_anchors_preset(Control.PRESET_FULL_RECT)
+	var dim := ColorRect.new()
+	dim.color = Color(0.05, 0.02, 0.12, 0.72)
+	dim.set_anchors_preset(Control.PRESET_FULL_RECT)
+	modal.add_child(dim)
+	var box := VBoxContainer.new()
+	box.set_anchors_preset(Control.PRESET_CENTER)
+	box.grow_horizontal = Control.GROW_DIRECTION_BOTH
+	box.grow_vertical = Control.GROW_DIRECTION_BOTH
+	box.add_theme_constant_override("separation", 20)
+	modal.add_child(box)
+	var title := Label.new()
+	title.text = "HOW WILL YOU ANSWER HER?"
+	title.add_theme_font_size_override("font_size", 42)
+	title.add_theme_color_override("font_color", Color(1.0, 0.84, 0.45))
+	title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	box.add_child(title)
+	var swipe_btn := Button.new()
+	swipe_btn.text = "👆  SWIPE THE TUNE"
+	swipe_btn.add_theme_font_size_override("font_size", 34)
+	swipe_btn.custom_minimum_size = Vector2(420, 84)
+	swipe_btn.pressed.connect(_on_queen_pick_swipe)
+	box.add_child(swipe_btn)
+	var sing_btn := Button.new()
+	sing_btn.text = "🎤  SING IT BACK"
+	sing_btn.add_theme_font_size_override("font_size", 34)
+	sing_btn.custom_minimum_size = Vector2(420, 84)
+	sing_btn.pressed.connect(_on_queen_pick_sing)
+	box.add_child(sing_btn)
+	info_label.get_parent().add_child(modal)
+	swipe_btn.grab_focus()   # swipe is the default
+	_queen_modal = modal
+
+func _on_queen_pick_swipe() -> void:
+	_start_queen_duel("swipe")
+
+func _on_queen_pick_sing() -> void:
+	# Runtime mic permission (Android). Granted (or non-Android) -> sing;
+	# denied -> graceful fallback to swipe.
+	if not OS.has_feature("android") \
+			or "android.permission.RECORD_AUDIO" in OS.get_granted_permissions():
+		_enter_sing_mode()
+		return
+	get_tree().on_request_permissions_result.connect(
+		_on_mic_permission_result, CONNECT_ONE_SHOT)
+	OS.request_permission("RECORD_AUDIO")
+
+func _on_mic_permission_result(_permission: String, granted: bool) -> void:
+	if granted:
+		_enter_sing_mode()
+	else:
+		_start_queen_duel("swipe")
+		info_label.text = "No mic — swipin' it is, partner!"
+
+func _enter_sing_mode() -> void:
+	if _mic == null:
+		_mic = preload("res://scripts/mic_capture.gd").new()
+		add_child(_mic)
+	_start_queen_duel("sing")
+	# one-time headphone hint (persisted)
+	if get_node_or_null("/root/GameState") != null and not GameState.sing_hint_shown:
+		GameState.sing_hint_shown = true
+		GameState._save_to_disk()
+		info_label.text = "TIP: headphones make singin' sweeter!"
+
+func _start_queen_duel(mode: String) -> void:
+	_queen_mode = mode
+	if _queen_modal != null:
+		_queen_modal.queue_free()
+		_queen_modal = null
+	info_label.text = "BOSS — QUEEN OF THE NIGHT"
+	_queen_say("intro")
+	DebugLog.add("queen duel mode: %s" % mode)
+
+# Live trail while listening: x sweeps the contour band with window time,
+# y follows the sung pitch normalized against the take's own range so far.
+func _feed_sing_trail() -> void:
+	if _sing_fx == null or _mic == null:
+		return
+	var c: Array = _mic.curve()
+	if c.is_empty():
+		return
+	var vp: Vector2 = get_viewport_rect().size
+	var mn := INF
+	var mx := -INF
+	for p in c:
+		mn = minf(mn, (p as Vector2).y)
+		mx = maxf(mx, (p as Vector2).y)
+	var ext: float = maxf(mx - mn, 0.0001)
+	var last: Vector2 = c[c.size() - 1]
+	var nx: float = clampf(_sing_window_t / QueenDuelState.RESPONSE_T, 0.0, 1.0)
+	var ny: float = (last.y - mn) / ext
+	_sing_fx.feed_point(Vector2(vp.x * 0.12 + nx * vp.x * 0.76,
+		vp.y * 0.30 + ny * vp.y * 0.30))
+
+# End of the listening window: submit the pitch curve as if it were a swipe.
+# An empty take submits NOTHING — the state times out into high_note, where
+# the one-per-fight mercy nudge is applied.
+func _finish_sing_take(boss: Node3D) -> void:
+	var pts: Array = _mic.curve() if _mic != null else []
+	var voiced: int = _mic.voiced() if _mic != null else 0
+	_close_sing_window()
+	if voiced < 4:
+		_sing_empty_take = true
+		return
+	_sing_empty_take = false
+	var res: Dictionary = _queen.submit_swipe(pts)
+	var anchor: Vector2 = get_viewport_rect().size * Vector2(0.5, 0.4)
+	if bool(res.get("out_sing", false)):
+		if _sing_fx:
+			_sing_fx.out_sing_flash(anchor)
+	else:
+		if _sing_fx:
+			_sing_fx.high_note_flash(anchor)
+		_queen_say("highnote")
+		for i in range(int(res.get("posse_drain", 0))):
+			_outlaw_drain_posse(boss.position, "")
+
+# Stop the mic + restore audio + close the FX response if a window is open.
+# Safe to call repeatedly (defeat, fail, scene exit).
+func _close_sing_window() -> void:
+	if _sing_window_t >= 0.0:
+		_sing_window_t = -1.0
+		if _sing_fx:
+			_sing_fx.end_response()
+	if _mic != null:
+		_mic.stop()
+	_duck_audio(false)
+
+# Dim/restore the Master bus while listening (speaker->mic bleed + drama).
+func _duck_audio(on: bool) -> void:
+	if on == _duck_active:
+		return
+	_duck_active = on
+	var master: int = AudioServer.get_bus_index("Master")
+	AudioServer.set_bus_volume_db(master,
+		AudioServer.get_bus_volume_db(master) + (-24.0 if on else 24.0))
+
+# ---- end Sing Mode ----------------------------------------------------------
 
 # Map a normalized phrase contour (state-space) into screen pixels in the
 # upper-center band where the FX draws it.
@@ -4523,6 +4717,7 @@ func _show_fail() -> void:
 	if _failed:
 		return
 	_failed = true
+	_close_sing_window()   # Sing Mode: never leave the mic on / audio ducked
 	if get_node_or_null("/root/AudioBus") and AudioBus.has_method("play_sfx"):
 		AudioBus.play_sfx("fail_sting")   # iter413
 	# Iter 87: kill any lingering gunshot pool samples so the sound
@@ -7743,7 +7938,10 @@ func _input(event: InputEvent) -> void:
 	if _queen_swiping and _sing_fx != null:
 		if event is InputEventScreenDrag:
 			_sing_fx.feed_point((event as InputEventScreenDrag).position)
-		elif event is InputEventScreenTouch and not (event as InputEventScreenTouch).pressed:
+		# _queen != null guards: during the Papageno tutorial the duet loop owns
+		# submission (tut.submit_swipe) — a finger-lift here must not call into
+		# a null Queen state.
+		elif _queen != null and event is InputEventScreenTouch and not (event as InputEventScreenTouch).pressed:
 			var pts: Array = _sing_fx.end_response()
 			var res: Dictionary = _queen.submit_swipe(pts)
 			var anchor2: Vector2 = get_viewport_rect().size * Vector2(0.5, 0.4)
@@ -7757,7 +7955,7 @@ func _input(event: InputEvent) -> void:
 				for i in range(int(res.get("posse_drain", 0))):
 					_outlaw_drain_posse(Vector3.ZERO, "")
 			_queen_swiping = false
-		elif event is InputEventMouseButton and not (event as InputEventMouseButton).pressed and (event as InputEventMouseButton).button_index == MOUSE_BUTTON_LEFT:
+		elif _queen != null and event is InputEventMouseButton and not (event as InputEventMouseButton).pressed and (event as InputEventMouseButton).button_index == MOUSE_BUTTON_LEFT:
 			var pts2: Array = _sing_fx.end_response()
 			var res2: Dictionary = _queen.submit_swipe(pts2)
 			if bool(res2.get("out_sing", false)):
