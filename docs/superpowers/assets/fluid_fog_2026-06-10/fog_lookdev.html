@@ -48,7 +48,7 @@ vec2 vel=texture(uv_,v).xy-vec2(R-L,T-B)*.5;o=vec4(vel,0,1);}`);
 const splat=FS(`uniform sampler2D ub;uniform vec2 pt;uniform vec3 col;uniform float rad;
 void main(){vec2 d=v-pt;d.x*=1.78;float s=exp(-dot(d,d)/rad);o=texture(ub,v)+vec4(col*s,0);}`);
 const disp=FS(`uniform sampler2D ud;uniform float density,cap;
-void main(){float dye=texture(ud,v).r;float band=smoothstep(0.,.35,v.y);
+void main(){float dye=texture(ud,v).r;float band=smoothstep(1.0,0.65,v.y);
 vec3 pale=vec3(1.,.86,.93),deep=vec3(.95,.55,.78);
 vec3 c=mix(pale,deep,clamp(dye*1.4,0.,1.));
 float a=clamp(dye*band*density,0.,1.)*cap;o=vec4(c,a);}`);
@@ -96,21 +96,27 @@ function hook(id,vid,fn){const e=document.getElementById(id);
  document.getElementById('report').textContent=
  'report: density='+DENSITY.toFixed(2)+' dye='+DYE.toFixed(2)+' cap='+CAP.toFixed(2);});}
 hook('sl_density','v_density',v=>DENSITY=v);hook('sl_dye','v_dye',v=>DYE=v);hook('sl_cap','v_cap',v=>CAP=v);
-let t0=performance.now(),cwx=.5,cdir=1;
+let t0=performance.now(),cwx=.5,cdir=1,lastShot=0;
+const CANVAS_FRAC=.48;                       // fluid canvas = bottom 48% of wrap
+function simY(wrapBottomPct){return Math.min(wrapBottomPct/100/CANVAS_FRAC,1.0);} // GL y, bottom-origin
 function frame(){
  const t=(performance.now()-t0)/1000,dt=.016;
- // fake cast: cowboy strafes; outlaws drift down; bullets fire up
+ // fake cast: cowboy strafes; outlaws wade DOWN toward the posse; bullets fire up
  cwx+=cdir*.0016;if(cwx>.7||cwx<.3)cdir*=-1;
  document.getElementById('cowboy').style.left=(cwx*100)+'%';
- const o1y=(.95-((t*.07)%1)), o2y=(.95-((t*.09+.5)%1));
- document.getElementById('o1').style.bottom=(14+o1y*34)+'%';
- document.getElementById('o2').style.bottom=(14+o2y*34)+'%';
- // ambient drift + cast splats (cowboy near band bottom y~.15)
- doSplat(.5,.06,0,.05,DYE*.6,.06);
- doSplat(cwx,.18,cdir*.25,.06,DYE*.4,.012);
- doSplat(.3,1-o1y,0,-.10,DYE*.3,.008);
- doSplat(.66,1-o2y,0,-.10,DYE*.3,.008);
- if(Math.floor(t*4)%3==0)doSplat(cwx,.5,0,.55,0,.0035); // bullet tunnel (upward in sim = away)
+ const o1b=46-((t*8)%32), o2b=46-((t*10+16)%32);   // wrap-bottom % 14..46
+ const o1x=.30+.06*Math.sin(t*1.7), o2x=.66+.06*Math.sin(t*1.3+2.0);
+ const o1=document.getElementById('o1'), o2=document.getElementById('o2');
+ o1.style.bottom=o1b+'%'; o1.style.left=(o1x*100)+'%';
+ o2.style.bottom=o2b+'%'; o2.style.left=(o2x*100)+'%';
+ // ambient fog supply (low, wide) — keeps the band stocked
+ doSplat(.5,.05,0,.04,DYE*.6,.08);
+ // SPLATS AT THE EXACT SPRITE POSITIONS (same wrap-%→sim mapping)
+ doSplat(cwx,simY(14),cdir*.45,.08,DYE*.5,.02);          // cowboy bow-wave
+ doSplat(o1x,simY(o1b),0,-.30,DYE*.45,.015);             // outlaw wakes
+ doSplat(o2x,simY(o2b),0,-.30,DYE*.45,.015);
+ if(t-lastShot>0.7){lastShot=t;                          // bullet tunnel
+  for(let k=0;k<6;k++)doSplat(cwx,simY(14)+k*.13,0,.8,0,.004);}
  // sim
  gl.useProgram(pAdv);bindQ(pAdv);
  setT(pAdv,'uv_',0,vel.r.t);setT(pAdv,'us',1,vel.r.t);
