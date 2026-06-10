@@ -47,11 +47,23 @@ T=texture(up,v+vec2(0,tx.y)).x,B=texture(up,v-vec2(0,tx.y)).x;
 vec2 vel=texture(uv_,v).xy-vec2(R-L,T-B)*.5;o=vec4(vel,0,1);}`);
 const splat=FS(`uniform sampler2D ub;uniform vec2 pt;uniform vec3 col;uniform float rad;
 void main(){vec2 d=v-pt;d.x*=1.78;float s=exp(-dot(d,d)/rad);o=texture(ub,v)+vec4(col*s,0);}`);
-const disp=FS(`uniform sampler2D ud;uniform float density,cap;
-void main(){float dye=texture(ud,v).r;float band=smoothstep(1.0,0.65,v.y);
-vec3 pale=vec3(1.,.86,.93),deep=vec3(.95,.55,.78);
-vec3 c=mix(pale,deep,clamp(dye*1.4,0.,1.));
-float a=clamp(dye*band*density,0.,1.)*cap;o=vec4(c,a);}`);
+const disp=FS(`uniform sampler2D ud;uniform float density,cap,T;
+float h21(vec2 p){return fract(sin(dot(p,vec2(127.1,311.7)))*43758.5453);}
+float vno(vec2 p){vec2 i=floor(p),f=fract(p);vec2 u=f*f*(3.-2.*f);
+ return mix(mix(h21(i),h21(i+vec2(1,0)),u.x),mix(h21(i+vec2(0,1)),h21(i+vec2(1,1)),u.x),u.y);}
+void main(){vec4 d=texture(ud,v);float dye=d.r;float band=smoothstep(1.0,0.65,v.y);
+ float flavor=clamp(d.g/max(dye,1e-4),0.,1.);          // swirls with the fluid
+ float shim=vno(v*vec2(7.,4.)+vec2(T*.06,-T*.03));     // slow drifting shimmer
+ // ramp A: cool pinks (pale rose -> bubblegum -> orchid)
+ vec3 a1=vec3(1.,.90,.95),a2=vec3(1.,.68,.86),a3=vec3(.82,.55,.85);
+ // ramp B: warm pinks (cream blush -> taffy -> raspberry)
+ vec3 b1=vec3(1.,.88,.88),b2=vec3(1.,.62,.70),b3=vec3(.88,.36,.56);
+ float k=clamp(dye*1.4,0.,1.);
+ vec3 ca=k<.5?mix(a1,a2,k*2.):mix(a2,a3,k*2.-1.);
+ vec3 cb=k<.5?mix(b1,b2,k*2.):mix(b2,b3,k*2.-1.);
+ vec3 c=mix(ca,cb,flavor);
+ c*=0.92+0.13*shim;                                     // sparkle variation
+ float al=clamp(dye*band*density,0.,1.)*cap;o=vec4(c,al);}`);
 function mk(fs){const p=gl.createProgram();
 function sh(t,s){const o=gl.createShader(t);gl.shaderSource(o,s);gl.compileShader(o);
 if(!gl.getShaderParameter(o,gl.COMPILE_STATUS))console.error(gl.getShaderInfoLog(o));return o;}
@@ -79,7 +91,7 @@ function setT(p,n,u,t){gl.activeTexture(gl.TEXTURE0+u);gl.bindTexture(gl.TEXTURE
 gl.uniform1i(gl.getUniformLocation(p,n),u);}
 function to(f,w,h){gl.bindFramebuffer(gl.FRAMEBUFFER,f);gl.viewport(0,0,w,h);
 gl.drawArrays(gl.TRIANGLE_STRIP,0,4);}
-function doSplat(x,y,vx,vy,dyeAmt,rad){
+function doSplat(x,y,vx,vy,dyeAmt,rad,flavor=0.0){
  gl.useProgram(pSpl);bindQ(pSpl);
  setT(pSpl,'ub',0,vel.r.t);
  gl.uniform2f(gl.getUniformLocation(pSpl,'pt'),x,y);
@@ -87,7 +99,7 @@ function doSplat(x,y,vx,vy,dyeAmt,rad){
  gl.uniform1f(gl.getUniformLocation(pSpl,'rad'),rad);
  to(vel.w.f,SW,SH);vel.swap();
  if(dyeAmt>0){setT(pSpl,'ub',0,dye.r.t);
-  gl.uniform3f(gl.getUniformLocation(pSpl,'col'),dyeAmt,0,0);
+  gl.uniform3f(gl.getUniformLocation(pSpl,'col'),dyeAmt,dyeAmt*flavor,0);
   to(dye.w.f,SW,SH);dye.swap();}}
 let DENSITY=.5,DYE=.10,CAP=.55;
 function hook(id,vid,fn){const e=document.getElementById(id);
@@ -110,11 +122,11 @@ function frame(){
  o1.style.bottom=o1b+'%'; o1.style.left=(o1x*100)+'%';
  o2.style.bottom=o2b+'%'; o2.style.left=(o2x*100)+'%';
  // ambient fog supply (low, wide) — keeps the band stocked
- doSplat(.5,.05,0,.04,DYE*.6,.08);
+ doSplat(.5,.05,0,.04,DYE*.6,.08,0.15);              // ambient: pale rose
  // SPLATS AT THE EXACT SPRITE POSITIONS (same wrap-%→sim mapping)
- doSplat(cwx,simY(14),cdir*.45,.08,DYE*.5,.02);          // cowboy bow-wave
- doSplat(o1x,simY(o1b),0,-.30,DYE*.45,.015);             // outlaw wakes
- doSplat(o2x,simY(o2b),0,-.30,DYE*.45,.015);
+ doSplat(cwx,simY(14),cdir*.45,.08,DYE*.5,.02,0.0);   // cowboy: cool bubblegum
+ doSplat(o1x,simY(o1b),0,-.30,DYE*.45,.015,0.85);     // outlaws: warm taffy
+ doSplat(o2x,simY(o2b),0,-.30,DYE*.45,.015,0.85);
  if(t-lastShot>0.7){lastShot=t;                          // bullet tunnel
   for(let k=0;k<6;k++)doSplat(cwx,simY(14)+k*.13,0,.8,0,.004);}
  // sim
@@ -140,6 +152,7 @@ function frame(){
  gl.useProgram(pDsp);bindQ(pDsp);setT(pDsp,'ud',0,dye.r.t);
  gl.uniform1f(gl.getUniformLocation(pDsp,'density'),DENSITY);
  gl.uniform1f(gl.getUniformLocation(pDsp,'cap'),CAP);
+ gl.uniform1f(gl.getUniformLocation(pDsp,'T'),t);
  gl.bindFramebuffer(gl.FRAMEBUFFER,null);gl.viewport(0,0,cv.width,cv.height);
  gl.enable(gl.BLEND);gl.blendFunc(gl.SRC_ALPHA,gl.ONE_MINUS_SRC_ALPHA);
  gl.clearColor(0,0,0,0);gl.clear(gl.COLOR_BUFFER_BIT);
