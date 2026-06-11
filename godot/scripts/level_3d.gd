@@ -350,6 +350,10 @@ const GATE_WIDTH: float = 13.0      # iter402: ~4× bigger gates (was 4.0) — m
 const GATE_HEIGHT: float = 5.4      # iter402: 1.35 → 5.4 (×4)
 const GATE_TRIGGER_Z: float = 0.5   # gates fire when their z passes this
 var _gate_spawn_timer: float = 0.0
+# iter619 device pass: hard ceiling on the LOGICAL posse count. Unbounded
+# ×gates compounded it past 1,000,000 on a long run; 9999 still reads "huge
+# mob" on the HUD and keeps volley damage in a sane range.
+const POSSE_MAX: int = 9999
 var _posse_count_3d: int = 5
 const STARTING_POSSE_3D: int = 1  # iter 118: 5 → 1 (gates grow it from there)
 
@@ -371,6 +375,7 @@ const OUTLAW_BULLET_HIT_X: float = 0.5  # iter 119: bullet only hits if within t
 const OUTLAW_HIT_RADIUS_SQ: float = 1.5 * 1.5
 const OUTLAW_HP: int = 10  # iter 118: 3 → 10 (1 cowboy firing 6/clip+1s reload = ~3.5 bullets/sec, dies in ~3s)
 var _outlaw_spawn_timer: float = 0.0
+var _quota_sweep_timer: float = 2.0   # iter619: cadence for _quota_safety_sweep
 
 # ── Farm outlaw cast (Level 3) ───────────────────────────────────────────
 # 4 video-billboard enemy kinds, each with its own movement/offense/defense.
@@ -810,7 +815,7 @@ func _ready() -> void:
 	if get_node_or_null("/root/GameState") != null:
 		var _brew: int = GameState.claim_posse_bonus()
 		if _brew > 0:
-			_posse_count_3d += _brew
+			_posse_count_3d = clampi(_posse_count_3d + _brew, 0, POSSE_MAX)
 			_sync_followers_to_count(_posse_count_3d)
 			_refresh_hud()
 			DebugLog.add("posse brew applied: +%d (start now %d)" % [_brew, _posse_count_3d])
@@ -2929,7 +2934,9 @@ func _check_gate_trigger(gate: Node3D) -> void:
 		_posse_count_3d *= value
 	else:
 		_posse_count_3d += value
-	_posse_count_3d = maxi(0, _posse_count_3d)
+	# iter619 device pass: ×gates compounded the count past 1,000,000 on a long
+	# run. Cap the LOGICAL posse — damage/HUD stay sane, render is capped anyway.
+	_posse_count_3d = clampi(_posse_count_3d, 0, POSSE_MAX)
 	info_label.text = "gate passed: %s%d  (posse %d→%d)" % [
 		op, value, before, _posse_count_3d,
 	]
@@ -3308,6 +3315,16 @@ func _build_weapon_indicator() -> void:
 	ui.add_child(_weapon_label)
 	_update_weapon_label()
 
+# iter619 device pass: the end-of-track badge must show THIS level's boss
+# (it was hard-coded to Slippery Pete on every level).
+const BOSS_BADGE_TEX := {
+	"pete": "res://assets/sprites/slippery_pete.png",
+	"rustler": "res://assets/sprites/rustler/head.png",
+	"jawbreaker": "res://assets/sprites/boss_badges/badge_jawbreaker.png",
+	"raisin": "res://assets/sprites/boss_badges/badge_raisin.png",
+	"queen": "res://assets/sprites/boss_badges/badge_queen.png",
+}
+
 # ── Iter 343: Quake bottom bar (Layout A) ──────────────────────────────────
 # One consolidated strip: weapon hero + name footnote · 4-colour jelly-bean
 # ammo clip · hearts · posse counter (pulses on change) · Slippery Pete end
@@ -3443,8 +3460,9 @@ func _build_quake_bar() -> void:
 	_pete_badge.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
 	_pete_badge.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
 	_pete_badge.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	if ResourceLoader.exists("res://assets/sprites/slippery_pete.png"):
-		_pete_badge.texture = load("res://assets/sprites/slippery_pete.png")
+	var _badge_tex: String = BOSS_BADGE_TEX.get(_boss_kind(), BOSS_BADGE_TEX["pete"])
+	if ResourceLoader.exists(_badge_tex):
+		_pete_badge.texture = load(_badge_tex)
 	_pete_badge.modulate = Color(0.5, 0.5, 0.55, 0.8)  # dim until the boss arrives
 	bar.add_child(_pete_badge)
 	# level-progress trail leading into the boss badge
@@ -6259,6 +6277,39 @@ func outlaws_remaining() -> int:
 func _quota_driven() -> bool:
 	return _level_def != null and _level_def.outlaw_quota > 0
 
+# iter619 device pass (L4 counter stuck at 44): hold-range enemies (kiter/
+# totem) parked at a FIXED distance, which can sit beyond the current weapon's
+# bullet range — FROSTBITE (−6) × snow range trim (0.85) despawns bullets at
+# z=−5.1, short of the totem's old −5.5 hold line, making them unkillable.
+# Holding enemies now advance until they're safely INSIDE bullet reach.
+func _hold_z_for(hold_dist: float) -> float:
+	var hold_z: float = cowboy_3d.position.z - hold_dist
+	var reach_z: float = _bullet_despawn_z * _weather_range_mult + 1.2
+	return maxf(hold_z, reach_z)
+
+# iter619 device pass safety net: if every quota enemy has been emitted but
+# the counter says more remain than are actually alive on the field, some
+# left through an uncredited removal path — resync to the live field so the
+# boss can never be deadlocked behind a stuck counter. Logs the discrepancy
+# so any remaining leak path shows up in the device log.
+func _quota_safety_sweep() -> void:
+	if not _quota_driven() or _level_state != LevelState.PLAYING or _pete_spawned:
+		return
+	if _outlaws_spawned < _level_def.outlaw_quota:
+		return
+	var live: int = 0
+	for o in outlaws_root.get_children():
+		if is_instance_valid(o) and o.get_meta("is_outlaw", false) \
+		and not o.get_meta("counted", false):
+			live += 1
+	if _outlaws_remaining > live:
+		DebugLog.add("quota sweep: remaining=%d > live=%d — resync (uncredited leak)"
+			% [_outlaws_remaining, live])
+		_outlaws_remaining = live
+		_set_outlaws_label(live)
+		if live == 0:
+			_trigger_quota_boss()
+
 # Single chokepoint: an outlaw has LEFT THE FIELD (defeated or scrolled past).
 # The `counted` meta guard makes a double-call safe.
 func _outlaw_left_field(outlaw: Node) -> void:
@@ -7095,6 +7146,11 @@ func _process(delta: float) -> void:
 		if _outlaw_spawn_timer <= 0.0:
 			_outlaw_spawn_timer = OUTLAW_SPAWN_INTERVAL
 			_spawn_outlaw()
+		# iter619: low-frequency quota-vs-field resync (see _quota_safety_sweep).
+		_quota_sweep_timer -= delta
+		if _quota_sweep_timer <= 0.0:
+			_quota_sweep_timer = 2.0
+			_quota_safety_sweep()
 		# Iter 118: prospector spawn (rarer, alongside outlaws).
 		_prospector_spawn_timer -= delta
 		if _prospector_spawn_timer <= 0.0:
@@ -7135,11 +7191,11 @@ func _process(delta: float) -> void:
 				z_speed *= 0.20
 		elif _kind == "candy_corn":
 			# KITER: hold ~6 units in front of the cowboy, stop closing.
-			if outlaw.position.z >= cowboy_3d.position.z - CANDY_CORN_HOLD_Z:
+			if outlaw.position.z >= _hold_z_for(CANDY_CORN_HOLD_Z):
 				z_speed = 0.0
 		elif _kind == "stacked_totem":
 			# RANGED HARASSER: holds at pistol range like the kiter.
-			if outlaw.position.z >= cowboy_3d.position.z - TOTEM_HOLD_Z:
+			if outlaw.position.z >= _hold_z_for(TOTEM_HOLD_Z):
 				z_speed = 0.0
 		elif _kind == "yeti_brute":
 			z_speed = OUTLAW_SPEED * YETI_SPEED_MUL  # RUSHER: long-arm clobber
