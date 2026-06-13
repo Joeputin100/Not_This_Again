@@ -195,6 +195,25 @@ func _build_sections() -> void:
 	jaw_btn.pressed.connect(_on_preview_jawbreaker)
 	content.add_child(jaw_btn)
 
+	# iter620 device pass (#90): jump straight into ANY level (the map only
+	# unlocks via progression) + the chicken minigame, which the map gated
+	# behind Granny's once-a-day popup. L7 has no level_7.tres yet, so its
+	# button only appears once that resource exists.
+	_add_section_header("PLAY ANY LEVEL")
+	for n in range(1, 8):
+		if not ResourceLoader.exists("res://resources/levels/level_%d.tres" % n):
+			continue
+		var lbl := "LEVEL %d" % n
+		var def: LevelDef = load("res://resources/levels/level_%d.tres" % n)
+		if def != null and def.display_name != "":
+			lbl = "LEVEL %d — %s" % [n, def.display_name]
+		var lvl_btn := _make_button(lbl)
+		lvl_btn.pressed.connect(_on_play_level.bind(n))
+		content.add_child(lvl_btn)
+	var chicken_btn := _make_button("🐔 GRANNY'S CHICKEN CHASE")
+	chicken_btn.pressed.connect(_on_play_chicken_chase)
+	content.add_child(chicken_btn)
+
 	_add_section_header("TEST RANGE")
 	var range_btn := _make_button("OPEN CACTUS FIELD (weapon + posse test)")
 	range_btn.pressed.connect(_on_open_test_range)
@@ -282,6 +301,17 @@ func _on_play_level_2() -> void:
 	GameState.current_level = 2
 	DebugLog.add("debug: play level 2 (Candy Rustler boss)")
 	get_tree().change_scene_to_file("res://scenes/level_3d.tscn")
+
+func _on_play_level(n: int) -> void:
+	AudioBus.play_tap()
+	GameState.current_level = n
+	DebugLog.add("debug: play level %d" % n)
+	get_tree().change_scene_to_file("res://scenes/level_3d.tscn")
+
+func _on_play_chicken_chase() -> void:
+	AudioBus.play_tap()
+	DebugLog.add("debug: play chicken chase minigame")
+	get_tree().change_scene_to_file("res://scenes/chicken_chase.tscn")
 
 func _on_open_glitz_picker() -> void:
 	AudioBus.play_tap()

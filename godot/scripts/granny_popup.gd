@@ -55,10 +55,9 @@ func _build_prompt() -> void:
 	var not_now := _make_button("Not now", Vector2(120, 70))
 	not_now.pressed.connect(func(): _prompt.visible = false)
 	_prompt.add_child(not_now)
-	# Granny cackles inappropriately while the prompt is up.
-	var cackler := GrannyCackler.new()
-	cackler.sprite_path = _granny_img.get_path()
-	_prompt.add_child(cackler)
+	# iter620 (#87): the cackle moved INTO the chicken minigame (chicken_chase.gd).
+	# It used to run here on the level-select map and could be heard cackling even
+	# after the prompt was dismissed — owner asked for cackle to be minigame-only.
 
 func _build_badge() -> void:
 	_badge = Control.new()

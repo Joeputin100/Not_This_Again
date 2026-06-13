@@ -29,8 +29,9 @@ func _arm() -> void:
 	_t = randf_range(MIN_GAP, MAX_GAP)
 
 func _process(delta: float) -> void:
-	if _sprite == null:
-		return
+	# iter620 (#87): cackle on a timer even with no sprite bound — the chicken
+	# minigame attaches this audio-only (Granny isn't on screen there), and the
+	# cackle was moved OFF the level-select map (it played there inappropriately).
 	_t -= delta
 	if _t <= 0.0:
 		_cackle()
@@ -43,8 +44,8 @@ func _cackle() -> void:
 	for p in FRAMES:
 		if ResourceLoader.exists(p):
 			frames.append(load(p))
-	if frames.is_empty():
-		return   # no flipbook art yet — the VO still plays
+	if frames.is_empty() or _sprite == null:
+		return   # no flipbook art (or audio-only mode) — the VO still plays
 	var tw := create_tween()
 	for f in frames:
 		tw.tween_callback(func(): _sprite.set("texture", f))

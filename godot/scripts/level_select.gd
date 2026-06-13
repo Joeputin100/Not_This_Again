@@ -230,8 +230,14 @@ func _ready() -> void:
 	# does NOT restart it (the user asked for no restart on entering the selector).
 	if get_node_or_null("/root/MusicPlayer") != null:
 		MusicPlayer.play_splash()
-	level_1_button.pressed.connect(_on_level_1_pressed)
-	level_2_button.pressed.connect(_on_level_2_pressed)
+	# iter620 device pass (#89): wire EVERY orb (1-8), not just 1-2. The
+	# LevelNode3Locked..8Locked buttons had no handler, so every level past 2
+	# was a dead tap on the map. _on_orb_pressed gates on _is_level_unlocked
+	# (debug builds open all; release follows progression).
+	for i in ORB_NODE_NAMES.size():
+		var orb_btn := get_node_or_null(NodePath(ORB_NODE_NAMES[i])) as Button
+		if orb_btn != null:
+			orb_btn.pressed.connect(_on_orb_pressed.bind(i + 1))
 	back_button.pressed.connect(_on_back_pressed)
 	_ground_level_nodes()
 	_setup_humbug()
@@ -766,8 +772,13 @@ func _place_humbug_marker(cam: Camera3D, terrain, gnd: Node3D) -> void:
 	var sc: float = clampf(ORB_NEAR_DIST / cam.global_position.distance_to(world), 0.08, 1.6) * ORB_SIZE_MULT * 0.62 * _fov_mag()
 	_humbug_base_scale = Vector2(sc, sc)
 	_humbug_base_pos = Vector2(c.x - humbug.size.x * 0.5, c.y - humbug.size.y * 0.5 * sc - humbug.size.y * 0.5)
+	# iter620 (#88): ALWAYS pin his screen position to the grounded projection so
+	# he can never float off his trailhead during a tap-flourish or a map pan
+	# (the old code suspended grounding for the whole flourish, which let him
+	# drift). Only his scale is owned by an active flourish; rotation-only
+	# flourishes don't touch scale, so they coexist with the pin.
+	humbug.position = _humbug_base_pos
 	if _humbug_flourish == null or not _humbug_flourish.is_valid():
-		humbug.position = _humbug_base_pos
 		humbug.scale = _humbug_base_scale
 
 # Iter 339: the welcome sign + larger-than-life Western props, dotted along the
@@ -1416,13 +1427,12 @@ func _humbug_tip_flourish() -> void:
 	_reset_humbug_transform()
 	var t := create_tween()
 	t.set_parallel(true)
+	# iter620 (#88): scale-only squash — position is pinned to the ground every
+	# frame now, so a position tween would just fight the pin (and used to let
+	# him hop off-spot). The squash alone reads as the "tip" beat.
 	t.tween_property(humbug, "scale", _humbug_base_scale * Vector2(1.06, 0.90), 0.12) \
 		.set_trans(Tween.TRANS_QUAD)
-	t.tween_property(humbug, "position", _humbug_base_pos + Vector2(0, 14), 0.12) \
-		.set_trans(Tween.TRANS_QUAD)
 	t.chain().tween_property(humbug, "scale", _humbug_base_scale, 0.32) \
-		.set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
-	t.parallel().tween_property(humbug, "position", _humbug_base_pos, 0.32) \
 		.set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
 	_humbug_flourish = t
 
@@ -1688,11 +1698,35 @@ func _on_back_pressed() -> void:
 	AudioBus.play_tap()
 	_to_main_menu()
 
-func _on_level_1_pressed() -> void:
-	_start_level(level_1_button, 1)
+# iter620 (#89): a level is unlocked if it's level 1, the previous level has a
+# recorded result (progression), or this is a debug build (owner: debug builds
+# unlock everything for testing). Release builds keep the normal gating.
+func _is_level_unlocked(level: int) -> bool:
+	if OS.has_feature("debug"):
+		return true
+	if level <= 1:
+		return true
+	if get_node_or_null("/root/GameState") == null:
+		return true
+	return GameState.level_best.has(level - 1)
 
-func _on_level_2_pressed() -> void:
-	_start_level(level_2_button, 2)
+func _on_orb_pressed(level: int) -> void:
+	if not _is_level_unlocked(level):
+		# Locked: a denied tap (no walk, no load). A small shake + buzz reads as
+		# "not yet" without a modal.
+		AudioBus.play_tap()
+		var btn := get_node_or_null(NodePath(ORB_NODE_NAMES[level - 1])) as Control
+		if btn != null:
+			var base_x: float = btn.position.x
+			var t := create_tween()
+			t.tween_property(btn, "position:x", base_x - 8.0, 0.04)
+			t.tween_property(btn, "position:x", base_x + 8.0, 0.06)
+			t.tween_property(btn, "position:x", base_x, 0.05)
+		DebugLog.add("level %d locked — tap denied" % level)
+		return
+	var btn := get_node_or_null(NodePath(ORB_NODE_NAMES[level - 1])) as Button
+	if btn != null:
+		_start_level(btn, level)
 
 # Shared level-start flow: lock the button, set the level (this drives
 # the boss dispatch in level_3d — level 2 spawns The Candy Rustler), play

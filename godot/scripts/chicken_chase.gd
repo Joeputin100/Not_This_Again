@@ -47,6 +47,10 @@ func _ready() -> void:
 	_spawn_obstacles()
 	if get_node_or_null("/root/AudioBus") and AudioBus.has_method("play_character_line"):
 		AudioBus.play_character_line("granny_chase_%d" % (randi() % 2))
+	# iter620 (#87): Granny cackles inappropriately throughout the chase (moved
+	# here from the level-select map, where it played out of place). Audio-only —
+	# she isn't on screen in the chase, so no sprite_path.
+	add_child(preload("res://scripts/granny_cackler.gd").new())
 	_refresh_hud()
 
 func _build_world() -> void:
