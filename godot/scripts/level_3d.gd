@@ -1207,7 +1207,7 @@ func _update_posse_crowd(delta: float) -> void:
 	# iter402: sit ON the terrain at the mob's own world-z (the terrain scrolls in
 	# WorldRoot, so the surface under world-z Z is at distance _level_distance − Z).
 	# Using _level_distance alone sank the mob into the hill, so it was occluded.
-	_posse_crowd.position.y = 0.55 + _hill_y(_level_distance - COWBOY_Z)
+	_posse_crowd.position.y = 0.55 + _hill_y(_terrain_d_at(_posse_crowd.position.z))
 	# Cap BEFORE the change-test so a 4000-posse doesn't rebuild every frame.
 	var want: int = mini(maxi(0, _posse_count_3d - 1), CROWD_RENDER_CAP)
 	if want != _crowd_built_count or absf(_cam_pitch - _crowd_built_pitch) > 2.0:
@@ -7254,7 +7254,7 @@ func _process(delta: float) -> void:
 		# at y=1.0 (their foot offset) — use that, not POSSE_BASE_Y, or their feet clip.
 		if not outlaw.get_meta("is_pushed", false) and not outlaw.get_meta("is_pusher", false) \
 				and not outlaw.get_meta("is_kimmy", false):
-			var _ground_y: float = OUTLAW_BASE_Y + _hill_y(_level_distance + (cowboy_3d.position.z - outlaw.position.z))
+			var _ground_y: float = OUTLAW_BASE_Y + _hill_y(_terrain_d_at(outlaw.position.z))
 			if _kind == "gummi_bear":
 				# BOUNCY: sine y-arc hop on top of the ground. hop_t in [0,1) over
 				# GUMMI_HOP_PERIOD; apex at 0.5. Stash hop_t so the defense check
@@ -7695,7 +7695,7 @@ func _apply_path_curve() -> void:
 			if not c.has_meta("lane_x"):
 				c.set_meta("lane_x", c.position.x)
 				c.set_meta("lane_y", c.position.y)
-			var d_at: float = _level_distance + (cowboy_3d.position.z - c.position.z)
+			var d_at: float = _terrain_d_at(c.position.z)
 			c.position.x = c.get_meta("lane_x") + _path_lateral(d_at) - base_lat
 			if ground_follow:
 				# Subtract the hole drop so a prop over a ditch sinks into it rather than
@@ -7722,6 +7722,19 @@ func _check_puddle_splash() -> void:
 # so the terrain tiles seamlessly when WorldRoot.z wraps.
 func _hill_y(d: float) -> float:
 	return TerrainThemes.hill_height(d) * _hill_scale
+
+# iter620 (device pass #79): the baked terrain mesh stores _hill_y(-local_z) at
+# each vertex, and WorldRoot scrolls so world_z = local_z + (level_distance mod
+# PATH_PATTERN_LEN); since _hill_y has period PATH_PATTERN_LEN, the ground height
+# directly under any WORLD z is _hill_y(_level_distance - world_z). EVERYTHING
+# that rides the terrain must use this. The old per-caller math used
+# `cowboy_3d.position.z - entity_z`, which was correct only while the cowboy sat
+# at z=0 — iter145 moved him to COWBOY_Z=1.5 and silently added a 1.5-unit phase
+# error to the leader, outlaws, and all scenery/obstacle/gate props (they then
+# floated over dips / sank on ridges, straddling the terrain the crowd rode
+# correctly). One helper keeps every rider on the same surface.
+func _terrain_d_at(world_z: float) -> float:
+	return _level_distance - world_z
 
 # Depth a pit drops at (distance d, lateral offset gx from the path centre).
 func _hole_drop(d: float, gx: float) -> float:
@@ -8234,12 +8247,11 @@ func _update_world_root() -> void:
 		return
 	_world_root.position = Vector3(
 		-_path_lateral(_level_distance), 0.0, fposmod(_level_distance, PATH_PATTERN_LEN))
-	var hy: float = _hill_y(_level_distance)
 	if cowboy_3d != null:
-		cowboy_3d.position.y = POSSE_BASE_Y + hy
+		cowboy_3d.position.y = POSSE_BASE_Y + _hill_y(_terrain_d_at(cowboy_3d.position.z))
 	for f in _followers:
 		if is_instance_valid(f) and not f.get_meta("falling", false):
-			f.position.y = POSSE_BASE_Y + hy
+			f.position.y = POSSE_BASE_Y + _hill_y(_terrain_d_at(f.position.z))
 	_check_puddle_splash()
 
 # Posse members that stray over an authored pit (the hole passing under the posse)
